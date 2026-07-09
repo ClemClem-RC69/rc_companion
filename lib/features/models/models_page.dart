@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_state.dart';
 import '../../models/rc_model.dart';
+import 'model_detail_page.dart';
 
 class ModelsPage extends StatefulWidget {
   const ModelsPage({super.key});
@@ -27,12 +28,18 @@ class _ModelsPageState extends State<ModelsPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Mes modèles')),
       body: models.isEmpty
-          ? const Center(child: Text('Aucun modèle pour le moment', style: TextStyle(fontSize: 22)))
+          ? const Center(
+              child: Text(
+                'Aucun modèle pour le moment',
+                style: TextStyle(fontSize: 22),
+              ),
+            )
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: models.length,
               itemBuilder: (context, index) {
                 final model = models[index];
+
                 return Card(
                   child: ListTile(
                     leading: const Icon(Icons.directions_car, size: 36),
@@ -40,6 +47,15 @@ class _ModelsPageState extends State<ModelsPage> {
                     subtitle: Text(
                       '${model.brand} • ${model.category} • ${model.scale} • ${model.batteryCount} × ${model.maxCells} max',
                     ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ModelDetailPage(model: model),
+                        ),
+                      );
+                    },
                   ),
                 );
               },
