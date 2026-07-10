@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../app/app_state.dart';
 import '../../models/rc_model.dart';
+import '../../services/storage_service.dart';
 import 'model_detail_page.dart';
+import 'model_form_page.dart';
 
 class ModelsPage extends StatefulWidget {
   const ModelsPage({super.key});
@@ -12,19 +14,255 @@ class ModelsPage extends StatefulWidget {
 }
 
 class _ModelsPageState extends State<ModelsPage> {
+  final SupabaseClient supabase = Supabase.instance.client;
+
+  List<_StoredModel> models = [];
+
+  bool isLoading = true;
+  String? errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    loadModels();
+  }
+
+  Future<void> loadModels() async {
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      setState(() {
+        isLoading = false;
+        errorMessage = 'Aucun utilisateur connecté.';
+      });
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
+
+    try {
+      final response = await supabase
+          .from('rc_models')
+          .select()
+          .eq('user_id', user.id)
+          .order('created_at', ascending: false);
+
+      final loadedModels = response.map<_StoredModel>((row) {
+        final data = Map<String, dynamic>.from(row);
+
+        final motorization =
+            data['motorization'] as String? ?? 'Électrique';
+
+        final maxCellsValue =
+            (data['max_cells'] as num?)?.toInt() ?? 0;
+
+        return _StoredModel(
+          id: data['id'] as String,
+          model: RcModel(
+            name: data['name'] as String? ?? '',
+            brand:
+                data['brand'] as String? ?? 'Marque non renseignée',
+            category: data['category'] as String? ?? 'Voiture',
+            discipline: data['discipline'] as String? ?? '',
+            motorization: motorization,
+            scale: data['scale'] as String? ?? 'Autre',
+            batteryCount:
+                (data['battery_count'] as num?)?.toInt() ?? 0,
+            maxCells: motorization == 'Électrique'
+                ? '${maxCellsValue}S'
+                : 'Aucune',
+            photoUrl: data['photo_url'] as String?,
+          ),
+        );
+      }).toList();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        models = loadedModels;
+        isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isLoading = false;
+        errorMessage =
+            'Impossible de charger les modèles.\n$error';
+      });
+    }
+  }
+
   Future<void> addModel() async {
-    final model = await Navigator.push<RcModel>(
+    final result = await Navigator.push<ModelFormResult>(
       context,
       MaterialPageRoute(
-        builder: (_) => const AddModelPage(),
+        builder: (_) => const ModelFormPage(),
       ),
     );
 
-    if (model != null) {
-      setState(() {
-        models.add(model);
-      });
+    if (result == null || !mounted) {
+      return;
     }
+
+    setState(() {
+      models.insert(
+        0,
+        _StoredModel(
+          id: result.id,
+          model: result.model,
+        ),
+      );
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Modèle enregistré'),
+      ),
+    );
+  }
+
+  Future<void> editModel(_StoredModel storedModel) async {
+    final result = await Navigator.push<ModelFormResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ModelFormPage(
+          modelId: storedModel.id,
+          existingModel: storedModel.model,
+        ),
+      ),
+    );
+
+    if (result == null || !mounted) {
+      return;
+    }
+
+    final index = models.indexWhere(
+      (item) => item.id == result.id,
+    );
+
+    if (index == -1) {
+      await loadModels();
+      return;
+    }
+
+    setState(() {
+      models[index] = _StoredModel(
+        id: result.id,
+        model: result.model,
+      );
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Modèle modifié'),
+      ),
+    );
+  }
+
+  Future<void> confirmDelete(
+    _StoredModel storedModel,
+  ) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Supprimer le modèle'),
+          content: Text(
+            'Veux-tu vraiment supprimer '
+            '"${storedModel.model.name}" ?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Supprimer'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    await deleteModel(storedModel);
+  }
+
+  Future<void> deleteModel(
+    _StoredModel storedModel,
+  ) async {
+    try {
+      await supabase
+          .from('rc_models')
+          .delete()
+          .eq('id', storedModel.id);
+
+      try {
+        await StorageService.deleteModelPhoto(
+          storedModel.model.photoUrl,
+        );
+      } catch (_) {
+        // La suppression du modèle reste validée même si
+        // un ancien fichier ne peut pas être effacé du Storage.
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        models.removeWhere(
+          (item) => item.id == storedModel.id,
+        );
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Modèle supprimé'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erreur pendant la suppression : $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> openModelDetail(
+    _StoredModel storedModel,
+  ) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ModelDetailPage(
+          model: storedModel.model,
+        ),
+      ),
+    );
   }
 
   @override
@@ -32,62 +270,305 @@ class _ModelsPageState extends State<ModelsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mes modèles'),
+        actions: [
+          IconButton(
+            tooltip: 'Actualiser',
+            onPressed: isLoading ? null : loadModels,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
-      body: models.isEmpty
-          ? const Center(
-              child: Text(
-                'Aucun modèle pour le moment',
-                style: TextStyle(fontSize: 22),
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: models.length,
-              itemBuilder: (context, index) {
-                final model = models[index];
-
-                final disciplineText = model.discipline.isEmpty
-                    ? ''
-                    : ' • ${model.discipline}';
-
-                final batteryText = model.motorization == 'Électrique'
-                    ? ' • ${model.batteryCount} × ${model.maxCells} max'
-                    : '';
-
-                return Card(
-                  child: ListTile(
-                    leading: Icon(
-                      _iconForCategory(model.category),
-                      size: 36,
-                    ),
-                    title: Text(model.name),
-                    subtitle: Text(
-                      '${model.brand} • ${model.category}'
-                      '$disciplineText • ${model.scale}'
-                      '$batteryText',
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ModelDetailPage(model: model),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
+      body: buildBody(),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: addModel,
+        onPressed: isLoading ? null : addModel,
         icon: const Icon(Icons.add),
         label: const Text('Ajouter'),
       ),
     );
   }
 
-  IconData _iconForCategory(String category) {
+  Widget buildBody() {
+    if (isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 54,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                errorMessage!,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: loadModels,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Réessayer'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (models.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: loadModels,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24),
+          children: const [
+            SizedBox(height: 150),
+            Icon(
+              Icons.directions_car_outlined,
+              size: 72,
+            ),
+            SizedBox(height: 18),
+            Center(
+              child: Text(
+                'Aucun modèle pour le moment',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            SizedBox(height: 8),
+            Center(
+              child: Text(
+                'Appuie sur Ajouter pour créer ton '
+                'premier modèle.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: loadModels,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          100,
+        ),
+        itemCount: models.length,
+        itemBuilder: (context, index) {
+          final storedModel = models[index];
+
+          return _ModelCard(
+            storedModel: storedModel,
+            onTap: () => openModelDetail(storedModel),
+            onEdit: () => editModel(storedModel),
+            onDelete: () => confirmDelete(storedModel),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ModelCard extends StatelessWidget {
+  const _ModelCard({
+    required this.storedModel,
+    required this.onTap,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final _StoredModel storedModel;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final model = storedModel.model;
+
+    final disciplineText = model.discipline.isEmpty
+        ? model.category
+        : model.discipline;
+
+    final batteryText = model.motorization == 'Électrique'
+        ? '${model.batteryCount} × ${model.maxCells}'
+        : 'Aucune batterie';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _ModelThumbnail(model: model),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      model.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${model.brand} • $disciplineText',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        Icon(
+                          model.motorization == 'Électrique'
+                              ? Icons.bolt
+                              : Icons.local_gas_station_outlined,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            '${model.motorization} • '
+                            '${model.scale} • $batteryText',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Options',
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    onEdit();
+                  } else if (value == 'delete') {
+                    onDelete();
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_outlined),
+                        SizedBox(width: 10),
+                        Text('Modifier'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline),
+                        SizedBox(width: 10),
+                        Text('Supprimer'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModelThumbnail extends StatelessWidget {
+  const _ModelThumbnail({
+    required this.model,
+  });
+
+  final RcModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final photoUrl = model.photoUrl;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: 84,
+        height: 84,
+        child: photoUrl != null && photoUrl.trim().isNotEmpty
+            ? Image.network(
+                photoUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (
+                  context,
+                  child,
+                  loadingProgress,
+                ) {
+                  if (loadingProgress == null) {
+                    return child;
+                  }
+
+                  return Container(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest,
+                    alignment: Alignment.center,
+                    child: const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  );
+                },
+                errorBuilder: (_, __, ___) {
+                  return _CategoryIcon(
+                    category: model.category,
+                  );
+                },
+              )
+            : _CategoryIcon(
+                category: model.category,
+              ),
+      ),
+    );
+  }
+}
+
+class _CategoryIcon extends StatelessWidget {
+  const _CategoryIcon({
+    required this.category,
+  });
+
+  final String category;
+
+  IconData get icon {
     switch (category) {
       case 'Bateau':
         return Icons.sailing;
@@ -102,292 +583,28 @@ class _ModelsPageState extends State<ModelsPage> {
         return Icons.directions_car;
     }
   }
-}
-
-class AddModelPage extends StatefulWidget {
-  const AddModelPage({super.key});
-
-  @override
-  State<AddModelPage> createState() => _AddModelPageState();
-}
-
-class _AddModelPageState extends State<AddModelPage> {
-  final nameController = TextEditingController();
-  final brandController = TextEditingController();
-
-  String category = 'Voiture';
-  String discipline = 'Monster Truck';
-  String motorization = 'Électrique';
-  String scale = '1/10';
-  int batteryCount = 1;
-  String maxCells = '4S';
-
-  final categories = [
-    'Voiture',
-    'Bateau',
-    'Avion',
-    'Hélicoptère',
-    'Drone',
-  ];
-
-  final disciplines = [
-    'Monster Truck',
-    'Buggy',
-    'Truggy',
-    'Short Course',
-    'Crawler',
-    'Scale / Trial',
-    'Rock Racer',
-    'Drift',
-    'Piste',
-    'Rally',
-    'Basher',
-    'Formule',
-    'Autre',
-  ];
-
-  final motorisations = [
-    'Électrique',
-    'Thermique',
-  ];
-
-  final scales = [
-    '1/24',
-    '1/18',
-    '1/16',
-    '1/14',
-    '1/12',
-    '1/10',
-    '1/8',
-    '1/7',
-    '1/6',
-    '1/5',
-    'Autre',
-  ];
-
-  final cellOptions = [
-    '1S',
-    '2S',
-    '3S',
-    '4S',
-    '5S',
-    '6S',
-    '8S',
-    '10S',
-    '12S',
-  ];
-
-  @override
-  void dispose() {
-    nameController.dispose();
-    brandController.dispose();
-    super.dispose();
-  }
-
-  void save() {
-    final name = nameController.text.trim();
-    final brand = brandController.text.trim();
-
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Indique un nom de modèle'),
-        ),
-      );
-      return;
-    }
-
-    final model = RcModel(
-      name: name,
-      brand: brand.isEmpty ? 'Marque non renseignée' : brand,
-      category: category,
-      discipline: category == 'Voiture' ? discipline : '',
-      motorization: motorization,
-      scale: scale,
-      batteryCount: motorization == 'Électrique' ? batteryCount : 0,
-      maxCells: motorization == 'Électrique' ? maxCells : 'Aucune',
-    );
-
-    Navigator.pop(context, model);
-  }
 
   @override
   Widget build(BuildContext context) {
-    final isCar = category == 'Voiture';
-    final isElectric = motorization == 'Électrique';
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Nouveau modèle'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          TextField(
-            controller: nameController,
-            decoration: const InputDecoration(
-              labelText: 'Nom du modèle',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: brandController,
-            decoration: const InputDecoration(
-              labelText: 'Marque',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
-            initialValue: category,
-            decoration: const InputDecoration(
-              labelText: 'Catégorie',
-              border: OutlineInputBorder(),
-            ),
-            items: categories
-                .map(
-                  (item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              if (value == null) return;
-
-              setState(() {
-                category = value;
-              });
-            },
-          ),
-          if (isCar) ...[
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              initialValue: discipline,
-              decoration: const InputDecoration(
-                labelText: 'Discipline',
-                border: OutlineInputBorder(),
-              ),
-              items: disciplines
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item,
-                      child: Text(item),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-
-                setState(() {
-                  discipline = value;
-                });
-              },
-            ),
-          ],
-          const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
-            initialValue: motorization,
-            decoration: const InputDecoration(
-              labelText: 'Motorisation',
-              border: OutlineInputBorder(),
-            ),
-            items: motorisations
-                .map(
-                  (item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              if (value == null) return;
-
-              setState(() {
-                motorization = value;
-              });
-            },
-          ),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
-            initialValue: scale,
-            decoration: const InputDecoration(
-              labelText: 'Échelle',
-              border: OutlineInputBorder(),
-            ),
-            items: scales
-                .map(
-                  (item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              if (value == null) return;
-
-              setState(() {
-                scale = value;
-              });
-            },
-          ),
-          if (isElectric) ...[
-            const SizedBox(height: 14),
-            DropdownButtonFormField<int>(
-              initialValue: batteryCount,
-              decoration: const InputDecoration(
-                labelText: 'Nombre de batteries',
-                border: OutlineInputBorder(),
-              ),
-              items: [1, 2]
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item,
-                      child: Text('$item batterie(s)'),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-
-                setState(() {
-                  batteryCount = value;
-                });
-              },
-            ),
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              initialValue: maxCells,
-              decoration: const InputDecoration(
-                labelText: 'Configuration maximale par batterie',
-                border: OutlineInputBorder(),
-              ),
-              items: cellOptions
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item,
-                      child: Text(item),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-
-                setState(() {
-                  maxCells = value;
-                });
-              },
-            ),
-          ],
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: save,
-            icon: const Icon(Icons.save),
-            label: const Text('Enregistrer'),
-          ),
-        ],
+    return Container(
+      color: Theme.of(context)
+          .colorScheme
+          .surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: Icon(
+        icon,
+        size: 42,
       ),
     );
   }
+}
+
+class _StoredModel {
+  const _StoredModel({
+    required this.id,
+    required this.model,
+  });
+
+  final String id;
+  final RcModel model;
 }
