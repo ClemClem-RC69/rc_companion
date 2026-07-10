@@ -12,21 +12,27 @@ class ModelsPage extends StatefulWidget {
 }
 
 class _ModelsPageState extends State<ModelsPage> {
-  void addModel() async {
+  Future<void> addModel() async {
     final model = await Navigator.push<RcModel>(
       context,
-      MaterialPageRoute(builder: (_) => const AddModelPage()),
+      MaterialPageRoute(
+        builder: (_) => const AddModelPage(),
+      ),
     );
 
     if (model != null) {
-      setState(() => models.add(model));
+      setState(() {
+        models.add(model);
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mes modèles')),
+      appBar: AppBar(
+        title: const Text('Mes modèles'),
+      ),
       body: models.isEmpty
           ? const Center(
               child: Text(
@@ -40,12 +46,25 @@ class _ModelsPageState extends State<ModelsPage> {
               itemBuilder: (context, index) {
                 final model = models[index];
 
+                final disciplineText = model.discipline.isEmpty
+                    ? ''
+                    : ' • ${model.discipline}';
+
+                final batteryText = model.motorization == 'Électrique'
+                    ? ' • ${model.batteryCount} × ${model.maxCells} max'
+                    : '';
+
                 return Card(
                   child: ListTile(
-                    leading: const Icon(Icons.directions_car, size: 36),
+                    leading: Icon(
+                      _iconForCategory(model.category),
+                      size: 36,
+                    ),
                     title: Text(model.name),
                     subtitle: Text(
-                      '${model.brand} • ${model.category} • ${model.scale} • ${model.batteryCount} × ${model.maxCells} max',
+                      '${model.brand} • ${model.category}'
+                      '$disciplineText • ${model.scale}'
+                      '$batteryText',
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () {
@@ -67,6 +86,22 @@ class _ModelsPageState extends State<ModelsPage> {
       ),
     );
   }
+
+  IconData _iconForCategory(String category) {
+    switch (category) {
+      case 'Bateau':
+        return Icons.sailing;
+      case 'Avion':
+        return Icons.flight;
+      case 'Hélicoptère':
+        return Icons.air;
+      case 'Drone':
+        return Icons.flight_takeoff;
+      case 'Voiture':
+      default:
+        return Icons.directions_car;
+    }
+  }
 }
 
 class AddModelPage extends StatefulWidget {
@@ -81,15 +116,73 @@ class _AddModelPageState extends State<AddModelPage> {
   final brandController = TextEditingController();
 
   String category = 'Voiture';
+  String discipline = 'Monster Truck';
   String motorization = 'Électrique';
   String scale = '1/10';
   int batteryCount = 1;
   String maxCells = '4S';
 
-  final categories = ['Voiture', 'Bateau', 'Avion', 'Hélicoptère', 'Drone'];
-  final motorisations = ['Électrique', 'Thermique'];
-  final scales = ['1/24', '1/18', '1/16', '1/14', '1/12', '1/10', '1/8', '1/7', '1/6', '1/5', 'Autre'];
-  final cellOptions = ['1S', '2S', '3S', '4S', '5S', '6S'];
+  final categories = [
+    'Voiture',
+    'Bateau',
+    'Avion',
+    'Hélicoptère',
+    'Drone',
+  ];
+
+  final disciplines = [
+    'Monster Truck',
+    'Buggy',
+    'Truggy',
+    'Short Course',
+    'Crawler',
+    'Scale / Trial',
+    'Rock Racer',
+    'Drift',
+    'Piste',
+    'Rally',
+    'Basher',
+    'Formule',
+    'Autre',
+  ];
+
+  final motorisations = [
+    'Électrique',
+    'Thermique',
+  ];
+
+  final scales = [
+    '1/24',
+    '1/18',
+    '1/16',
+    '1/14',
+    '1/12',
+    '1/10',
+    '1/8',
+    '1/7',
+    '1/6',
+    '1/5',
+    'Autre',
+  ];
+
+  final cellOptions = [
+    '1S',
+    '2S',
+    '3S',
+    '4S',
+    '5S',
+    '6S',
+    '8S',
+    '10S',
+    '12S',
+  ];
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    brandController.dispose();
+    super.dispose();
+  }
 
   void save() {
     final name = nameController.text.trim();
@@ -97,74 +190,202 @@ class _AddModelPageState extends State<AddModelPage> {
 
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Indique un nom de modèle')),
+        const SnackBar(
+          content: Text('Indique un nom de modèle'),
+        ),
       );
       return;
     }
 
-    Navigator.pop(
-      context,
-      RcModel(
-        name: name,
-        brand: brand.isEmpty ? 'Marque non renseignée' : brand,
-        category: category,
-        motorization: motorization,
-        scale: scale,
-        batteryCount: motorization == 'Électrique' ? batteryCount : 0,
-        maxCells: motorization == 'Électrique' ? maxCells : 'Aucune',
-      ),
+    final model = RcModel(
+      name: name,
+      brand: brand.isEmpty ? 'Marque non renseignée' : brand,
+      category: category,
+      discipline: category == 'Voiture' ? discipline : '',
+      motorization: motorization,
+      scale: scale,
+      batteryCount: motorization == 'Électrique' ? batteryCount : 0,
+      maxCells: motorization == 'Électrique' ? maxCells : 'Aucune',
     );
+
+    Navigator.pop(context, model);
   }
 
   @override
   Widget build(BuildContext context) {
+    final isCar = category == 'Voiture';
+    final isElectric = motorization == 'Électrique';
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Nouveau modèle')),
+      appBar: AppBar(
+        title: const Text('Nouveau modèle'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nom du modèle', border: OutlineInputBorder())),
+          TextField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              labelText: 'Nom du modèle',
+              border: OutlineInputBorder(),
+            ),
+          ),
           const SizedBox(height: 14),
-          TextField(controller: brandController, decoration: const InputDecoration(labelText: 'Marque', border: OutlineInputBorder())),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
-            value: category,
-            decoration: const InputDecoration(labelText: 'Catégorie', border: OutlineInputBorder()),
-            items: categories.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
-            onChanged: (value) => setState(() => category = value!),
+          TextField(
+            controller: brandController,
+            decoration: const InputDecoration(
+              labelText: 'Marque',
+              border: OutlineInputBorder(),
+            ),
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
-            value: motorization,
-            decoration: const InputDecoration(labelText: 'Motorisation', border: OutlineInputBorder()),
-            items: motorisations.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
-            onChanged: (value) => setState(() => motorization = value!),
+            initialValue: category,
+            decoration: const InputDecoration(
+              labelText: 'Catégorie',
+              border: OutlineInputBorder(),
+            ),
+            items: categories
+                .map(
+                  (item) => DropdownMenuItem(
+                    value: item,
+                    child: Text(item),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+
+              setState(() {
+                category = value;
+              });
+            },
+          ),
+          if (isCar) ...[
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              initialValue: discipline,
+              decoration: const InputDecoration(
+                labelText: 'Discipline',
+                border: OutlineInputBorder(),
+              ),
+              items: disciplines
+                  .map(
+                    (item) => DropdownMenuItem(
+                      value: item,
+                      child: Text(item),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
+
+                setState(() {
+                  discipline = value;
+                });
+              },
+            ),
+          ],
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            initialValue: motorization,
+            decoration: const InputDecoration(
+              labelText: 'Motorisation',
+              border: OutlineInputBorder(),
+            ),
+            items: motorisations
+                .map(
+                  (item) => DropdownMenuItem(
+                    value: item,
+                    child: Text(item),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+
+              setState(() {
+                motorization = value;
+              });
+            },
           ),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
-            value: scale,
-            decoration: const InputDecoration(labelText: 'Échelle', border: OutlineInputBorder()),
-            items: scales.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
-            onChanged: (value) => setState(() => scale = value!),
+            initialValue: scale,
+            decoration: const InputDecoration(
+              labelText: 'Échelle',
+              border: OutlineInputBorder(),
+            ),
+            items: scales
+                .map(
+                  (item) => DropdownMenuItem(
+                    value: item,
+                    child: Text(item),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+
+              setState(() {
+                scale = value;
+              });
+            },
           ),
-          const SizedBox(height: 14),
-          if (motorization == 'Électrique') ...[
+          if (isElectric) ...[
+            const SizedBox(height: 14),
             DropdownButtonFormField<int>(
-              value: batteryCount,
-              decoration: const InputDecoration(labelText: 'Nombre de batteries', border: OutlineInputBorder()),
-              items: [1, 2].map((item) => DropdownMenuItem(value: item, child: Text('$item batterie(s)'))).toList(),
-              onChanged: (value) => setState(() => batteryCount = value!),
+              initialValue: batteryCount,
+              decoration: const InputDecoration(
+                labelText: 'Nombre de batteries',
+                border: OutlineInputBorder(),
+              ),
+              items: [1, 2]
+                  .map(
+                    (item) => DropdownMenuItem(
+                      value: item,
+                      child: Text('$item batterie(s)'),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
+
+                setState(() {
+                  batteryCount = value;
+                });
+              },
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
-              value: maxCells,
-              decoration: const InputDecoration(labelText: 'Type max par batterie', border: OutlineInputBorder()),
-              items: cellOptions.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
-              onChanged: (value) => setState(() => maxCells = value!),
+              initialValue: maxCells,
+              decoration: const InputDecoration(
+                labelText: 'Configuration maximale par batterie',
+                border: OutlineInputBorder(),
+              ),
+              items: cellOptions
+                  .map(
+                    (item) => DropdownMenuItem(
+                      value: item,
+                      child: Text(item),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
+
+                setState(() {
+                  maxCells = value;
+                });
+              },
             ),
-            const SizedBox(height: 14),
           ],
-          FilledButton.icon(onPressed: save, icon: const Icon(Icons.save), label: const Text('Enregistrer')),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: save,
+            icon: const Icon(Icons.save),
+            label: const Text('Enregistrer'),
+          ),
         ],
       ),
     );
