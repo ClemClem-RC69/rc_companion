@@ -1,16 +1,44 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+class PickedModelDocument {
+  const PickedModelDocument({
+    required this.name,
+    required this.bytes,
+    required this.size,
+    required this.contentType,
+  });
+
+  final String name;
+  final Uint8List bytes;
+  final int size;
+  final String contentType;
+
+  bool get isPdf => contentType == 'application/pdf';
+
+  bool get isImage => contentType.startsWith('image/');
+}
 
 class StorageService {
   StorageService._();
 
   static final SupabaseClient _supabase = Supabase.instance.client;
-  static final ImagePicker _picker = ImagePicker();
+  static final ImagePicker _imagePicker = ImagePicker();
 
-  static const String _bucketName = 'model-photos';
+  static const String _photoBucketName = 'model-photos';
+  static const String _documentBucketName = 'model-documents';
+
+  static const int _maximumDocumentSize = 20 * 1024 * 1024;
+
+  // ---------------------------------------------------------------------------
+  // PHOTOS DES MODÈLES
+  // ---------------------------------------------------------------------------
 
   static Future<XFile?> pickModelPhoto() async {
-    return _picker.pickImage(
+    return _imagePicker.pickImage(
       source: ImageSource.gallery,
       maxWidth: 1600,
       maxHeight: 1600,
@@ -35,15 +63,14 @@ class StorageService {
       throw Exception('Le fichier sélectionné est vide.');
     }
 
-    final extension = _fileExtension(photo.name);
-    final contentType = _contentTypeForExtension(extension);
-
+    final extension = _imageFileExtension(photo.name);
+    final contentType = _imageContentType(extension);
     final timestamp = DateTime.now().millisecondsSinceEpoch;
 
     final storagePath =
         '${user.id}/$modelId/model_$timestamp.$extension';
 
-    await _supabase.storage.from(_bucketName).uploadBinary(
+    await _supabase.storage.from(_photoBucketName).uploadBinary(
           storagePath,
           bytes,
           fileOptions: FileOptions(
@@ -54,7 +81,7 @@ class StorageService {
         );
 
     return _supabase.storage
-        .from(_bucketName)
+        .from(_photoBucketName)
         .getPublicUrl(storagePath);
   }
 
@@ -63,26 +90,191 @@ class StorageService {
       return;
     }
 
-    final storagePath = _storagePathFromPublicUrl(photoUrl);
+    final storagePath = _storagePathFromPublicPhotoUrl(photoUrl);
 
     if (storagePath == null || storagePath.isEmpty) {
       return;
     }
 
-    await _supabase.storage.from(_bucketName).remove([
+    await _supabase.storage.from(_photoBucketName).remove([
       storagePath,
     ]);
   }
 
-  static String _fileExtension(String filename) {
+  // ---------------------------------------------------------------------------
+  // DOCUMENTS DES MODÈLES : PDF ET IMAGES
+  // ---------------------------------------------------------------------------
+
+  static Future<PickedModelDocument?> pickModelDocument() async {
+    final result = await FilePicker.pickFiles(
+      dialogTitle: 'Choisir un document',
+      type: FileType.custom,
+      allowedExtensions: const [
+        'pdf',
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+      ],
+      allowMultiple: false,
+      withData: true,
+    );
+
+    if (result == null || result.files.isEmpty) {
+      return null;
+    }
+
+    final file = result.files.single;
+    final bytes = file.bytes;
+
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception(
+        'Impossible de lire le document sélectionné.',
+      );
+    }
+
+    if (file.size > _maximumDocumentSize) {
+      throw Exception(
+        'Le document dépasse la taille maximale autorisée de 20 Mo.',
+      );
+    }
+
+    final contentType = _documentContentType(file.name);
+
+    if (contentType == null) {
+      throw Exception(
+        'Le fichier doit être un PDF, JPG, JPEG, PNG ou WEBP.',
+      );
+    }
+
+    return PickedModelDocument(
+      name: file.name,
+      bytes: bytes,
+      size: file.size,
+      contentType: contentType,
+    );
+  }
+
+  static Future<String> uploadModelDocument({
+    required PickedModelDocument document,
+    required String modelId,
+  }) async {
+    final user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw Exception('Aucun utilisateur connecté.');
+    }
+
+    if (document.bytes.isEmpty) {
+      throw Exception('Le document sélectionné est vide.');
+    }
+
+    if (document.size > _maximumDocumentSize) {
+      throw Exception(
+        'Le document dépasse la taille maximale autorisée de 20 Mo.',
+      );
+    }
+
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final safeFilename = _safeDocumentFilename(document.name);
+
+    final storagePath =
+        '${user.id}/$modelId/${timestamp}_$safeFilename';
+
+    await _supabase.storage.from(_documentBucketName).uploadBinary(
+          storagePath,
+          document.bytes,
+          fileOptions: FileOptions(
+            cacheControl: '3600',
+            upsert: false,
+            contentType: document.contentType,
+          ),
+        );
+
+    return storagePath;
+  }
+
+  static Future<String> createModelDocumentSignedUrl(
+    String storagePath, {
+    int expiresInSeconds = 3600,
+  }) async {
+    final cleanPath = storagePath.trim();
+
+    if (cleanPath.isEmpty) {
+      throw Exception('Chemin du document invalide.');
+    }
+
+    return _supabase.storage
+        .from(_documentBucketName)
+        .createSignedUrl(
+          cleanPath,
+          expiresInSeconds,
+        );
+  }
+
+  static Future<void> deleteModelDocument(
+    String storagePath,
+  ) async {
+    final cleanPath = storagePath.trim();
+
+    if (cleanPath.isEmpty) {
+      return;
+    }
+
+    await _supabase.storage.from(_documentBucketName).remove([
+      cleanPath,
+    ]);
+  }
+
+  // ---------------------------------------------------------------------------
+  // OUTILS INTERNES
+  // ---------------------------------------------------------------------------
+
+  static String? _documentContentType(String filename) {
+    final extension = _extensionFromFilename(filename);
+
+    switch (extension) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return null;
+    }
+  }
+
+  static String _safeDocumentFilename(String filename) {
+    var safeName = filename.trim();
+
+    if (safeName.isEmpty) {
+      safeName = 'document.pdf';
+    }
+
+    safeName = safeName
+        .replaceAll(RegExp(r'[^\wÀ-ÿ.\-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
+
+    return safeName;
+  }
+
+  static String _extensionFromFilename(String filename) {
     final cleanName = filename.toLowerCase().trim();
     final dotIndex = cleanName.lastIndexOf('.');
 
     if (dotIndex == -1 || dotIndex == cleanName.length - 1) {
-      return 'jpg';
+      return '';
     }
 
-    final extension = cleanName.substring(dotIndex + 1);
+    return cleanName.substring(dotIndex + 1);
+  }
+
+  static String _imageFileExtension(String filename) {
+    final extension = _extensionFromFilename(filename);
 
     switch (extension) {
       case 'jpeg':
@@ -97,7 +289,7 @@ class StorageService {
     }
   }
 
-  static String _contentTypeForExtension(String extension) {
+  static String _imageContentType(String extension) {
     switch (extension) {
       case 'png':
         return 'image/png';
@@ -109,8 +301,11 @@ class StorageService {
     }
   }
 
-  static String? _storagePathFromPublicUrl(String photoUrl) {
-    final marker = '/storage/v1/object/public/$_bucketName/';
+  static String? _storagePathFromPublicPhotoUrl(
+    String photoUrl,
+  ) {
+    final marker =
+        '/storage/v1/object/public/$_photoBucketName/';
 
     final markerIndex = photoUrl.indexOf(marker);
 

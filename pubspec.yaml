@@ -16,6 +16,12 @@ dependencies:
   supabase_flutter: ^2.16.0
   image_picker: ^1.2.1
 
+  # Sélection des notices et vues éclatées en PDF
+  file_picker: ^11.0.2
+
+  # Affichage des PDF directement dans RC Companion
+  pdfrx: ^2.4.7
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

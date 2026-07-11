@@ -259,8 +259,9 @@ class _ModelsPageState extends State<ModelsPage> {
       context,
       MaterialPageRoute(
         builder: (_) => ModelDetailPage(
-          model: storedModel.model,
-        ),
+  modelId: storedModel.id,
+  model: storedModel.model,
+),
       ),
     );
   }
