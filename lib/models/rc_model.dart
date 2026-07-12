@@ -10,6 +10,9 @@ class RcModel {
     required this.maxCells,
     this.photoUrl,
     this.weightKg,
+
+    // Pack Radio V1
+    this.radioProfileId,
   });
 
   final String name;
@@ -22,12 +25,14 @@ class RcModel {
   final String maxCells;
 
   /// URL de la photo stockée dans Supabase Storage.
-  /// Null = aucune photo.
   final String? photoUrl;
 
   /// Poids du modèle en kilogrammes.
-  /// Exemple : 8.750
   final double? weightKg;
+
+  /// Profil radio associé au modèle.
+  /// Null = aucun profil affecté.
+  final String? radioProfileId;
 
   RcModel copyWith({
     String? name,
@@ -40,6 +45,7 @@ class RcModel {
     String? maxCells,
     String? photoUrl,
     double? weightKg,
+    String? radioProfileId,
     bool clearPhoto = false,
   }) {
     return RcModel(
@@ -53,13 +59,13 @@ class RcModel {
       maxCells: maxCells ?? this.maxCells,
       photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
       weightKg: weightKg ?? this.weightKg,
+      radioProfileId: radioProfileId ?? this.radioProfileId,
     );
   }
 
   bool get hasPhoto =>
       photoUrl != null && photoUrl!.trim().isNotEmpty;
 
-  /// Affichage formaté
   String get formattedWeight {
     if (weightKg == null) {
       return '-';

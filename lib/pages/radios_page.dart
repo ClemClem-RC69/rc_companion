@@ -4,6 +4,7 @@ import '../data/radio_catalog.dart';
 import '../models/radio.dart';
 import '../models/radio_catalog_item.dart';
 import '../services/radio_service.dart';
+import 'radios/radio_profiles_page.dart';
 
 class RadiosPage extends StatefulWidget {
   const RadiosPage({super.key});
@@ -68,6 +69,17 @@ class _RadiosPageState extends State<RadiosPage> {
     if (added == true) {
       await _loadRadios();
     }
+  }
+
+  Future<void> _openProfiles(RcRadio radio) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RadioProfilesPage(
+          radioId: radio.id,
+          radioName: radio.fullName,
+        ),
+      ),
+    );
   }
 
   Future<void> _deleteRadio(RcRadio radio) async {
@@ -258,14 +270,29 @@ class _RadiosPageState extends State<RadiosPage> {
                 ),
               ),
               isThreeLine: true,
+              onTap: () {
+                _openProfiles(radio);
+              },
               trailing: PopupMenuButton<String>(
                 onSelected: (value) {
-                  if (value == 'delete') {
+                  if (value == 'profiles') {
+                    _openProfiles(radio);
+                  } else if (value == 'delete') {
                     _deleteRadio(radio);
                   }
                 },
                 itemBuilder: (context) {
                   return const [
+                    PopupMenuItem<String>(
+                      value: 'profiles',
+                      child: Row(
+                        children: [
+                          Icon(Icons.tune),
+                          SizedBox(width: 12),
+                          Text('Profils radio'),
+                        ],
+                      ),
+                    ),
                     PopupMenuItem<String>(
                       value: 'delete',
                       child: Row(
