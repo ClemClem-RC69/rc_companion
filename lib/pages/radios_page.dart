@@ -1,0 +1,705 @@
+import 'package:flutter/material.dart';
+
+import '../data/radio_catalog.dart';
+import '../models/radio.dart';
+import '../models/radio_catalog_item.dart';
+import '../services/radio_service.dart';
+
+class RadiosPage extends StatefulWidget {
+  const RadiosPage({super.key});
+
+  @override
+  State<RadiosPage> createState() => _RadiosPageState();
+}
+
+class _RadiosPageState extends State<RadiosPage> {
+  final RadioService _radioService = RadioService();
+
+  List<RcRadio> _radios = [];
+
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRadios();
+  }
+
+  Future<void> _loadRadios() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final radios = await _radioService.fetchRadios();
+
+      if (!mounted) return;
+
+      setState(() {
+        _radios = radios;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = 'Impossible de charger les radios.\n$error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openCatalog() async {
+    final added = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        return const _RadioCatalogSheet();
+      },
+    );
+
+    if (added == true) {
+      await _loadRadios();
+    }
+  }
+
+  Future<void> _deleteRadio(RcRadio radio) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Supprimer la radio'),
+          content: Text(
+            'Supprimer ${radio.fullName} de vos radios ?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false);
+              },
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop(true);
+              },
+              child: const Text('Supprimer'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _radioService.deleteRadio(radio.id);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${radio.fullName} a été supprimée.'),
+        ),
+      );
+
+      await _loadRadios();
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Impossible de supprimer la radio : $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  String _levelLabel(String level) {
+    switch (level) {
+      case 'basic':
+        return 'Basique';
+      case 'intermediate':
+        return 'Intermédiaire';
+      case 'advanced':
+        return 'Avancée';
+      default:
+        return level;
+    }
+  }
+
+  String _typeLabel(String type) {
+    switch (type) {
+      case 'wheel':
+        return 'Volant';
+      case 'sticks':
+        return 'Manches';
+      default:
+        return type;
+    }
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 56,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _loadRadios,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Réessayer'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_radios.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.settings_remote,
+                size: 72,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Aucune radio enregistrée',
+                style: Theme.of(context).textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Sélectionne une radio dans le catalogue.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _openCatalog,
+                icon: const Icon(Icons.add),
+                label: const Text('Ajouter une radio'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadRadios,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        itemCount: _radios.length,
+        separatorBuilder: (context, index) {
+          return const SizedBox(height: 8);
+        },
+        itemBuilder: (context, index) {
+          final radio = _radios[index];
+
+          return Card(
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
+              leading: CircleAvatar(
+                child: Text(
+                  radio.brand.isEmpty
+                      ? '?'
+                      : radio.brand.substring(0, 1).toUpperCase(),
+                ),
+              ),
+              title: Text(
+                radio.fullName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '${_levelLabel(radio.level)}'
+                  ' • ${_typeLabel(radio.type)}'
+                  ' • ${radio.channels} voies\n'
+                  '${radio.protocols.join(' • ')}',
+                ),
+              ),
+              isThreeLine: true,
+              trailing: PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'delete') {
+                    _deleteRadio(radio);
+                  }
+                },
+                itemBuilder: (context) {
+                  return const [
+                    PopupMenuItem<String>(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline),
+                          SizedBox(width: 12),
+                          Text('Supprimer'),
+                        ],
+                      ),
+                    ),
+                  ];
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Radios'),
+      ),
+      floatingActionButton: _radios.isEmpty || _isLoading
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _openCatalog,
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter'),
+            ),
+      body: _buildBody(),
+    );
+  }
+}
+
+class _RadioCatalogSheet extends StatefulWidget {
+  const _RadioCatalogSheet();
+
+  @override
+  State<_RadioCatalogSheet> createState() => _RadioCatalogSheetState();
+}
+
+class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
+  final RadioService _radioService = RadioService();
+  final TextEditingController _searchController = TextEditingController();
+
+  String? _selectedBrand;
+  RadioLevel? _selectedLevel;
+  RadioType? _selectedType;
+
+  String? _addingRadioId;
+
+  List<String> get _brands {
+    final brands = radioCatalog
+        .map((radio) => radio.brand)
+        .toSet()
+        .toList();
+
+    brands.sort();
+
+    return brands;
+  }
+
+  List<RadioCatalogItem> get _filteredRadios {
+    final query = _searchController.text.trim().toLowerCase();
+
+    final radios = radioCatalog.where((radio) {
+      final matchesSearch =
+          query.isEmpty ||
+          radio.brand.toLowerCase().contains(query) ||
+          radio.model.toLowerCase().contains(query) ||
+          radio.fullName.toLowerCase().contains(query) ||
+          radio.protocols.any(
+            (protocol) => protocol.toLowerCase().contains(query),
+          );
+
+      final matchesBrand =
+          _selectedBrand == null ||
+          radio.brand == _selectedBrand;
+
+      final matchesLevel =
+          _selectedLevel == null ||
+          radio.level == _selectedLevel;
+
+      final matchesType =
+          _selectedType == null ||
+          radio.type == _selectedType;
+
+      return matchesSearch &&
+          matchesBrand &&
+          matchesLevel &&
+          matchesType;
+    }).toList();
+
+    radios.sort((a, b) {
+      final brandComparison = a.brand.compareTo(b.brand);
+
+      if (brandComparison != 0) {
+        return brandComparison;
+      }
+
+      return a.model.compareTo(b.model);
+    });
+
+    return radios;
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _resetFilters() {
+    setState(() {
+      _searchController.clear();
+      _selectedBrand = null;
+      _selectedLevel = null;
+      _selectedType = null;
+    });
+  }
+
+  Future<void> _addRadio(RadioCatalogItem radio) async {
+    if (_addingRadioId != null) return;
+
+    setState(() {
+      _addingRadioId = radio.id;
+    });
+
+    try {
+      final alreadyExists = await _radioService.radioAlreadyExists(
+        brand: radio.brand,
+        model: radio.model,
+      );
+
+      if (!mounted) return;
+
+      if (alreadyExists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${radio.fullName} est déjà dans vos radios.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      await _radioService.addRadio(
+        brand: radio.brand,
+        model: radio.model,
+        level: radio.levelValue,
+        type: radio.typeValue,
+        channels: radio.channels,
+        protocols: radio.protocols,
+        programmable: radio.programmable,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${radio.fullName} a été ajoutée.',
+          ),
+        ),
+      );
+
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Impossible d’ajouter la radio : $error',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _addingRadioId = null;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredRadios = _filteredRadios;
+
+    return FractionallySizedBox(
+      heightFactor: 0.95,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Ajouter une radio',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Fermer',
+                  onPressed: () {
+                    Navigator.of(context).pop(false);
+                  },
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {});
+              },
+              decoration: InputDecoration(
+                hintText: 'Rechercher une marque ou un modèle',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Effacer',
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                          });
+                        },
+                        icon: const Icon(Icons.clear),
+                      ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 180,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _selectedBrand,
+                    decoration: const InputDecoration(
+                      labelText: 'Marque',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('Toutes'),
+                      ),
+                      ..._brands.map(
+                        (brand) => DropdownMenuItem<String>(
+                          value: brand,
+                          child: Text(brand),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedBrand = value;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 180,
+                  child: DropdownButtonFormField<RadioLevel>(
+                    initialValue: _selectedLevel,
+                    decoration: const InputDecoration(
+                      labelText: 'Niveau',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem<RadioLevel>(
+                        value: null,
+                        child: Text('Tous'),
+                      ),
+                      DropdownMenuItem<RadioLevel>(
+                        value: RadioLevel.basic,
+                        child: Text('Basique'),
+                      ),
+                      DropdownMenuItem<RadioLevel>(
+                        value: RadioLevel.intermediate,
+                        child: Text('Intermédiaire'),
+                      ),
+                      DropdownMenuItem<RadioLevel>(
+                        value: RadioLevel.advanced,
+                        child: Text('Avancée'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedLevel = value;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 160,
+                  child: DropdownButtonFormField<RadioType>(
+                    initialValue: _selectedType,
+                    decoration: const InputDecoration(
+                      labelText: 'Type',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem<RadioType>(
+                        value: null,
+                        child: Text('Tous'),
+                      ),
+                      DropdownMenuItem<RadioType>(
+                        value: RadioType.wheel,
+                        child: Text('Volant'),
+                      ),
+                      DropdownMenuItem<RadioType>(
+                        value: RadioType.sticks,
+                        child: Text('Manches'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedType = value;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _resetFilters,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Réinitialiser'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '${filteredRadios.length} radio'
+                '${filteredRadios.length > 1 ? 's' : ''}',
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: filteredRadios.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Aucune radio ne correspond à la recherche.',
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(
+                      16,
+                      0,
+                      16,
+                      24,
+                    ),
+                    itemCount: filteredRadios.length,
+                    separatorBuilder: (context, index) {
+                      return const SizedBox(height: 8);
+                    },
+                    itemBuilder: (context, index) {
+                      final radio = filteredRadios[index];
+                      final isAdding = _addingRadioId == radio.id;
+
+                      return Card(
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            child: Text(
+                              radio.brand.substring(0, 1).toUpperCase(),
+                            ),
+                          ),
+                          title: Text(
+                            radio.fullName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              '${radio.levelLabel}'
+                              ' • ${radio.typeLabel}'
+                              ' • ${radio.channels} voies\n'
+                              '${radio.protocols.join(' • ')}',
+                            ),
+                          ),
+                          isThreeLine: true,
+                          trailing: isAdding
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.add_circle_outline,
+                                ),
+                          onTap: isAdding
+                              ? null
+                              : () {
+                                  _addRadio(radio);
+                                },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
