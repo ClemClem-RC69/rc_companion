@@ -812,6 +812,12 @@ class _InformationTab extends StatelessWidget {
           title: 'Échelle',
           value: model.scale,
         ),
+        if (model.weightKg != null)
+  _infoCard(
+    icon: Icons.monitor_weight_outlined,
+    title: 'Poids',
+    value: model.formattedWeight,
+  ),
         if (isElectric) ...[
           const SizedBox(height: 20),
           const Text(

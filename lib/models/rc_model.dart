@@ -9,6 +9,7 @@ class RcModel {
     required this.batteryCount,
     required this.maxCells,
     this.photoUrl,
+    this.weightKg,
   });
 
   final String name;
@@ -24,6 +25,10 @@ class RcModel {
   /// Null = aucune photo.
   final String? photoUrl;
 
+  /// Poids du modèle en kilogrammes.
+  /// Exemple : 8.750
+  final double? weightKg;
+
   RcModel copyWith({
     String? name,
     String? brand,
@@ -34,6 +39,7 @@ class RcModel {
     int? batteryCount,
     String? maxCells,
     String? photoUrl,
+    double? weightKg,
     bool clearPhoto = false,
   }) {
     return RcModel(
@@ -46,9 +52,19 @@ class RcModel {
       batteryCount: batteryCount ?? this.batteryCount,
       maxCells: maxCells ?? this.maxCells,
       photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
+      weightKg: weightKg ?? this.weightKg,
     );
   }
 
   bool get hasPhoto =>
       photoUrl != null && photoUrl!.trim().isNotEmpty;
+
+  /// Affichage formaté
+  String get formattedWeight {
+    if (weightKg == null) {
+      return '-';
+    }
+
+    return '${weightKg!.toStringAsFixed(2).replaceAll('.', ',')} kg';
+  }
 }

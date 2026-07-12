@@ -38,6 +38,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
 
   late final TextEditingController nameController;
   late final TextEditingController brandController;
+  late final TextEditingController weightController;
 
   String category = 'Voiture';
   String discipline = 'Monster Truck';
@@ -125,6 +126,16 @@ class _ModelFormPageState extends State<ModelFormPage> {
           : model?.brand ?? '',
     );
 
+    weightController = TextEditingController(
+      text: model?.weightKg == null
+          ? ''
+          : model!.weightKg!
+              .toStringAsFixed(3)
+              .replaceFirst(RegExp(r'0+$'), '')
+              .replaceFirst(RegExp(r'\.$'), '')
+              .replaceAll('.', ','),
+    );
+
     if (model != null) {
       category = model.category;
 
@@ -148,6 +159,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
   void dispose() {
     nameController.dispose();
     brandController.dispose();
+    weightController.dispose();
     super.dispose();
   }
 
@@ -210,7 +222,30 @@ class _ModelFormPageState extends State<ModelFormPage> {
   Future<void> save() async {
     final name = nameController.text.trim();
     final brand = brandController.text.trim();
+    final weightText = weightController.text.trim();
     final user = supabase.auth.currentUser;
+
+    double? weightKg;
+
+    if (weightText.isNotEmpty) {
+      weightKg = double.tryParse(
+        weightText.replaceAll(',', '.'),
+      );
+
+      if (weightKg == null ||
+          weightKg <= 0 ||
+          weightKg > 999.999) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Indique un poids valide en kg '
+              '(par exemple 8,7).',
+            ),
+          ),
+        );
+        return;
+      }
+    }
 
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -259,6 +294,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
       'discipline': savedDiscipline,
       'motorization': motorization,
       'scale': scale,
+      'weight_kg': weightKg,
       'battery_count': savedBatteryCount,
       'max_cells': savedMaxCells,
     };
@@ -332,6 +368,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
         discipline: savedDiscipline,
         motorization: motorization,
         scale: scale,
+        weightKg: weightKg,
         batteryCount: savedBatteryCount,
         maxCells: motorization == 'Électrique'
             ? '${savedMaxCells}S'
@@ -596,6 +633,20 @@ class _ModelFormPageState extends State<ModelFormPage> {
                       scale = value;
                     });
                   },
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: weightController,
+            enabled: !isSaving,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'Poids',
+              hintText: 'Ex. 8,7',
+              suffixText: 'kg',
+              border: OutlineInputBorder(),
+            ),
           ),
           if (isElectric) ...[
             const SizedBox(height: 14),

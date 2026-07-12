@@ -69,6 +69,8 @@ class _ModelsPageState extends State<ModelsPage> {
             discipline: data['discipline'] as String? ?? '',
             motorization: motorization,
             scale: data['scale'] as String? ?? 'Autre',
+            weightKg:
+                (data['weight_kg'] as num?)?.toDouble(),
             batteryCount:
                 (data['battery_count'] as num?)?.toInt() ?? 0,
             maxCells: motorization == 'Électrique'
