@@ -11,8 +11,8 @@ class RcModel {
     this.photoUrl,
     this.weightKg,
 
-    // Pack Radio V1
-    this.radioProfileId,
+    // Radio associée au modèle
+    this.radioId,
   });
 
   final String name;
@@ -30,9 +30,9 @@ class RcModel {
   /// Poids du modèle en kilogrammes.
   final double? weightKg;
 
-  /// Profil radio associé au modèle.
-  /// Null = aucun profil affecté.
-  final String? radioProfileId;
+  /// Radio associée au modèle.
+  /// Null = aucune radio affectée.
+  final String? radioId;
 
   RcModel copyWith({
     String? name,
@@ -45,8 +45,9 @@ class RcModel {
     String? maxCells,
     String? photoUrl,
     double? weightKg,
-    String? radioProfileId,
+    String? radioId,
     bool clearPhoto = false,
+    bool clearRadio = false,
   }) {
     return RcModel(
       name: name ?? this.name,
@@ -59,12 +60,15 @@ class RcModel {
       maxCells: maxCells ?? this.maxCells,
       photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
       weightKg: weightKg ?? this.weightKg,
-      radioProfileId: radioProfileId ?? this.radioProfileId,
+      radioId: clearRadio ? null : (radioId ?? this.radioId),
     );
   }
 
   bool get hasPhoto =>
       photoUrl != null && photoUrl!.trim().isNotEmpty;
+
+  bool get hasRadio =>
+      radioId != null && radioId!.trim().isNotEmpty;
 
   String get formattedWeight {
     if (weightKg == null) {

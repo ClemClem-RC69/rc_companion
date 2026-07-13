@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../models/radio.dart';
 import '../../models/rc_model.dart';
+import '../../services/radio_service.dart';
 import '../../services/storage_service.dart';
 
 class ModelFormResult {
@@ -35,6 +37,7 @@ class ModelFormPage extends StatefulWidget {
 
 class _ModelFormPageState extends State<ModelFormPage> {
   final SupabaseClient supabase = Supabase.instance.client;
+  final RadioService radioService = RadioService();
 
   late final TextEditingController nameController;
   late final TextEditingController brandController;
@@ -47,6 +50,11 @@ class _ModelFormPageState extends State<ModelFormPage> {
   int batteryCount = 1;
   String maxCells = '4S';
 
+  List<RcRadio> radios = [];
+  String? selectedRadioId;
+  bool isLoadingRadios = true;
+  String? radiosError;
+
   XFile? selectedPhoto;
   Uint8List? selectedPhotoBytes;
   String? existingPhotoUrl;
@@ -58,12 +66,9 @@ class _ModelFormPageState extends State<ModelFormPage> {
   final categories = const [
     'Voiture',
     'Bateau',
-    'Avion',
-    'Hélicoptère',
-    'Drone',
   ];
 
-  final disciplines = const [
+  final carDisciplines = const [
     'Monster Truck',
     'Buggy',
     'Truggy',
@@ -76,6 +81,19 @@ class _ModelFormPageState extends State<ModelFormPage> {
     'Rally',
     'Basher',
     'Formule',
+    'Autre',
+  ];
+
+  final boatDisciplines = const [
+    'Offshore',
+    'Catamaran',
+    'Monocoque',
+    'Hydroplane',
+    'Airboat',
+    'Remorqueur',
+    'Voilier',
+    'Yacht',
+    'Scale',
     'Autre',
   ];
 
@@ -136,12 +154,20 @@ class _ModelFormPageState extends State<ModelFormPage> {
               .replaceAll('.', ','),
     );
 
-    if (model != null) {
-      category = model.category;
+    selectedRadioId = model?.radioId;
 
-      discipline = model.discipline.isEmpty
-          ? 'Monster Truck'
-          : model.discipline;
+    if (model != null) {
+      category = categories.contains(model.category)
+          ? model.category
+          : 'Voiture';
+
+      final availableDisciplines = category == 'Voiture'
+          ? carDisciplines
+          : boatDisciplines;
+
+      discipline = availableDisciplines.contains(model.discipline)
+          ? model.discipline
+          : availableDisciplines.first;
 
       motorization = model.motorization;
       scale = model.scale;
@@ -153,6 +179,8 @@ class _ModelFormPageState extends State<ModelFormPage> {
 
       existingPhotoUrl = model.photoUrl;
     }
+
+    loadRadios();
   }
 
   @override
@@ -161,6 +189,43 @@ class _ModelFormPageState extends State<ModelFormPage> {
     brandController.dispose();
     weightController.dispose();
     super.dispose();
+  }
+
+  Future<void> loadRadios() async {
+    setState(() {
+      isLoadingRadios = true;
+      radiosError = null;
+    });
+
+    try {
+      final result = await radioService.fetchRadios();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        radios = result;
+        isLoadingRadios = false;
+
+        if (selectedRadioId != null &&
+            !radios.any(
+              (radio) => radio.id == selectedRadioId,
+            )) {
+          selectedRadioId = null;
+        }
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        isLoadingRadios = false;
+        radiosError =
+            'Impossible de charger les radios : $error';
+      });
+    }
   }
 
   Future<void> pickPhoto() async {
@@ -272,8 +337,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
     final savedBrand =
         brand.isEmpty ? 'Marque non renseignée' : brand;
 
-    final savedDiscipline =
-        category == 'Voiture' ? discipline : '';
+    final savedDiscipline = discipline;
 
     final savedBatteryCount =
         motorization == 'Électrique' ? batteryCount : 0;
@@ -297,6 +361,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
       'weight_kg': weightKg,
       'battery_count': savedBatteryCount,
       'max_cells': savedMaxCells,
+      'radio_id': selectedRadioId,
     };
 
     try {
@@ -374,6 +439,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
             ? '${savedMaxCells}S'
             : 'Aucune',
         photoUrl: finalPhotoUrl,
+        radioId: selectedRadioId,
       );
 
       if (!mounted) {
@@ -453,9 +519,105 @@ class _ModelFormPageState extends State<ModelFormPage> {
             existingPhotoUrl!.trim().isNotEmpty);
   }
 
+  RcRadio? get selectedRadio {
+    final id = selectedRadioId;
+
+    if (id == null) {
+      return null;
+    }
+
+    for (final radio in radios) {
+      if (radio.id == id) {
+        return radio;
+      }
+    }
+
+    return null;
+  }
+
+  Widget buildRadioField() {
+    if (isLoadingRadios) {
+      return const InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Radio utilisée',
+          border: OutlineInputBorder(),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+              ),
+            ),
+            SizedBox(width: 12),
+            Text('Chargement des radios...'),
+          ],
+        ),
+      );
+    }
+
+    if (radiosError != null) {
+      return Card(
+        child: ListTile(
+          leading: const Icon(Icons.error_outline),
+          title: const Text(
+            'Impossible de charger les radios',
+          ),
+          subtitle: Text(radiosError!),
+          trailing: IconButton(
+            tooltip: 'Réessayer',
+            onPressed: loadRadios,
+            icon: const Icon(Icons.refresh),
+          ),
+        ),
+      );
+    }
+
+    return DropdownButtonFormField<String>(
+      value: selectedRadioId ?? '',
+      decoration: InputDecoration(
+        labelText: 'Radio utilisée',
+        border: const OutlineInputBorder(),
+        helperText: selectedRadio == null
+            ? radios.isEmpty
+                ? 'Ajoute d’abord une radio dans l’onglet Radios.'
+                : 'Aucune radio associée à ce modèle.'
+            : selectedRadio!.protocols.isEmpty
+                ? 'Aucun protocole renseigné'
+                : 'Protocole : ${selectedRadio!.protocols.join(' • ')}',
+      ),
+      items: [
+        const DropdownMenuItem<String>(
+          value: '',
+          child: Text('Aucune radio'),
+        ),
+        ...radios.map(
+          (radio) => DropdownMenuItem<String>(
+            value: radio.id,
+            child: Text(radio.fullName),
+          ),
+        ),
+      ],
+      onChanged: isSaving
+          ? null
+          : (value) {
+              setState(() {
+                selectedRadioId =
+                    value == null || value.isEmpty
+                        ? null
+                        : value;
+              });
+            },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isCar = category == 'Voiture';
+    final availableDisciplines = category == 'Voiture'
+        ? carDisciplines
+        : boatDisciplines;
     final isElectric = motorization == 'Électrique';
 
     return Scaffold(
@@ -548,38 +710,45 @@ class _ModelFormPageState extends State<ModelFormPage> {
 
                     setState(() {
                       category = value;
+
+                      final newDisciplines =
+                          category == 'Voiture'
+                              ? carDisciplines
+                              : boatDisciplines;
+
+                      if (!newDisciplines.contains(discipline)) {
+                        discipline = newDisciplines.first;
+                      }
                     });
                   },
           ),
-          if (isCar) ...[
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              value: discipline,
-              decoration: const InputDecoration(
-                labelText: 'Discipline',
-                border: OutlineInputBorder(),
-              ),
-              items: disciplines
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item,
-                      child: Text(item),
-                    ),
-                  )
-                  .toList(),
-              onChanged: isSaving
-                  ? null
-                  : (value) {
-                      if (value == null) {
-                        return;
-                      }
-
-                      setState(() {
-                        discipline = value;
-                      });
-                    },
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            value: discipline,
+            decoration: const InputDecoration(
+              labelText: 'Discipline',
+              border: OutlineInputBorder(),
             ),
-          ],
+            items: availableDisciplines
+                .map(
+                  (item) => DropdownMenuItem(
+                    value: item,
+                    child: Text(item),
+                  ),
+                )
+                .toList(),
+            onChanged: isSaving
+                ? null
+                : (value) {
+                    if (value == null) {
+                      return;
+                    }
+
+                    setState(() {
+                      discipline = value;
+                    });
+                  },
+          ),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
             value: motorization,
@@ -648,6 +817,8 @@ class _ModelFormPageState extends State<ModelFormPage> {
               border: OutlineInputBorder(),
             ),
           ),
+          const SizedBox(height: 14),
+          buildRadioField(),
           if (isElectric) ...[
             const SizedBox(height: 14),
             DropdownButtonFormField<int>(

@@ -77,6 +77,7 @@ class _ModelsPageState extends State<ModelsPage> {
                 ? '${maxCellsValue}S'
                 : 'Aucune',
             photoUrl: data['photo_url'] as String?,
+            radioId: data['radio_id'] as String?,
           ),
         );
       }).toList();

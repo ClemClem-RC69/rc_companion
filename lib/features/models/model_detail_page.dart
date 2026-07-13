@@ -4,6 +4,8 @@ import 'package:pdfrx/pdfrx.dart';
 import '../../models/model_document.dart';
 import '../../models/rc_model.dart';
 import '../../services/model_document_service.dart';
+import 'widgets/model_radio_controls_tab.dart';
+import 'widgets/model_radio_setup_tab.dart';
 import 'widgets/model_setup_tab.dart';
 
 class ModelDetailPage extends StatefulWidget {
@@ -35,7 +37,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
     super.initState();
 
     tabController = TabController(
-      length: 3,
+      length: 5,
       vsync: this,
     );
 
@@ -529,6 +531,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
         title: Text(widget.model.name),
         bottom: TabBar(
           controller: tabController,
+          isScrollable: true,
           tabs: const [
             Tab(
               icon: Icon(Icons.info_outline),
@@ -542,6 +545,14 @@ class _ModelDetailPageState extends State<ModelDetailPage>
               icon: Icon(Icons.tune),
               text: 'Setup',
             ),
+            Tab(
+              icon: Icon(Icons.settings_remote_outlined),
+              text: 'Réglages radio',
+            ),
+            Tab(
+              icon: Icon(Icons.gamepad_outlined),
+              text: 'Commandes radio',
+            ),
           ],
         ),
       ),
@@ -551,8 +562,16 @@ class _ModelDetailPageState extends State<ModelDetailPage>
           _InformationTab(model: widget.model),
           buildDocumentsTab(),
           ModelSetupTab(
-  modelId: widget.modelId,
-),
+            modelId: widget.modelId,
+          ),
+          ModelRadioSetupTab(
+            modelId: widget.modelId,
+            model: widget.model,
+          ),
+          ModelRadioControlsTab(
+            modelId: widget.modelId,
+            model: widget.model,
+          ),
         ],
       ),
     );

@@ -4,7 +4,6 @@ import '../data/radio_catalog.dart';
 import '../models/radio.dart';
 import '../models/radio_catalog_item.dart';
 import '../services/radio_service.dart';
-import 'radios/radio_profiles_page.dart';
 
 class RadiosPage extends StatefulWidget {
   const RadiosPage({super.key});
@@ -71,17 +70,6 @@ class _RadiosPageState extends State<RadiosPage> {
     }
   }
 
-  Future<void> _openProfiles(RcRadio radio) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => RadioProfilesPage(
-          radioId: radio.id,
-          radioName: radio.fullName,
-        ),
-      ),
-    );
-  }
-
   Future<void> _deleteRadio(RcRadio radio) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -133,30 +121,6 @@ class _RadiosPageState extends State<RadiosPage> {
           ),
         ),
       );
-    }
-  }
-
-  String _levelLabel(String level) {
-    switch (level) {
-      case 'basic':
-        return 'Basique';
-      case 'intermediate':
-        return 'Intermédiaire';
-      case 'advanced':
-        return 'Avancée';
-      default:
-        return level;
-    }
-  }
-
-  String _typeLabel(String type) {
-    switch (type) {
-      case 'wheel':
-        return 'Volant';
-      case 'sticks':
-        return 'Manches';
-      default:
-        return type;
     }
   }
 
@@ -247,12 +211,10 @@ class _RadiosPageState extends State<RadiosPage> {
                 horizontal: 16,
                 vertical: 8,
               ),
-              leading: CircleAvatar(
-                child: Text(
-                  radio.brand.isEmpty
-                      ? '?'
-                      : radio.brand.substring(0, 1).toUpperCase(),
-                ),
+              leading: _RadioThumbnail(
+                brand: radio.brand,
+                model: radio.model,
+                type: radio.type,
               ),
               title: Text(
                 radio.fullName,
@@ -263,36 +225,19 @@ class _RadiosPageState extends State<RadiosPage> {
               subtitle: Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  '${_levelLabel(radio.level)}'
-                  ' • ${_typeLabel(radio.type)}'
-                  ' • ${radio.channels} voies\n'
-                  '${radio.protocols.join(' • ')}',
+                  radio.protocols.isEmpty
+                      ? 'Protocole non renseigné'
+                      : 'Protocole : ${radio.protocols.join(' • ')}',
                 ),
               ),
-              isThreeLine: true,
-              onTap: () {
-                _openProfiles(radio);
-              },
               trailing: PopupMenuButton<String>(
                 onSelected: (value) {
-                  if (value == 'profiles') {
-                    _openProfiles(radio);
-                  } else if (value == 'delete') {
+                  if (value == 'delete') {
                     _deleteRadio(radio);
                   }
                 },
                 itemBuilder: (context) {
                   return const [
-                    PopupMenuItem<String>(
-                      value: 'profiles',
-                      child: Row(
-                        children: [
-                          Icon(Icons.tune),
-                          SizedBox(width: 12),
-                          Text('Profils radio'),
-                        ],
-                      ),
-                    ),
                     PopupMenuItem<String>(
                       value: 'delete',
                       child: Row(
@@ -327,6 +272,44 @@ class _RadiosPageState extends State<RadiosPage> {
               label: const Text('Ajouter'),
             ),
       body: _buildBody(),
+    );
+  }
+}
+
+
+class _RadioThumbnail extends StatelessWidget {
+  const _RadioThumbnail({
+    required this.brand,
+    required this.model,
+    required this.type,
+  });
+
+  final String brand;
+  final String model;
+  final String type;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedType = type.toLowerCase();
+
+    final icon = normalizedType == 'sticks'
+        ? Icons.sports_esports_outlined
+        : Icons.settings_remote_outlined;
+
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.center,
+      child: Icon(
+        icon,
+        size: 30,
+      ),
     );
   }
 }
@@ -683,10 +666,10 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
 
                       return Card(
                         child: ListTile(
-                          leading: CircleAvatar(
-                            child: Text(
-                              radio.brand.substring(0, 1).toUpperCase(),
-                            ),
+                          leading: _RadioThumbnail(
+                            brand: radio.brand,
+                            model: radio.model,
+                            type: radio.typeValue,
                           ),
                           title: Text(
                             radio.fullName,
@@ -697,13 +680,12 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
                           subtitle: Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Text(
-                              '${radio.levelLabel}'
-                              ' • ${radio.typeLabel}'
-                              ' • ${radio.channels} voies\n'
-                              '${radio.protocols.join(' • ')}',
+                              radio.protocols.isEmpty
+                                  ? 'Protocole non renseigné'
+                                  : 'Protocole : '
+                                      '${radio.protocols.join(' • ')}',
                             ),
                           ),
-                          isThreeLine: true,
                           trailing: isAdding
                               ? const SizedBox(
                                   width: 24,

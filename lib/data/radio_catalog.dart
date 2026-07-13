@@ -376,6 +376,16 @@ const List<RadioCatalogItem> radioCatalog = [
     protocols: ['2.4 GHz'],
     programmable: false,
   ),
+  RadioCatalogItem(
+    id: 'konect_x9s',
+    brand: 'Konect',
+    model: 'X9S',
+    level: RadioLevel.advanced,
+    type: RadioType.wheel,
+    channels: 9,
+    protocols: ['2.4 GHz bidirectionnel'],
+    programmable: true,
+  ),
 
   // Absima
   RadioCatalogItem(
