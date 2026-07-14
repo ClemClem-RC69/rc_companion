@@ -7,6 +7,8 @@ import '../../services/model_document_service.dart';
 import 'widgets/model_radio_controls_tab.dart';
 import 'widgets/model_radio_setup_tab.dart';
 import 'widgets/model_setup_tab.dart';
+import '../../models/radio.dart';
+import '../../services/radio_service.dart';
 
 class ModelDetailPage extends StatefulWidget {
   const ModelDetailPage({
@@ -774,6 +776,24 @@ class _InformationTab extends StatelessWidget {
 
   final RcModel model;
 
+  Future<RcRadio?> _loadSelectedRadio() async {
+    final radioId = model.radioId;
+
+    if (radioId == null || radioId.trim().isEmpty) {
+      return null;
+    }
+
+    final radios = await RadioService().fetchRadios();
+
+    for (final radio in radios) {
+      if (radio.id == radioId) {
+        return radio;
+      }
+    }
+
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isElectric = model.motorization == 'Électrique';
@@ -832,11 +852,46 @@ class _InformationTab extends StatelessWidget {
           value: model.scale,
         ),
         if (model.weightKg != null)
-  _infoCard(
-    icon: Icons.monitor_weight_outlined,
-    title: 'Poids',
-    value: model.formattedWeight,
-  ),
+          _infoCard(
+            icon: Icons.monitor_weight_outlined,
+            title: 'Poids',
+            value: model.formattedWeight,
+          ),
+        FutureBuilder<RcRadio?>(
+          future: _loadSelectedRadio(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Card(
+                child: ListTile(
+                  leading: Icon(Icons.settings_remote_outlined),
+                  title: Text('Radio utilisée'),
+                  trailing: SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return _infoCard(
+                icon: Icons.settings_remote_outlined,
+                title: 'Radio utilisée',
+                value: 'Impossible à charger',
+              );
+            }
+
+            final radio = snapshot.data;
+
+            return _infoCard(
+              icon: Icons.settings_remote_outlined,
+              title: 'Radio utilisée',
+              value: radio?.fullName ?? 'Aucune radio',
+            );
+          },
+        ),
         if (isElectric) ...[
           const SizedBox(height: 20),
           const Text(
@@ -871,7 +926,16 @@ class _InformationTab extends StatelessWidget {
       child: ListTile(
         leading: Icon(icon),
         title: Text(title),
-        trailing: Text(value),
+        trailing: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 260,
+          ),
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ),
     );
   }

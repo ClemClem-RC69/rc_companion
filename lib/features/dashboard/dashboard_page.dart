@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../pages/radios_page.dart';
 import '../batteries/batteries_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../models/models_page.dart';
@@ -103,8 +104,14 @@ class DashboardPage extends StatelessWidget {
           HomeCard(
             icon: Icons.directions_car,
             title: 'Mes modèles',
-            subtitle: 'Voitures, bateaux, avions, drones et hélicos',
+            subtitle: 'Voitures et bateaux',
             onTap: () => open(context, const ModelsPage()),
+          ),
+          HomeCard(
+            icon: Icons.settings_remote,
+            title: 'Mes radios',
+            subtitle: 'Catalogue, profils et réglages radio',
+            onTap: () => open(context, const RadiosPage()),
           ),
           HomeCard(
             icon: Icons.battery_charging_full,
