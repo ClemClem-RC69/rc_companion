@@ -308,6 +308,138 @@ class _BatteriesPageState extends State<BatteriesPage> {
     );
   }
 
+  Widget _buildBatteryTile(
+    Battery battery, {
+    bool insidePair = false,
+  }) {
+    return Card(
+      margin: EdgeInsets.only(
+        bottom: insidePair ? 6 : 10,
+      ),
+      elevation: insidePair ? 0 : null,
+      color: insidePair
+          ? Theme.of(context).colorScheme.surfaceContainerHighest
+          : null,
+      child: ListTile(
+        leading: Icon(
+          Icons.battery_charging_full,
+          size: insidePair ? 30 : 36,
+          color: _technologyColor(battery.technology),
+        ),
+        title: Text(
+          battery.id,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                '${battery.technology} • ${battery.brand} • '
+                '${battery.cells} • ${battery.capacity} mAh • '
+                '${battery.cRate}C',
+              ),
+              Chip(
+                visualDensity: VisualDensity.compact,
+                backgroundColor: _statusColor(context, battery.status),
+                label: Text(battery.status),
+              ),
+            ],
+          ),
+        ),
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) {
+            switch (value) {
+              case 'status':
+                _changeStatus(battery);
+              case 'dissolve':
+                _dissolvePair(battery);
+              case 'delete':
+                _deleteBattery(battery);
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'status',
+              child: ListTile(
+                leading: Icon(Icons.sync_alt),
+                title: Text('Changer le statut'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            if (battery.isPaired)
+              const PopupMenuItem(
+                value: 'dissolve',
+                child: ListTile(
+                  leading: Icon(Icons.link_off),
+                  title: Text('Dissoudre la paire'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'delete',
+              child: ListTile(
+                leading: Icon(Icons.delete_forever),
+                title: Text('Supprimer définitivement'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+        onTap: () => _openBattery(battery),
+      ),
+    );
+  }
+
+  Widget _buildPairCard(
+    String pairId,
+    List<Battery> batteries,
+  ) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.link,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Paire $pairId',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+                Text(
+                  '${batteries.length} batteries',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...batteries.map(
+              (battery) => _buildBatteryTile(
+                battery,
+                insidePair: true,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBody() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -338,120 +470,84 @@ class _BatteriesPageState extends State<BatteriesPage> {
       );
     }
 
+    final pairedBatteries = <String, List<Battery>>{};
+    final singleBatteries = <Battery>[];
+
+    for (final battery in _batteries) {
+      final pairId = battery.pairId;
+
+      if (pairId != null && pairId.isNotEmpty) {
+        pairedBatteries.putIfAbsent(pairId, () => []).add(battery);
+      } else {
+        singleBatteries.add(battery);
+      }
+    }
+
+    final pairEntries = pairedBatteries.entries.toList()
+      ..sort((first, second) => first.key.compareTo(second.key));
+
     return RefreshIndicator(
       onRefresh: _loadBatteries,
-      child: ListView.builder(
+      child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 24),
-        itemCount: _batteries.isEmpty ? 2 : _batteries.length + 1,
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            return _buildActions();
-          }
-
-          if (_batteries.isEmpty) {
-  return const Padding(
-    padding: EdgeInsets.only(top: 140),
-    child: Column(
-      children: [
-        Icon(Icons.battery_0_bar, size: 64),
-        SizedBox(height: 16),
-        Text(
-          'Aucune batterie pour le moment',
-          style: TextStyle(fontSize: 20),
-        ),
-      ],
-    ),
-  );
-}
-
-          final battery = _batteries[index - 1];
-
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ListTile(
-                leading: Icon(
-                  Icons.battery_charging_full,
-                  size: 36,
-                  color: _technologyColor(battery.technology),
+        children: [
+          _buildActions(),
+          if (_batteries.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 140),
+              child: Column(
+                children: [
+                  Icon(Icons.battery_0_bar, size: 64),
+                  SizedBox(height: 16),
+                  Text(
+                    'Aucune batterie pour le moment',
+                    style: TextStyle(fontSize: 20),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            if (pairEntries.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Text(
+                  'Paires',
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
-                title: Text(
-                  battery.id,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        '${battery.technology} • ${battery.brand} • '
-                        '${battery.cells} • ${battery.capacity} mAh • '
-                        '${battery.cRate}C',
-                      ),
-                      if (battery.isPaired)
-                        Chip(
-                          visualDensity: VisualDensity.compact,
-                          label: Text('Paire ${battery.pairId}'),
-                        ),
-                      Chip(
-                        visualDensity: VisualDensity.compact,
-                        backgroundColor:
-                            _statusColor(context, battery.status),
-                        label: Text(battery.status),
-                      ),
-                    ],
+              ),
+              ...pairEntries.map(
+                (entry) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildPairCard(
+                    entry.key,
+                    entry.value,
                   ),
                 ),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (value) {
-                    switch (value) {
-                      case 'status':
-                        _changeStatus(battery);
-                      case 'dissolve':
-                        _dissolvePair(battery);
-                      case 'delete':
-                        _deleteBattery(battery);
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'status',
-                      child: ListTile(
-                        leading: Icon(Icons.sync_alt),
-                        title: Text('Changer le statut'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                    if (battery.isPaired)
-                      const PopupMenuItem(
-                        value: 'dissolve',
-                        child: ListTile(
-                          leading: Icon(Icons.link_off),
-                          title: Text('Dissoudre la paire'),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                    const PopupMenuDivider(),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: ListTile(
-                        leading: Icon(Icons.delete_forever),
-                        title: Text('Supprimer définitivement'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ],
-                ),
-                onTap: () => _openBattery(battery),
               ),
-            ),
-          );
-        },
+            ],
+            if (singleBatteries.isNotEmpty) ...[
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  pairEntries.isEmpty ? 8 : 4,
+                  16,
+                  8,
+                ),
+                child: Text(
+                  'Batteries seules',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              ...singleBatteries.map(
+                (battery) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildBatteryTile(battery),
+                ),
+              ),
+            ],
+          ],
+        ],
       ),
     );
   }
