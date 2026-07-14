@@ -274,6 +274,18 @@ class _BatteriesPageState extends State<BatteriesPage> {
     };
   }
 
+  Color _technologyColor(String technology) {
+    return switch (technology) {
+      'LiPo' => Colors.red,
+      'LiHV' => Colors.purple,
+      'Li-Ion' => Colors.blue,
+      'LiFe' => Colors.green,
+      'NiMH' => Colors.orange,
+      'NiCd' => Colors.grey,
+      _ => Theme.of(context).colorScheme.primary,
+    };
+  }
+
   Widget _buildActions() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -360,9 +372,10 @@ class _BatteriesPageState extends State<BatteriesPage> {
             child: Card(
               margin: const EdgeInsets.only(bottom: 10),
               child: ListTile(
-                leading: const Icon(
+                leading: Icon(
                   Icons.battery_charging_full,
                   size: 36,
+                  color: _technologyColor(battery.technology),
                 ),
                 title: Text(
                   battery.id,
@@ -729,6 +742,18 @@ class _CreatePairPageState extends State<CreatePairPage>
   ];
 
   static const _cellOptions = ['1S', '2S', '3S', '4S', '5S', '6S'];
+
+  Color _technologyColor(String technology) {
+    return switch (technology) {
+      'LiPo' => Colors.red,
+      'LiHV' => Colors.purple,
+      'Li-Ion' => Colors.blue,
+      'LiFe' => Colors.green,
+      'NiMH' => Colors.orange,
+      'NiCd' => Colors.grey,
+      _ => Theme.of(context).colorScheme.primary,
+    };
+  }
 
   @override
   void initState() {
@@ -1194,20 +1219,34 @@ class _CreatePairPageState extends State<CreatePairPage>
           .map(
             (battery) => DropdownMenuItem(
               value: battery.id,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    battery.id,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  Icon(
+                    Icons.battery_charging_full,
+                    color: _technologyColor(battery.technology),
+                    size: 28,
                   ),
-                  Text(
-                    '${battery.brand} • ${battery.technology} • '
-                    '${battery.cells} • ${battery.capacity} mAh • '
-                    '${battery.cRate}C',
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          battery.id,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          '${battery.brand} • ${battery.technology} • '
+                          '${battery.cells} • ${battery.capacity} mAh • '
+                          '${battery.cRate}C',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
