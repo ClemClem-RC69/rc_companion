@@ -893,43 +893,6 @@ class _InformationTab extends StatelessWidget {
   }
 }
 
-class _SetupPlaceholder extends StatelessWidget {
-  const _SetupPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.tune,
-              size: 72,
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Setup d’origine et setup actuel',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Cette section sera reliée à Supabase '
-              'à l’étape suivante.',
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class ModelPdfPage extends StatelessWidget {
   const ModelPdfPage({
     super.key,

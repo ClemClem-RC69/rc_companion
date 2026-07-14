@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../../data/radio_control_catalog.dart';
 import '../../../models/model_radio_setup.dart';
 import '../../../models/radio.dart';
-import '../../../models/radio_field_catalog.dart';
 import '../../../models/rc_model.dart';
 import '../../../services/model_radio_setup_service.dart';
 import '../../../services/radio_service.dart';
@@ -39,21 +38,6 @@ class _ModelRadioControlsTabState
   bool _isLoading = true;
   bool _isSaving = false;
   String? _errorMessage;
-
-  List<RadioFieldDefinition> get _baseFields {
-    return radioFieldCatalog
-        .where(
-          (section) =>
-              section.title !=
-              'Boutons, molettes et interrupteurs',
-        )
-        .expand((section) => section.fields)
-        .toList();
-  }
-
-  Set<String> get _baseKeys {
-    return _baseFields.map((field) => field.key).toSet();
-  }
 
   List<RadioControlDefinition> get _controls {
     return _layout?.controls ?? const [];

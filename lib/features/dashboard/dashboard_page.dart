@@ -5,7 +5,6 @@ import '../batteries/batteries_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../models/models_page.dart';
 import '../sessions/sessions_page.dart';
-import '../../pages/radios_page.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
@@ -107,12 +106,6 @@ class DashboardPage extends StatelessWidget {
             subtitle: 'Voitures, bateaux, avions, drones et hélicos',
             onTap: () => open(context, const ModelsPage()),
           ),
-          HomeCard(
-  icon: Icons.settings_remote,
-  title: 'Mes radios',
-  subtitle: 'Radios basiques et programmables',
-  onTap: () => open(context, const RadiosPage()),
-),
           HomeCard(
             icon: Icons.battery_charging_full,
             title: 'Mes batteries',
