@@ -66,11 +66,11 @@ class _BatteriesPageState extends State<BatteriesPage> {
     }
   }
 
-  Future<void> _createPairFromExisting() async {
+  Future<void> _createPair() async {
     final created = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => const CreateExistingPairPage(),
+        builder: (_) => const CreatePairPage(),
       ),
     );
 
@@ -287,7 +287,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
             label: const Text('Créer une batterie'),
           ),
           OutlinedButton.icon(
-            onPressed: _batteries.length < 2 ? null : _createPairFromExisting,
+            onPressed: _createPair,
             icon: const Icon(Icons.link),
             label: const Text('Créer une paire'),
           ),
@@ -461,11 +461,6 @@ class _BatteriesPageState extends State<BatteriesPage> {
   }
 }
 
-enum BatteryCreationMode {
-  single,
-  newPair,
-  existingPair,
-}
 
 class AddBatteryPage extends StatefulWidget {
   const AddBatteryPage({super.key});
@@ -483,10 +478,6 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
 
   String _technology = 'LiPo';
   String _cells = '4S';
-  BatteryCreationMode _creationMode = BatteryCreationMode.single;
-  List<Battery> _candidates = [];
-  Battery? _selectedExistingBattery;
-  bool _isSearchingCandidates = false;
   bool _isSaving = false;
 
   static const _technologies = [
@@ -498,14 +489,7 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
     'NiCd',
   ];
 
-  static const _cellOptions = [
-    '1S',
-    '2S',
-    '3S',
-    '4S',
-    '5S',
-    '6S',
-  ];
+  static const _cellOptions = ['1S', '2S', '3S', '4S', '5S', '6S'];
 
   @override
   void dispose() {
@@ -516,66 +500,19 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
     super.dispose();
   }
 
-  void _clearCandidateSelection() {
-    _candidates = [];
-    _selectedExistingBattery = null;
+  String? _required(String? value, String message) {
+    if (value == null || value.trim().isEmpty) {
+      return message;
+    }
+    return null;
   }
 
-  Future<void> _searchCandidates() async {
-    if (_creationMode != BatteryCreationMode.existingPair ||
-        _isSearchingCandidates) {
-      return;
+  String? _positiveInteger(String? value, String fieldName) {
+    final number = int.tryParse(value?.trim() ?? '');
+    if (number == null || number <= 0) {
+      return 'Renseigne un $fieldName valide';
     }
-
-    final capacity = int.tryParse(_capacityController.text.trim());
-    final cRate = int.tryParse(_cRateController.text.trim());
-
-    if (capacity == null || capacity <= 0 || cRate == null || cRate <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Renseigne d’abord la capacité et le taux de décharge.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isSearchingCandidates = true;
-      _selectedExistingBattery = null;
-    });
-
-    try {
-      final candidates = await BatteryService.getAvailablePairCandidates(
-        technology: _technology,
-        capacity: capacity,
-        cells: _cells,
-        cRate: cRate,
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _candidates = candidates;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recherche impossible : $error')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSearchingCandidates = false;
-        });
-      }
-    }
+    return null;
   }
 
   Future<void> _save() async {
@@ -583,205 +520,52 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
       return;
     }
 
-    if (_creationMode == BatteryCreationMode.existingPair &&
-        _selectedExistingBattery == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Sélectionne une batterie existante compatible.'),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isSaving = true;
-    });
+    setState(() => _isSaving = true);
 
     try {
       final now = DateTime.now();
-      final capacity = int.parse(_capacityController.text.trim());
-      final cRate = int.parse(_cRateController.text.trim());
-
-      final firstNumber = await BatteryService.getNextBatteryNumber(
+      final number = await BatteryService.getNextBatteryNumber(
         technology: _technology,
         date: now,
       );
 
-      String? pairId;
-
-      if (_creationMode == BatteryCreationMode.newPair) {
-        final pairNumber = await BatteryService.getNextPairNumber(now);
-        pairId = BatteryService.buildPairId(
-          date: now,
-          number: pairNumber,
-        );
-      }
-
-      final firstBattery = Battery(
+      final battery = Battery(
         id: BatteryService.buildBatteryCode(
           technology: _technology,
           date: now,
-          number: firstNumber,
+          number: number,
         ),
         technology: _technology,
         brand: _brandController.text.trim(),
-        capacity: capacity,
+        capacity: int.parse(_capacityController.text.trim()),
         cells: _cells,
-        cRate: cRate,
+        cRate: int.parse(_cRateController.text.trim()),
         status: 'Active',
-        pairId: pairId,
         notes: _notesController.text.trim().isEmpty
             ? null
             : _notesController.text.trim(),
       );
 
-      switch (_creationMode) {
-        case BatteryCreationMode.single:
-          await BatteryService.createBattery(firstBattery);
+      await BatteryService.createBattery(battery);
 
-        case BatteryCreationMode.newPair:
-          final secondBattery = Battery(
-            id: BatteryService.buildBatteryCode(
-              technology: _technology,
-              date: now,
-              number: firstNumber + 1,
-            ),
-            technology: _technology,
-            brand: _brandController.text.trim(),
-            capacity: capacity,
-            cells: _cells,
-            cRate: cRate,
-            status: 'Active',
-            pairId: pairId,
-            notes: _notesController.text.trim().isEmpty
-                ? null
-                : _notesController.text.trim(),
-          );
-
-          await BatteryService.createBatteries([
-            firstBattery,
-            secondBattery,
-          ]);
-
-        case BatteryCreationMode.existingPair:
-          await BatteryService.createBatteryPairedWithExisting(
-            newBattery: firstBattery,
-            existingBatteryCode: _selectedExistingBattery!.id,
-          );
+      if (mounted) {
+        Navigator.pop(context, true);
       }
-
-      if (!mounted) {
-        return;
-      }
-
-      Navigator.pop(context, true);
     } catch (error) {
-      if (!mounted) {
-        return;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Enregistrement impossible : $error')),
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Enregistrement impossible : $error')),
-      );
     } finally {
       if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
+        setState(() => _isSaving = false);
       }
     }
-  }
-
-  String? _requiredTextValidator(String? value, String message) {
-    if (value == null || value.trim().isEmpty) {
-      return message;
-    }
-
-    return null;
-  }
-
-  String? _positiveIntegerValidator(String? value, String fieldName) {
-    final number = int.tryParse(value?.trim() ?? '');
-
-    if (number == null || number <= 0) {
-      return 'Renseigne un $fieldName valide';
-    }
-
-    return null;
-  }
-
-  Widget _modeTile({
-    required BatteryCreationMode mode,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-  }) {
-    final selected = _creationMode == mode;
-    final colors = Theme.of(context).colorScheme;
-
-    return Card(
-      color: selected ? colors.primaryContainer : null,
-      child: ListTile(
-        enabled: !_isSaving,
-        leading: Icon(icon),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: Icon(
-          selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-        ),
-        onTap: _isSaving
-            ? null
-            : () {
-                setState(() {
-                  _creationMode = mode;
-                  _clearCandidateSelection();
-                });
-              },
-      ),
-    );
-  }
-
-  Widget _batteryChoiceCard(Battery battery) {
-    final selected = _selectedExistingBattery?.id == battery.id;
-    final colors = Theme.of(context).colorScheme;
-
-    return Card(
-      color: selected ? colors.primaryContainer : null,
-      child: ListTile(
-        enabled: !_isSaving,
-        leading: const Icon(Icons.battery_charging_full),
-        title: Text(
-          battery.id,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          '${battery.brand} • ${battery.technology} • ${battery.cells} • '
-          '${battery.capacity} mAh • ${battery.cRate}C\n'
-          'Statut : ${battery.status}',
-        ),
-        isThreeLine: true,
-        trailing: Icon(
-          selected ? Icons.check_circle : Icons.circle_outlined,
-        ),
-        onTap: _isSaving
-            ? null
-            : () {
-                setState(() {
-                  _selectedExistingBattery = battery;
-                });
-              },
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final selectedExistingBattery = _selectedExistingBattery;
-    final differentBrand = selectedExistingBattery != null &&
-        _brandController.text.trim().isNotEmpty &&
-        selectedExistingBattery.brand.toLowerCase() !=
-            _brandController.text.trim().toLowerCase();
-
     return Scaffold(
       appBar: AppBar(title: const Text('Nouvelle batterie')),
       body: Form(
@@ -789,31 +573,6 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text(
-              'Type de création',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            _modeTile(
-              mode: BatteryCreationMode.single,
-              title: 'Batterie seule',
-              subtitle: 'Crée une seule batterie sans paire.',
-              icon: Icons.battery_full,
-            ),
-            _modeTile(
-              mode: BatteryCreationMode.newPair,
-              title: 'Paire avec une nouvelle batterie',
-              subtitle: 'Crée deux batteries strictement identiques.',
-              icon: Icons.battery_charging_full,
-            ),
-            _modeTile(
-              mode: BatteryCreationMode.existingPair,
-              title: 'Paire avec une batterie existante',
-              subtitle:
-                  'Crée une batterie et l’associe à une batterie compatible libre.',
-              icon: Icons.link,
-            ),
-            const SizedBox(height: 18),
             DropdownButtonFormField<String>(
               initialValue: _technology,
               decoration: const InputDecoration(
@@ -821,21 +580,16 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
                 border: OutlineInputBorder(),
               ),
               items: _technologies
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item,
-                      child: Text(item),
-                    ),
-                  )
+                  .map((value) => DropdownMenuItem(
+                        value: value,
+                        child: Text(value),
+                      ))
                   .toList(),
               onChanged: _isSaving
                   ? null
                   : (value) {
                       if (value != null) {
-                        setState(() {
-                          _technology = value;
-                          _clearCandidateSelection();
-                        });
+                        setState(() => _technology = value);
                       }
                     },
             ),
@@ -843,16 +597,11 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
             TextFormField(
               controller: _brandController,
               enabled: !_isSaving,
-              textCapitalization: TextCapitalization.words,
               decoration: const InputDecoration(
                 labelText: 'Marque',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (_) => setState(() {}),
-              validator: (value) => _requiredTextValidator(
-                value,
-                'Renseigne la marque',
-              ),
+              validator: (value) => _required(value, 'Renseigne la marque'),
             ),
             const SizedBox(height: 14),
             TextFormField(
@@ -863,13 +612,7 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
                 labelText: 'Capacité (mAh)',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (_) {
-                setState(_clearCandidateSelection);
-              },
-              validator: (value) => _positiveIntegerValidator(
-                value,
-                'nombre de mAh',
-              ),
+              validator: (value) => _positiveInteger(value, 'nombre de mAh'),
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
@@ -879,21 +622,16 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
                 border: OutlineInputBorder(),
               ),
               items: _cellOptions
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item,
-                      child: Text(item),
-                    ),
-                  )
+                  .map((value) => DropdownMenuItem(
+                        value: value,
+                        child: Text(value),
+                      ))
                   .toList(),
               onChanged: _isSaving
                   ? null
                   : (value) {
                       if (value != null) {
-                        setState(() {
-                          _cells = value;
-                          _clearCandidateSelection();
-                        });
+                        setState(() => _cells = value);
                       }
                     },
             ),
@@ -906,63 +644,8 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
                 labelText: 'Taux de décharge (C)',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (_) {
-                setState(_clearCandidateSelection);
-              },
-              validator: (value) => _positiveIntegerValidator(
-                value,
-                'taux C',
-              ),
+              validator: (value) => _positiveInteger(value, 'taux C'),
             ),
-            if (_creationMode == BatteryCreationMode.existingPair) ...[
-              const SizedBox(height: 18),
-              OutlinedButton.icon(
-                onPressed:
-                    _isSaving || _isSearchingCandidates ? null : _searchCandidates,
-                icon: _isSearchingCandidates
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.search),
-                label: Text(
-                  _isSearchingCandidates
-                      ? 'Recherche...'
-                      : 'Rechercher les batteries compatibles',
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (!_isSearchingCandidates && _candidates.isEmpty)
-                const Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text(
-                      'Renseigne les caractéristiques puis lance la recherche.\n\n'
-                      'Les batteries déjà associées à une paire sont automatiquement exclues.',
-                    ),
-                  ),
-                ),
-              if (_candidates.isNotEmpty) ...[
-                Text(
-                  'Sélectionner une batterie existante',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                ..._candidates.map(_batteryChoiceCard),
-              ],
-              if (differentBrand)
-                Card(
-                  color: Theme.of(context).colorScheme.tertiaryContainer,
-                  child: const ListTile(
-                    leading: Icon(Icons.warning_amber),
-                    title: Text('Marques différentes'),
-                    subtitle: Text(
-                      'La paire est compatible, mais il est préférable '
-                      'd’utiliser deux batteries de même marque et de même modèle.',
-                    ),
-                  ),
-                ),
-            ],
             const SizedBox(height: 14),
             TextFormField(
               controller: _notesController,
@@ -984,16 +667,7 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
                     )
                   : const Icon(Icons.save),
               label: Text(
-                _isSaving
-                    ? 'Enregistrement...'
-                    : switch (_creationMode) {
-                        BatteryCreationMode.single =>
-                          'Créer la batterie',
-                        BatteryCreationMode.newPair =>
-                          'Créer les deux batteries',
-                        BatteryCreationMode.existingPair =>
-                          'Créer la batterie et la paire',
-                      },
+                _isSaving ? 'Enregistrement...' : 'Créer la batterie',
               ),
             ),
           ],
@@ -1003,284 +677,653 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
   }
 }
 
-class CreateExistingPairPage extends StatefulWidget {
-  const CreateExistingPairPage({super.key});
+enum PairBatterySource { newBattery, existingBattery }
+
+class CreatePairPage extends StatefulWidget {
+  const CreatePairPage({super.key});
 
   @override
-  State<CreateExistingPairPage> createState() => _CreateExistingPairPageState();
+  State<CreatePairPage> createState() => _CreatePairPageState();
 }
 
-class _CreateExistingPairPageState extends State<CreateExistingPairPage> {
-  List<Battery> _availableBatteries = [];
-  Battery? _firstBattery;
-  Battery? _secondBattery;
+class _CreatePairPageState extends State<CreatePairPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  final _formKey1 = GlobalKey<FormState>();
+  final _formKey2 = GlobalKey<FormState>();
+
+  final _brand1 = TextEditingController();
+  final _capacity1 = TextEditingController();
+  final _cRate1 = TextEditingController();
+  final _notes1 = TextEditingController();
+
+  final _brand2 = TextEditingController();
+  final _capacity2 = TextEditingController();
+  final _cRate2 = TextEditingController();
+  final _notes2 = TextEditingController();
+
+  PairBatterySource _source1 = PairBatterySource.newBattery;
+  PairBatterySource _source2 = PairBatterySource.newBattery;
+
+  String _technology1 = 'LiPo';
+  String _technology2 = 'LiPo';
+  String _cells1 = '4S';
+  String _cells2 = '4S';
+
+  Battery? _existing1;
+  Battery? _existing2;
+
+  List<Battery> _available = [];
   bool _isLoading = true;
   bool _isSaving = false;
-  String? _errorMessage;
+  String? _error;
+
+  static const _technologies = [
+    'LiPo',
+    'LiHV',
+    'Li-Ion',
+    'LiFe',
+    'NiMH',
+    'NiCd',
+  ];
+
+  static const _cellOptions = ['1S', '2S', '3S', '4S', '5S', '6S'];
 
   @override
   void initState() {
     super.initState();
-    _loadAvailableBatteries();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadAvailable();
   }
 
-  Future<void> _loadAvailableBatteries() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _brand1.dispose();
+    _capacity1.dispose();
+    _cRate1.dispose();
+    _notes1.dispose();
+    _brand2.dispose();
+    _capacity2.dispose();
+    _cRate2.dispose();
+    _notes2.dispose();
+    super.dispose();
+  }
 
+  Future<void> _loadAvailable() async {
     try {
       final batteries = await BatteryService.getBatteries();
-
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _availableBatteries =
-            batteries.where((battery) => !battery.isPaired).toList();
+        _available = batteries.where((battery) => !battery.isPaired).toList();
+        _isLoading = false;
       });
     } catch (error) {
       if (!mounted) {
         return;
       }
-
       setState(() {
-        _errorMessage = 'Impossible de charger les batteries.\n$error';
+        _error = 'Impossible de charger les batteries.\n$error';
+        _isLoading = false;
       });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
     }
   }
 
-  List<Battery> get _compatibleSecondBatteries {
-    final firstBattery = _firstBattery;
+  String? _required(String? value, String message) {
+    if (value == null || value.trim().isEmpty) {
+      return message;
+    }
+    return null;
+  }
 
-    if (firstBattery == null) {
-      return [];
+  String? _positiveInteger(String? value, String fieldName) {
+    final number = int.tryParse(value?.trim() ?? '');
+    if (number == null || number <= 0) {
+      return 'Renseigne un $fieldName valide';
+    }
+    return null;
+  }
+
+  Battery? _batteryForSlot(int slot) {
+    final source = slot == 1 ? _source1 : _source2;
+
+    if (source == PairBatterySource.existingBattery) {
+      return slot == 1 ? _existing1 : _existing2;
     }
 
-    return _availableBatteries
-        .where(
-          (battery) =>
-              battery.id != firstBattery.id &&
-              BatteryService.arePairCompatible(firstBattery, battery),
-        )
-        .toList();
+    final brand = slot == 1 ? _brand1.text.trim() : _brand2.text.trim();
+    final capacity = int.tryParse(
+      slot == 1 ? _capacity1.text.trim() : _capacity2.text.trim(),
+    );
+    final cRate = int.tryParse(
+      slot == 1 ? _cRate1.text.trim() : _cRate2.text.trim(),
+    );
+
+    if (brand.isEmpty ||
+        capacity == null ||
+        capacity <= 0 ||
+        cRate == null ||
+        cRate <= 0) {
+      return null;
+    }
+
+    return Battery(
+      id: 'NOUVELLE-$slot',
+      technology: slot == 1 ? _technology1 : _technology2,
+      brand: brand,
+      capacity: capacity,
+      cells: slot == 1 ? _cells1 : _cells2,
+      cRate: cRate,
+      status: 'Active',
+      notes: (slot == 1 ? _notes1.text : _notes2.text).trim().isEmpty
+          ? null
+          : (slot == 1 ? _notes1.text : _notes2.text).trim(),
+    );
+  }
+
+  bool get _sameExisting =>
+      _source1 == PairBatterySource.existingBattery &&
+      _source2 == PairBatterySource.existingBattery &&
+      _existing1 != null &&
+      _existing2 != null &&
+      _existing1!.id == _existing2!.id;
+
+  bool get _complete => _batteryForSlot(1) != null && _batteryForSlot(2) != null;
+
+  bool get _compatible {
+    final first = _batteryForSlot(1);
+    final second = _batteryForSlot(2);
+
+    return first != null &&
+        second != null &&
+        !_sameExisting &&
+        BatteryService.arePairCompatible(first, second);
+  }
+
+  List<Battery> _choices(int slot) {
+    final excludedId = slot == 1 ? _existing2?.id : _existing1?.id;
+    return _available.where((battery) => battery.id != excludedId).toList();
+  }
+
+  Battery? _findBattery(String? id) {
+    if (id == null) {
+      return null;
+    }
+    for (final battery in _available) {
+      if (battery.id == id) {
+        return battery;
+      }
+    }
+    return null;
+  }
+
+  Future<Battery> _buildNewBattery(int slot) async {
+    final now = DateTime.now();
+    final technology = slot == 1 ? _technology1 : _technology2;
+    final number = await BatteryService.getNextBatteryNumber(
+      technology: technology,
+      date: now,
+    );
+
+    return Battery(
+      id: BatteryService.buildBatteryCode(
+        technology: technology,
+        date: now,
+        number: number,
+      ),
+      technology: technology,
+      brand: slot == 1 ? _brand1.text.trim() : _brand2.text.trim(),
+      capacity: int.parse(
+        slot == 1 ? _capacity1.text.trim() : _capacity2.text.trim(),
+      ),
+      cells: slot == 1 ? _cells1 : _cells2,
+      cRate: int.parse(
+        slot == 1 ? _cRate1.text.trim() : _cRate2.text.trim(),
+      ),
+      status: 'Active',
+      notes: (slot == 1 ? _notes1.text : _notes2.text).trim().isEmpty
+          ? null
+          : (slot == 1 ? _notes1.text : _notes2.text).trim(),
+    );
   }
 
   Future<void> _savePair() async {
-    final firstBattery = _firstBattery;
-    final secondBattery = _secondBattery;
-
-    if (firstBattery == null || secondBattery == null || _isSaving) {
+    if (_isSaving) {
       return;
     }
 
-    setState(() {
-      _isSaving = true;
-    });
+    final valid1 = _source1 == PairBatterySource.existingBattery
+        ? _existing1 != null
+        : (_formKey1.currentState?.validate() ?? false);
+
+    final valid2 = _source2 == PairBatterySource.existingBattery
+        ? _existing2 != null
+        : (_formKey2.currentState?.validate() ?? false);
+
+    if (!valid1) {
+      _tabController.animateTo(0);
+      return;
+    }
+
+    if (!valid2) {
+      _tabController.animateTo(1);
+      return;
+    }
+
+    if (!_compatible) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Batterie incompatible pour la paire, '
+            'choisir ou renseigner un autre modèle.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
 
     try {
-      final pairId = await BatteryService.createPairFromExistingBatteries(
-        firstBattery: firstBattery,
-        secondBattery: secondBattery,
-      );
+      if (_source1 == PairBatterySource.existingBattery &&
+          _source2 == PairBatterySource.existingBattery) {
+        await BatteryService.createPairFromExistingBatteries(
+          firstBattery: _existing1!,
+          secondBattery: _existing2!,
+        );
+      } else if (_source1 == PairBatterySource.newBattery &&
+          _source2 == PairBatterySource.existingBattery) {
+        await BatteryService.createBatteryPairedWithExisting(
+          newBattery: await _buildNewBattery(1),
+          existingBatteryCode: _existing2!.id,
+        );
+      } else if (_source1 == PairBatterySource.existingBattery &&
+          _source2 == PairBatterySource.newBattery) {
+        await BatteryService.createBatteryPairedWithExisting(
+          newBattery: await _buildNewBattery(2),
+          existingBatteryCode: _existing1!.id,
+        );
+      } else {
+        final now = DateTime.now();
+        final pairNumber = await BatteryService.getNextPairNumber(now);
+        final pairId = BatteryService.buildPairId(
+          date: now,
+          number: pairNumber,
+        );
 
-      if (!mounted) {
-        return;
+        final firstNumber = await BatteryService.getNextBatteryNumber(
+          technology: _technology1,
+          date: now,
+        );
+
+        final first = Battery(
+          id: BatteryService.buildBatteryCode(
+            technology: _technology1,
+            date: now,
+            number: firstNumber,
+          ),
+          technology: _technology1,
+          brand: _brand1.text.trim(),
+          capacity: int.parse(_capacity1.text.trim()),
+          cells: _cells1,
+          cRate: int.parse(_cRate1.text.trim()),
+          status: 'Active',
+          pairId: pairId,
+          notes: _notes1.text.trim().isEmpty ? null : _notes1.text.trim(),
+        );
+
+        final second = Battery(
+          id: BatteryService.buildBatteryCode(
+            technology: _technology2,
+            date: now,
+            number: firstNumber + 1,
+          ),
+          technology: _technology2,
+          brand: _brand2.text.trim(),
+          capacity: int.parse(_capacity2.text.trim()),
+          cells: _cells2,
+          cRate: int.parse(_cRate2.text.trim()),
+          status: 'Active',
+          pairId: pairId,
+          notes: _notes2.text.trim().isEmpty ? null : _notes2.text.trim(),
+        );
+
+        await BatteryService.createBatteries([first, second]);
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Paire $pairId créée')),
-      );
-
-      Navigator.pop(context, true);
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
     } catch (error) {
-      if (!mounted) {
-        return;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Création impossible : $error')),
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Création impossible : $error')),
-      );
     } finally {
       if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
+        setState(() => _isSaving = false);
       }
     }
   }
 
-  Widget _selectionCard({
-    required Battery battery,
-    required bool selected,
-    required VoidCallback? onTap,
-  }) {
-    final colors = Theme.of(context).colorScheme;
+  Widget _sourceSelector(int slot) {
+    final selected = slot == 1 ? _source1 : _source2;
 
-    return Card(
-      color: selected ? colors.primaryContainer : null,
-      child: ListTile(
-        enabled: onTap != null,
-        leading: const Icon(Icons.battery_charging_full),
-        title: Text(
-          battery.id,
-          style: const TextStyle(fontWeight: FontWeight.w600),
+    return SegmentedButton<PairBatterySource>(
+      segments: const [
+        ButtonSegment(
+          value: PairBatterySource.newBattery,
+          label: Text('Nouvelle batterie'),
+          icon: Icon(Icons.add),
         ),
-        subtitle: Text(
-          '${battery.brand} • ${battery.technology} • ${battery.cells} • '
-          '${battery.capacity} mAh • ${battery.cRate}C\n'
-          'Statut : ${battery.status}',
+        ButtonSegment(
+          value: PairBatterySource.existingBattery,
+          label: Text('Batterie existante'),
+          icon: Icon(Icons.inventory_2_outlined),
         ),
-        isThreeLine: true,
-        trailing: Icon(
-          selected ? Icons.check_circle : Icons.circle_outlined,
-        ),
-        onTap: onTap,
+      ],
+      selected: {selected},
+      onSelectionChanged: _isSaving
+          ? null
+          : (selection) {
+              setState(() {
+                if (slot == 1) {
+                  _source1 = selection.first;
+                  if (_source1 == PairBatterySource.newBattery) {
+                    _existing1 = null;
+                  }
+                } else {
+                  _source2 = selection.first;
+                  if (_source2 == PairBatterySource.newBattery) {
+                    _existing2 = null;
+                  }
+                }
+              });
+            },
+    );
+  }
+
+  Widget _newBatteryForm(int slot) {
+    final formKey = slot == 1 ? _formKey1 : _formKey2;
+    final brand = slot == 1 ? _brand1 : _brand2;
+    final capacity = slot == 1 ? _capacity1 : _capacity2;
+    final cRate = slot == 1 ? _cRate1 : _cRate2;
+    final notes = slot == 1 ? _notes1 : _notes2;
+    final technology = slot == 1 ? _technology1 : _technology2;
+    final cells = slot == 1 ? _cells1 : _cells2;
+
+    return Form(
+      key: formKey,
+      child: Column(
+        children: [
+          DropdownButtonFormField<String>(
+            initialValue: technology,
+            decoration: const InputDecoration(
+              labelText: 'Technologie',
+              border: OutlineInputBorder(),
+            ),
+            items: _technologies
+                .map((value) => DropdownMenuItem(
+                      value: value,
+                      child: Text(value),
+                    ))
+                .toList(),
+            onChanged: _isSaving
+                ? null
+                : (value) {
+                    if (value != null) {
+                      setState(() {
+                        if (slot == 1) {
+                          _technology1 = value;
+                        } else {
+                          _technology2 = value;
+                        }
+                      });
+                    }
+                  },
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: brand,
+            enabled: !_isSaving,
+            decoration: const InputDecoration(
+              labelText: 'Marque',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+            validator: (value) => _required(value, 'Renseigne la marque'),
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: capacity,
+            enabled: !_isSaving,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Capacité (mAh)',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+            validator: (value) => _positiveInteger(value, 'nombre de mAh'),
+          ),
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            initialValue: cells,
+            decoration: const InputDecoration(
+              labelText: 'Nombre de cellules',
+              border: OutlineInputBorder(),
+            ),
+            items: _cellOptions
+                .map((value) => DropdownMenuItem(
+                      value: value,
+                      child: Text(value),
+                    ))
+                .toList(),
+            onChanged: _isSaving
+                ? null
+                : (value) {
+                    if (value != null) {
+                      setState(() {
+                        if (slot == 1) {
+                          _cells1 = value;
+                        } else {
+                          _cells2 = value;
+                        }
+                      });
+                    }
+                  },
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: cRate,
+            enabled: !_isSaving,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Taux de décharge (C)',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+            validator: (value) => _positiveInteger(value, 'taux C'),
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: notes,
+            enabled: !_isSaving,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Notes facultatives',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _existingSelector(int slot) {
+    final choices = _choices(slot);
+    final selected = slot == 1 ? _existing1 : _existing2;
+
+    if (choices.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text(
+            'Aucune batterie libre disponible. '
+            'Les batteries déjà associées à une paire sont exclues.',
+          ),
+        ),
+      );
+    }
+
+    return DropdownButtonFormField<String>(
+      initialValue: selected?.id,
+      isExpanded: true,
+      itemHeight: 72,
+      decoration: const InputDecoration(
+        labelText: 'Batterie existante',
+        border: OutlineInputBorder(),
+      ),
+      hint: const Text('Sélectionner une batterie'),
+      items: choices
+          .map(
+            (battery) => DropdownMenuItem(
+              value: battery.id,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    battery.id,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    '${battery.brand} • ${battery.technology} • '
+                    '${battery.cells} • ${battery.capacity} mAh • '
+                    '${battery.cRate}C',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+      onChanged: _isSaving
+          ? null
+          : (id) {
+              setState(() {
+                if (slot == 1) {
+                  _existing1 = _findBattery(id);
+                } else {
+                  _existing2 = _findBattery(id);
+                }
+              });
+            },
+    );
+  }
+
+  Widget _tab(int slot) {
+    final source = slot == 1 ? _source1 : _source2;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _sourceSelector(slot),
+        const SizedBox(height: 18),
+        if (source == PairBatterySource.newBattery)
+          _newBatteryForm(slot)
+        else
+          _existingSelector(slot),
+        if (slot == 1) ...[
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: _isSaving
+                ? null
+                : () {
+                    final valid = _source1 ==
+                            PairBatterySource.existingBattery
+                        ? _existing1 != null
+                        : (_formKey1.currentState?.validate() ?? false);
+
+                    if (valid) {
+                      _tabController.animateTo(1);
+                    }
+                  },
+            icon: const Icon(Icons.arrow_forward),
+            label: const Text('Passer à la batterie 2'),
+          ),
+        ],
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final compatibleBatteries = _compatibleSecondBatteries;
-    final differentBrand = _firstBattery != null &&
-        _secondBattery != null &&
-        _firstBattery!.brand.toLowerCase() !=
-            _secondBattery!.brand.toLowerCase();
-
     return Scaffold(
-      appBar: AppBar(title: const Text('Créer une paire')),
+      appBar: AppBar(
+        title: const Text('Créer une paire'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Batterie 1'),
+            Tab(text: 'Batterie 2'),
+          ],
+        ),
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _errorMessage!,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _loadAvailableBatteries,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Réessayer'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : ListView(
-                  padding: const EdgeInsets.all(16),
+          : _error != null
+              ? Center(child: Text(_error!, textAlign: TextAlign.center))
+              : Column(
                   children: [
-                    const Text(
-                      'Seules les batteries qui ne font encore partie '
-                      'd’aucune paire sont proposées.',
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      '1. Première batterie',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    if (_availableBatteries.isEmpty)
-                      const Card(
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Text(
-                            'Aucune batterie libre disponible.',
+                    if (_complete && !_compatible)
+                      MaterialBanner(
+                        leading: const Icon(Icons.error_outline),
+                        content: const Text(
+                          'Batterie incompatible pour la paire, '
+                          'choisir ou renseigner un autre modèle.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => _tabController.animateTo(1),
+                            child: const Text('Modifier'),
                           ),
-                        ),
-                      )
-                    else
-                      ..._availableBatteries.map(
-                        (battery) => _selectionCard(
-                          battery: battery,
-                          selected: _firstBattery?.id == battery.id,
-                          onTap: _isSaving
-                              ? null
-                              : () {
-                                  setState(() {
-                                    _firstBattery = battery;
-                                    _secondBattery = null;
-                                  });
-                                },
-                        ),
+                        ],
                       ),
-                    if (_firstBattery != null) ...[
-                      const SizedBox(height: 22),
-                      Text(
-                        '2. Deuxième batterie compatible',
-                        style: Theme.of(context).textTheme.titleMedium,
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [_tab(1), _tab(2)],
                       ),
-                      const SizedBox(height: 8),
-                      if (compatibleBatteries.isEmpty)
-                        const Card(
-                          child: Padding(
-                            padding: EdgeInsets.all(16),
-                            child: Text(
-                              'Aucune autre batterie compatible et libre '
-                              'n’est disponible.',
+                    ),
+                    SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed:
+                                _isSaving || !_compatible ? null : _savePair,
+                            icon: _isSaving
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.link),
+                            label: Text(
+                              _isSaving ? 'Création...' : 'Créer la paire',
                             ),
                           ),
-                        )
-                      else
-                        ...compatibleBatteries.map(
-                          (battery) => _selectionCard(
-                            battery: battery,
-                            selected: _secondBattery?.id == battery.id,
-                            onTap: _isSaving
-                                ? null
-                                : () {
-                                    setState(() {
-                                      _secondBattery = battery;
-                                    });
-                                  },
-                          ),
                         ),
-                    ],
-                    if (differentBrand) ...[
-                      const SizedBox(height: 12),
-                      Card(
-                        color:
-                            Theme.of(context).colorScheme.tertiaryContainer,
-                        child: const ListTile(
-                          leading: Icon(Icons.warning_amber),
-                          title: Text('Marques différentes'),
-                          subtitle: Text(
-                            'La paire est compatible, mais deux batteries '
-                            'identiques restent préférables.',
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    FilledButton.icon(
-                      onPressed: _firstBattery == null ||
-                              _secondBattery == null ||
-                              _isSaving
-                          ? null
-                          : _savePair,
-                      icon: _isSaving
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.link),
-                      label: Text(
-                        _isSaving ? 'Création...' : 'Créer la paire',
                       ),
                     ),
                   ],
