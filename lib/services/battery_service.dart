@@ -26,6 +26,46 @@ class BatteryService {
         .toList();
   }
 
+  static Future<List<Battery>> getAvailablePairCandidates({
+    required String technology,
+    required int capacity,
+    required String cells,
+    required int cRate,
+    String? excludedBatteryCode,
+  }) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw StateError('Utilisateur non connecté');
+    }
+
+    final cellsNumber = int.parse(cells.replaceAll('S', ''));
+
+    var query = _client
+        .from('batteries')
+        .select()
+        .eq('user_id', user.id)
+        .eq('technology', technology)
+        .eq('capacity_mah', capacity)
+        .eq('cells', cellsNumber)
+        .eq('c_rate', cRate)
+        .isFilter('pair_id', null);
+
+    if (excludedBatteryCode != null && excludedBatteryCode.isNotEmpty) {
+      query = query.neq('battery_code', excludedBatteryCode);
+    }
+
+    final response = await query.order('created_at');
+
+    return response
+        .map<Battery>(
+          (json) => Battery.fromJson(
+            Map<String, dynamic>.from(json),
+          ),
+        )
+        .toList();
+  }
+
   static Future<void> createBattery(Battery battery) async {
     final user = _client.auth.currentUser;
 
@@ -56,6 +96,175 @@ class BatteryService {
               )
               .toList(),
         );
+  }
+
+  static Future<void> createBatteryPairedWithExisting({
+    required Battery newBattery,
+    required String existingBatteryCode,
+  }) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw StateError('Utilisateur non connecté');
+    }
+
+    final existingBattery = await _getBatteryByCode(existingBatteryCode);
+
+    if (existingBattery == null) {
+      throw StateError('La batterie existante est introuvable');
+    }
+
+    if (existingBattery.isPaired) {
+      throw StateError(
+        'Cette batterie appartient déjà à la paire ${existingBattery.pairId}',
+      );
+    }
+
+    if (!arePairCompatible(newBattery, existingBattery)) {
+      throw StateError(
+        'Les deux batteries ne sont pas compatibles pour créer une paire',
+      );
+    }
+
+    final now = DateTime.now();
+    final pairNumber = await getNextPairNumber(now);
+    final pairId = buildPairId(
+      date: now,
+      number: pairNumber,
+    );
+
+    final pairedNewBattery = newBattery.copyWith(pairId: pairId);
+
+    await _client.from('batteries').insert({
+      'user_id': user.id,
+      ...pairedNewBattery.toJson(),
+    });
+
+    try {
+      final updatedRows = await _client
+          .from('batteries')
+          .update({
+            'pair_id': pairId,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('user_id', user.id)
+          .eq('battery_code', existingBatteryCode)
+          .isFilter('pair_id', null)
+          .select('battery_code');
+
+      if (updatedRows.isEmpty) {
+        throw StateError(
+          'La batterie sélectionnée vient d’être associée à une autre paire',
+        );
+      }
+    } catch (error) {
+      await _client
+          .from('batteries')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('battery_code', pairedNewBattery.id);
+
+      rethrow;
+    }
+  }
+
+  static Future<String> createPairFromExistingBatteries({
+    required Battery firstBattery,
+    required Battery secondBattery,
+  }) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw StateError('Utilisateur non connecté');
+    }
+
+    if (firstBattery.id == secondBattery.id) {
+      throw StateError('Sélectionne deux batteries différentes');
+    }
+
+    final currentFirstBattery = await _getBatteryByCode(firstBattery.id);
+    final currentSecondBattery = await _getBatteryByCode(secondBattery.id);
+
+    if (currentFirstBattery == null || currentSecondBattery == null) {
+      throw StateError('Une des batteries sélectionnées est introuvable');
+    }
+
+    if (currentFirstBattery.isPaired) {
+      throw StateError(
+        '${currentFirstBattery.id} appartient déjà à la paire '
+        '${currentFirstBattery.pairId}',
+      );
+    }
+
+    if (currentSecondBattery.isPaired) {
+      throw StateError(
+        '${currentSecondBattery.id} appartient déjà à la paire '
+        '${currentSecondBattery.pairId}',
+      );
+    }
+
+    if (!arePairCompatible(currentFirstBattery, currentSecondBattery)) {
+      throw StateError(
+        'Les deux batteries ne sont pas compatibles pour créer une paire',
+      );
+    }
+
+    final now = DateTime.now();
+    final pairNumber = await getNextPairNumber(now);
+    final pairId = buildPairId(
+      date: now,
+      number: pairNumber,
+    );
+
+    final firstUpdatedRows = await _client
+        .from('batteries')
+        .update({
+          'pair_id': pairId,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('user_id', user.id)
+        .eq('battery_code', currentFirstBattery.id)
+        .isFilter('pair_id', null)
+        .select('battery_code');
+
+    if (firstUpdatedRows.isEmpty) {
+      throw StateError(
+        '${currentFirstBattery.id} vient d’être associée à une autre paire',
+      );
+    }
+
+    try {
+      final secondUpdatedRows = await _client
+          .from('batteries')
+          .update({
+            'pair_id': pairId,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('user_id', user.id)
+          .eq('battery_code', currentSecondBattery.id)
+          .isFilter('pair_id', null)
+          .select('battery_code');
+
+      if (secondUpdatedRows.isEmpty) {
+        throw StateError(
+          '${currentSecondBattery.id} vient d’être associée à une autre paire',
+        );
+      }
+    } catch (error) {
+      await _client
+          .from('batteries')
+          .update({
+            'pair_id': null,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('user_id', user.id)
+          .eq('battery_code', currentFirstBattery.id)
+          .eq('pair_id', pairId);
+
+      rethrow;
+    }
+
+    return pairId;
   }
 
   static Future<void> updateBattery(Battery battery) async {
@@ -187,6 +396,13 @@ class BatteryService {
     return highestNumber + 1;
   }
 
+  static bool arePairCompatible(Battery first, Battery second) {
+    return first.technology == second.technology &&
+        first.capacity == second.capacity &&
+        first.cells == second.cells &&
+        first.cRate == second.cRate;
+  }
+
   static String buildBatteryCode({
     required String technology,
     required DateTime date,
@@ -203,6 +419,29 @@ class BatteryService {
   }) {
     return 'P-${_formatDate(date)}-'
         '${number.toString().padLeft(3, '0')}';
+  }
+
+  static Future<Battery?> _getBatteryByCode(String batteryCode) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw StateError('Utilisateur non connecté');
+    }
+
+    final response = await _client
+        .from('batteries')
+        .select()
+        .eq('user_id', user.id)
+        .eq('battery_code', batteryCode)
+        .maybeSingle();
+
+    if (response == null) {
+      return null;
+    }
+
+    return Battery.fromJson(
+      Map<String, dynamic>.from(response),
+    );
   }
 
   static String _technologyPrefix(String technology) {
