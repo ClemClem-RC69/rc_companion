@@ -1,4 +1,5 @@
 import '../models/battery.dart';
+import '../models/battery_measurement.dart';
 import 'supabase_service.dart';
 
 class BatteryService {
@@ -327,6 +328,139 @@ class BatteryService {
         .delete()
         .eq('user_id', user.id)
         .eq('battery_code', battery.id);
+  }
+
+
+  static Future<List<BatteryMeasurement>> getBatteryMeasurements(
+    String batteryCode,
+  ) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      return [];
+    }
+
+    final response = await _client
+        .from('battery_measurements')
+        .select()
+        .eq('user_id', user.id)
+        .eq('battery_code', batteryCode)
+        .order('measured_at', ascending: false);
+
+    return response
+        .map<BatteryMeasurement>(
+          (json) => BatteryMeasurement.fromJson(
+            Map<String, dynamic>.from(json),
+          ),
+        )
+        .toList();
+  }
+
+  static Future<BatteryMeasurement?> getLatestBatteryMeasurement(
+    String batteryCode,
+  ) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      return null;
+    }
+
+    final response = await _client
+        .from('battery_measurements')
+        .select()
+        .eq('user_id', user.id)
+        .eq('battery_code', batteryCode)
+        .order('measured_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (response == null) {
+      return null;
+    }
+
+    return BatteryMeasurement.fromJson(
+      Map<String, dynamic>.from(response),
+    );
+  }
+
+  static Future<BatteryMeasurement> createBatteryMeasurement(
+    BatteryMeasurement measurement,
+  ) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw StateError('Utilisateur non connecté');
+    }
+
+    if (measurement.cellVoltages.isEmpty) {
+      throw StateError('Aucune tension de cellule renseignée');
+    }
+
+    if (measurement.cellInternalResistances.isEmpty) {
+      throw StateError(
+        'Aucune résistance interne de cellule renseignée',
+      );
+    }
+
+    if (measurement.cellVoltages.length !=
+        measurement.cellInternalResistances.length) {
+      throw StateError(
+        'Le nombre de tensions et de résistances internes doit être identique',
+      );
+    }
+
+    final insertedRow = await _client
+        .from('battery_measurements')
+        .insert({
+          'user_id': user.id,
+          ...measurement.toJson(),
+        })
+        .select()
+        .single();
+
+    return BatteryMeasurement.fromJson(
+      Map<String, dynamic>.from(insertedRow),
+    );
+  }
+
+  static Future<void> updateBatteryMeasurement(
+    BatteryMeasurement measurement,
+  ) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw StateError('Utilisateur non connecté');
+    }
+
+    if (measurement.id == null) {
+      throw StateError('Mesure introuvable');
+    }
+
+    await _client
+        .from('battery_measurements')
+        .update(measurement.toJson())
+        .eq('user_id', user.id)
+        .eq('id', measurement.id!);
+  }
+
+  static Future<void> deleteBatteryMeasurement(
+    BatteryMeasurement measurement,
+  ) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw StateError('Utilisateur non connecté');
+    }
+
+    if (measurement.id == null) {
+      throw StateError('Mesure introuvable');
+    }
+
+    await _client
+        .from('battery_measurements')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('id', measurement.id!);
   }
 
   static Future<int> getNextBatteryNumber({

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/battery.dart';
+import '../../models/battery_measurement.dart';
 import '../../services/battery_service.dart';
 import 'battery_detail_page.dart';
 
@@ -13,6 +14,7 @@ class BatteriesPage extends StatefulWidget {
 
 class _BatteriesPageState extends State<BatteriesPage> {
   List<Battery> _batteries = [];
+  final Map<String, _BatteryHealthStatus> _healthByBatteryCode = {};
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -31,12 +33,34 @@ class _BatteriesPageState extends State<BatteriesPage> {
     try {
       final batteries = await BatteryService.getBatteries();
 
+      final healthEntries = await Future.wait(
+        batteries.map(
+          (battery) async {
+            final latest =
+                await BatteryService.getLatestBatteryMeasurement(
+              battery.id,
+            );
+
+            return MapEntry(
+              battery.id,
+              _healthStatusFor(
+                battery: battery,
+                measurement: latest,
+              ),
+            );
+          },
+        ),
+      );
+
       if (!mounted) {
         return;
       }
 
       setState(() {
         _batteries = batteries;
+        _healthByBatteryCode
+          ..clear()
+          ..addEntries(healthEntries);
       });
     } catch (error) {
       if (!mounted) {
@@ -88,66 +112,6 @@ class _BatteriesPageState extends State<BatteriesPage> {
     );
 
     await _loadBatteries();
-  }
-
-  Future<void> _changeStatus(Battery battery) async {
-    final selectedStatus = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        const statuses = [
-          'Active',
-          'Stockage',
-          'À surveiller',
-          'HS',
-          'Retirée',
-        ];
-
-        return SimpleDialog(
-          title: const Text('Changer le statut'),
-          children: statuses
-              .map(
-                (status) => ListTile(
-                  leading: Icon(
-                    status == battery.status
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_unchecked,
-                  ),
-                  title: Text(status),
-                  onTap: () => Navigator.pop(context, status),
-                ),
-              )
-              .toList(),
-        );
-      },
-    );
-
-    if (selectedStatus == null || selectedStatus == battery.status) {
-      return;
-    }
-
-    try {
-      await BatteryService.updateBattery(
-        battery.copyWith(status: selectedStatus),
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Statut modifié : $selectedStatus')),
-      );
-
-      await _loadBatteries();
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Modification impossible : $error')),
-      );
-    }
   }
 
   Future<void> _dissolvePair(Battery battery) async {
@@ -261,16 +225,165 @@ class _BatteriesPageState extends State<BatteriesPage> {
     }
   }
 
-  Color _statusColor(BuildContext context, String status) {
+  _BatteryHealthStatus _healthStatusFor({
+    required Battery battery,
+    required BatteryMeasurement? measurement,
+  }) {
+    if (measurement == null) {
+      return const _BatteryHealthStatus(
+        label: 'Non évaluée',
+        level: _BatteryHealthLevel.notEvaluated,
+      );
+    }
+
+    final technology = battery.technology
+        .toLowerCase()
+        .replaceAll('-', '')
+        .replaceAll(' ', '');
+
+    final capacityAh = battery.capacity <= 0
+        ? 1.0
+        : battery.capacity / 1000;
+
+    late final double warningFactor;
+    late final double criticalFactor;
+
+    switch (technology) {
+      case 'lipo':
+      case 'lihv':
+        warningFactor = 30;
+        criticalFactor = 50;
+      case 'liion':
+        warningFactor = 60;
+        criticalFactor = 100;
+      case 'life':
+        warningFactor = 40;
+        criticalFactor = 65;
+      case 'nimh':
+        warningFactor = 90;
+        criticalFactor = 150;
+      case 'nicd':
+        warningFactor = 80;
+        criticalFactor = 130;
+      default:
+        warningFactor = 50;
+        criticalFactor = 90;
+    }
+
+    final warningResistance = warningFactor / capacityAh;
+    final criticalResistance = criticalFactor / capacityAh;
+
+    final isLithiumTechnology = {
+      'lipo',
+      'lihv',
+      'liion',
+      'life',
+    }.contains(technology);
+
+    final warningVoltageSpread =
+        isLithiumTechnology ? 0.030 : 0.050;
+    final criticalVoltageSpread =
+        isLithiumTechnology ? 0.050 : 0.100;
+
+    var hasWarning = false;
+    var hasCritical = false;
+
+    if (measurement.averageInternalResistance >=
+        criticalResistance) {
+      hasCritical = true;
+    } else if (measurement.averageInternalResistance >=
+        warningResistance) {
+      hasWarning = true;
+    }
+
+    if (measurement.maximumVoltageDifference >=
+        criticalVoltageSpread) {
+      hasCritical = true;
+    } else if (measurement.maximumVoltageDifference >=
+        warningVoltageSpread) {
+      hasWarning = true;
+    }
+
+    for (var index = 0;
+        index < measurement.cellInternalResistances.length;
+        index++) {
+      final resistance =
+          measurement.cellInternalResistances[index];
+
+      if (resistance >= criticalResistance) {
+        hasCritical = true;
+      } else if (resistance >= warningResistance) {
+        hasWarning = true;
+      }
+
+      final voltage = measurement.cellVoltages[index];
+      final minimum = measurement.minimumCellVoltage;
+      final maximum = measurement.maximumCellVoltage;
+
+      if ((maximum - voltage) >= criticalVoltageSpread ||
+          (voltage - minimum) >= criticalVoltageSpread) {
+        hasCritical = true;
+      } else if ((maximum - voltage) >= warningVoltageSpread ||
+          (voltage - minimum) >= warningVoltageSpread) {
+        hasWarning = true;
+      }
+    }
+
+    final temperature = measurement.batteryTemperature;
+
+    if (temperature != null) {
+      if (temperature >= 55) {
+        hasCritical = true;
+      } else if (temperature >= 45) {
+        hasWarning = true;
+      }
+    }
+
+    if (hasCritical) {
+      return const _BatteryHealthStatus(
+        label: 'État critique*',
+        level: _BatteryHealthLevel.critical,
+      );
+    }
+
+    if (hasWarning) {
+      return const _BatteryHealthStatus(
+        label: 'À surveiller*',
+        level: _BatteryHealthLevel.warning,
+      );
+    }
+
+    return const _BatteryHealthStatus(
+      label: 'Bon état*',
+      level: _BatteryHealthLevel.good,
+    );
+  }
+
+  Color _healthColor(
+    BuildContext context,
+    _BatteryHealthLevel level,
+  ) {
     final colors = Theme.of(context).colorScheme;
 
-    return switch (status) {
-      'Active' => colors.primaryContainer,
-      'Stockage' => colors.secondaryContainer,
-      'À surveiller' => colors.tertiaryContainer,
-      'HS' => colors.errorContainer,
-      'Retirée' => colors.surfaceContainerHighest,
-      _ => colors.surfaceContainerHighest,
+    return switch (level) {
+      _BatteryHealthLevel.notEvaluated =>
+        colors.surfaceContainerHighest,
+      _BatteryHealthLevel.good => Colors.green.shade700,
+      _BatteryHealthLevel.warning => Colors.orange.shade700,
+      _BatteryHealthLevel.critical => colors.error,
+    };
+  }
+
+  Color _healthForegroundColor(
+    BuildContext context,
+    _BatteryHealthLevel level,
+  ) {
+    return switch (level) {
+      _BatteryHealthLevel.notEvaluated =>
+        Theme.of(context).colorScheme.onSurfaceVariant,
+      _BatteryHealthLevel.good ||
+      _BatteryHealthLevel.warning ||
+      _BatteryHealthLevel.critical => Colors.white,
     };
   }
 
@@ -342,10 +455,31 @@ class _BatteriesPageState extends State<BatteriesPage> {
                 '${battery.cells} • ${battery.capacity} mAh • '
                 '${battery.cRate}C',
               ),
-              Chip(
-                visualDensity: VisualDensity.compact,
-                backgroundColor: _statusColor(context, battery.status),
-                label: Text(battery.status),
+              Builder(
+                builder: (context) {
+                  final health =
+                      _healthByBatteryCode[battery.id] ??
+                      const _BatteryHealthStatus(
+                        label: 'Non évaluée',
+                        level: _BatteryHealthLevel.notEvaluated,
+                      );
+
+                  return Chip(
+                    visualDensity: VisualDensity.compact,
+                    backgroundColor:
+                        _healthColor(context, health.level),
+                    label: Text(
+                      health.label,
+                      style: TextStyle(
+                        color: _healthForegroundColor(
+                          context,
+                          health.level,
+                        ),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -353,8 +487,6 @@ class _BatteriesPageState extends State<BatteriesPage> {
         trailing: PopupMenuButton<String>(
           onSelected: (value) {
             switch (value) {
-              case 'status':
-                _changeStatus(battery);
               case 'dissolve':
                 _dissolvePair(battery);
               case 'delete':
@@ -362,14 +494,6 @@ class _BatteriesPageState extends State<BatteriesPage> {
             }
           },
           itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 'status',
-              child: ListTile(
-                leading: Icon(Icons.sync_alt),
-                title: Text('Changer le statut'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
             if (battery.isPaired)
               const PopupMenuItem(
                 value: 'dissolve',
@@ -1465,4 +1589,22 @@ class _CreatePairPageState extends State<CreatePairPage>
                 ),
     );
   }
+}
+
+
+enum _BatteryHealthLevel {
+  notEvaluated,
+  good,
+  warning,
+  critical,
+}
+
+class _BatteryHealthStatus {
+  const _BatteryHealthStatus({
+    required this.label,
+    required this.level,
+  });
+
+  final String label;
+  final _BatteryHealthLevel level;
 }

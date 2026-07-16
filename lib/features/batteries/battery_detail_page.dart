@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/battery.dart';
+import '../../models/battery_measurement.dart';
 import '../../services/battery_service.dart';
 import 'qr_label_page.dart';
 
@@ -16,13 +17,66 @@ class BatteryDetailPage extends StatefulWidget {
   State<BatteryDetailPage> createState() => _BatteryDetailPageState();
 }
 
-class _BatteryDetailPageState extends State<BatteryDetailPage> {
+class _BatteryDetailPageState extends State<BatteryDetailPage>
+    with SingleTickerProviderStateMixin {
   late Battery battery;
+  late final TabController _tabController;
+
+  List<BatteryMeasurement> _measurements = [];
+  bool _isLoadingMeasurements = true;
+  String? _measurementsError;
 
   @override
   void initState() {
     super.initState();
     battery = widget.battery;
+    _tabController = TabController(length: 3, vsync: this);
+    _loadMeasurements();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  int get _cellCount {
+    return int.tryParse(battery.cells.replaceAll('S', '')) ?? 1;
+  }
+
+  Future<void> _loadMeasurements() async {
+    setState(() {
+      _isLoadingMeasurements = true;
+      _measurementsError = null;
+    });
+
+    try {
+      final measurements =
+          await BatteryService.getBatteryMeasurements(battery.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _measurements = measurements;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _measurementsError =
+            'Impossible de charger les mesures : $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingMeasurements = false;
+        });
+      }
+    }
   }
 
   Future<void> _editBattery() async {
@@ -42,8 +96,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage> {
     var status = battery.status;
     var isSaving = false;
 
-    final result =
-    await showDialog<(Battery, bool)>(
+    final result = await showDialog<(Battery, bool)>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
@@ -59,53 +112,52 @@ class _BatteryDetailPageState extends State<BatteryDetailPage> {
               });
 
               try {
-               final newBrand = brandController.text.trim();
-final newCapacity =
-    int.parse(capacityController.text.trim());
-final newCRate =
-    int.parse(cRateController.text.trim());
+                final newBrand = brandController.text.trim();
+                final newCapacity = int.parse(
+                  capacityController.text.trim(),
+                );
+                final newCRate = int.parse(
+                  cRateController.text.trim(),
+                );
 
-final pairMustBeDissolved =
-    battery.isPaired &&
-    (
-      newBrand != battery.brand ||
-      newCapacity != battery.capacity ||
-      cells != battery.cells ||
-      newCRate != battery.cRate
-    );
+                final pairMustBeDissolved =
+                    battery.isPaired &&
+                    (newBrand != battery.brand ||
+                        newCapacity != battery.capacity ||
+                        cells != battery.cells ||
+                        newCRate != battery.cRate);
 
-if (pairMustBeDissolved &&
-    battery.pairId != null) {
-  await BatteryService.dissolvePair(
-    battery.pairId!,
-  );
-}
+                if (pairMustBeDissolved && battery.pairId != null) {
+                  await BatteryService.dissolvePair(
+                    battery.pairId!,
+                  );
+                }
 
-final editedBattery = battery.copyWith(
-  brand: newBrand,
-  capacity: newCapacity,
-  cRate: newCRate,
-  cells: cells,
-  status: status,
-  notes: notesController.text.trim().isEmpty
-      ? null
-      : notesController.text.trim(),
-  removePair: pairMustBeDissolved,
-);
+                final editedBattery = battery.copyWith(
+                  brand: newBrand,
+                  capacity: newCapacity,
+                  cRate: newCRate,
+                  cells: cells,
+                  status: status,
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim(),
+                  removePair: pairMustBeDissolved,
+                );
 
-await BatteryService.updateBattery(editedBattery);
+                await BatteryService.updateBattery(editedBattery);
 
-if (!dialogContext.mounted) {
-  return;
-}
+                if (!dialogContext.mounted) {
+                  return;
+                }
 
-Navigator.pop(
-  dialogContext,
-  (
-    editedBattery,
-    pairMustBeDissolved,
-  ),
-);
+                Navigator.pop(
+                  dialogContext,
+                  (
+                    editedBattery,
+                    pairMustBeDissolved,
+                  ),
+                );
               } catch (error) {
                 if (!dialogContext.mounted) {
                   return;
@@ -324,32 +376,785 @@ Navigator.pop(
     notesController.dispose();
 
     if (result == null || !mounted) {
-  return;
-}
+      return;
+    }
 
-final updatedBattery = result.$1;
-final pairWasDissolved = result.$2;
+    final updatedBattery = result.$1;
+    final pairWasDissolved = result.$2;
 
-setState(() {
-  battery = updatedBattery;
-});
+    setState(() {
+      battery = updatedBattery;
+    });
 
-ScaffoldMessenger.of(context).showSnackBar(
-  SnackBar(
-    content: Text(
-      pairWasDissolved
-          ? 'PAIRE ANNULÉE — BATTERIES INCOMPATIBLES'
-          : 'Batterie mise à jour',
-    ),
-  ),
-);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          pairWasDissolved
+              ? 'PAIRE ANNULÉE — BATTERIES INCOMPATIBLES'
+              : 'Batterie mise à jour',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addMeasurement() async {
+    final formKey = GlobalKey<FormState>();
+
+    final chargeController = TextEditingController(text: '100');
+    final temperatureController = TextEditingController();
+    final notesController = TextEditingController();
+
+    final voltageControllers = List.generate(
+      _cellCount,
+      (_) => TextEditingController(),
+    );
+
+    final resistanceControllers = List.generate(
+      _cellCount,
+      (_) => TextEditingController(),
+    );
+
+    var isSaving = false;
+    var measurementType = BatteryMeasurement.afterChargeType;
+
+    final measurement = await showDialog<BatteryMeasurement>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            double? parseDecimal(String value) {
+              return double.tryParse(
+                value.trim().replaceAll(',', '.'),
+              );
+            }
+
+            String? validatePositiveDecimal(
+              String? value,
+              String label,
+            ) {
+              final parsed = parseDecimal(value ?? '');
+
+              if (parsed == null || parsed <= 0) {
+                return 'Valeur $label invalide';
+              }
+
+              return null;
+            }
+
+            Future<void> save() async {
+              if (!formKey.currentState!.validate() || isSaving) {
+                return;
+              }
+
+              setDialogState(() {
+                isSaving = true;
+              });
+
+              try {
+                final cellVoltages = voltageControllers
+                    .map(
+                      (controller) => parseDecimal(controller.text)!,
+                    )
+                    .toList();
+
+                final internalResistances = resistanceControllers
+                    .map(
+                      (controller) => parseDecimal(controller.text)!,
+                    )
+                    .toList();
+
+                final temperatureText =
+                    temperatureController.text.trim();
+
+                final newMeasurement = BatteryMeasurement(
+                  batteryCode: battery.id,
+                  measuredAt: DateTime.now(),
+                  measurementType: measurementType,
+                  chargePercent: int.parse(
+                    chargeController.text.trim(),
+                  ),
+                  cellVoltages: cellVoltages,
+                  cellInternalResistances: internalResistances,
+                  batteryTemperature: temperatureText.isEmpty
+                      ? null
+                      : parseDecimal(temperatureText),
+                  notes: notesController.text.trim().isEmpty
+                      ? null
+                      : notesController.text.trim(),
+                );
+
+                final savedMeasurement =
+                    await BatteryService.createBatteryMeasurement(
+                  newMeasurement,
+                );
+
+                if (!dialogContext.mounted) {
+                  return;
+                }
+
+                Navigator.pop(dialogContext, savedMeasurement);
+              } catch (error) {
+                if (!dialogContext.mounted) {
+                  return;
+                }
+
+                setDialogState(() {
+                  isSaving = false;
+                });
+
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Enregistrement impossible : $error',
+                    ),
+                  ),
+                );
+              }
+            }
+
+            return AlertDialog(
+              title: Text(
+                _measurements.isEmpty
+                    ? 'Ajouter la mesure de référence'
+                    : 'Ajouter une mesure',
+              ),
+              content: SizedBox(
+                width: 560,
+                child: Form(
+                  key: formKey,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Batterie ${battery.id} • ${battery.technology} '
+                          '• ${battery.capacity} mAh • ${battery.cells}',
+                        ),
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          initialValue: measurementType,
+                          decoration: const InputDecoration(
+                            labelText: 'Type de mesure',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: BatteryMeasurement.measurementTypes
+                              .map(
+                                (type) => DropdownMenuItem<String>(
+                                  value: type,
+                                  child: Text(type),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: isSaving
+                              ? null
+                              : (value) {
+                                  if (value != null) {
+                                    setDialogState(() {
+                                      measurementType = value;
+                                    });
+                                  }
+                                },
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: chargeController,
+                          enabled: !isSaving,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Niveau de charge (%)',
+                            border: OutlineInputBorder(),
+                            suffixText: '%',
+                          ),
+                          validator: (value) {
+                            final percent = int.tryParse(
+                              value?.trim() ?? '',
+                            );
+
+                            if (percent == null ||
+                                percent < 0 ||
+                                percent > 100) {
+                              return 'Renseigne un pourcentage entre 0 et 100';
+                            }
+
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: temperatureController,
+                          enabled: !isSaving,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText:
+                                'Température batterie (facultatif)',
+                            border: OutlineInputBorder(),
+                            suffixText: '°C',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return null;
+                            }
+
+                            final temperature = parseDecimal(value);
+
+                            if (temperature == null ||
+                                temperature < -30 ||
+                                temperature > 100) {
+                              return 'Température invalide';
+                            }
+
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 18),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Mesures par cellule',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        for (var index = 0;
+                            index < _cellCount;
+                            index++) ...[
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                children: [
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      'Cellule ${index + 1}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller:
+                                              voltageControllers[index],
+                                          enabled: !isSaving,
+                                          keyboardType:
+                                              const TextInputType
+                                                  .numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                          decoration:
+                                              const InputDecoration(
+                                            labelText: 'Tension',
+                                            border: OutlineInputBorder(),
+                                            suffixText: 'V',
+                                          ),
+                                          validator: (value) =>
+                                              validatePositiveDecimal(
+                                            value,
+                                            'de tension',
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller:
+                                              resistanceControllers[index],
+                                          enabled: !isSaving,
+                                          keyboardType:
+                                              const TextInputType
+                                                  .numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                          decoration:
+                                              const InputDecoration(
+                                            labelText: 'Résistance interne',
+                                            border: OutlineInputBorder(),
+                                            suffixText: 'mΩ',
+                                          ),
+                                          validator: (value) =>
+                                              validatePositiveDecimal(
+                                            value,
+                                            'de résistance',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        TextFormField(
+                          controller: notesController,
+                          enabled: !isSaving,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: const InputDecoration(
+                            labelText: 'Note facultative',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton.icon(
+                  onPressed: isSaving ? null : save,
+                  icon: isSaving
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.save),
+                  label: Text(
+                    isSaving ? 'Enregistrement...' : 'Enregistrer',
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    chargeController.dispose();
+    temperatureController.dispose();
+    notesController.dispose();
+
+    for (final controller in voltageControllers) {
+      controller.dispose();
+    }
+
+    for (final controller in resistanceControllers) {
+      controller.dispose();
+    }
+
+    if (measurement == null || !mounted) {
+      return;
+    }
+
+    await _loadMeasurements();
+
+    if (!mounted) {
+      return;
+    }
+
+    _tabController.animateTo(2);
+    await _showMeasurementResult(measurement);
+  }
+
+  Future<void> _showMeasurementResult(
+    BatteryMeasurement measurement,
+  ) async {
+    final analysis = _analyzeMeasurement(measurement);
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                analysis.hasCritical
+                    ? Icons.error
+                    : analysis.hasWarning
+                        ? Icons.warning_amber
+                        : Icons.check_circle,
+                color: analysis.hasCritical
+                    ? Theme.of(context).colorScheme.error
+                    : analysis.hasWarning
+                        ? Colors.orange
+                        : Colors.green,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  analysis.hasCritical
+                      ? 'Mesure enregistrée — ALERTE'
+                      : analysis.hasWarning
+                          ? 'Mesure enregistrée — À surveiller'
+                          : 'Mesure enregistrée — Bon état',
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _resultLine(
+                    'Tension totale',
+                    '${measurement.totalVoltage.toStringAsFixed(3)} V',
+                  ),
+                  _resultLine(
+                    'Écart maximal de tension',
+                    '${measurement.maximumVoltageDifference.toStringAsFixed(3)} V',
+                  ),
+                  _resultLine(
+                    'RI moyenne',
+                    '${measurement.averageInternalResistance.toStringAsFixed(2)} mΩ',
+                  ),
+                  _resultLine(
+                    'Écart maximal de RI',
+                    '${measurement.maximumInternalResistanceDifference.toStringAsFixed(2)} mΩ',
+                  ),
+                  if (measurement.batteryTemperature != null)
+                    _resultLine(
+                      'Température batterie',
+                      '${measurement.batteryTemperature!.toStringAsFixed(1)} °C',
+                    ),
+                  const Divider(height: 28),
+                  Text(
+                    'Analyse des cellules',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  ...analysis.cellMessages.map(
+                    (message) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(message),
+                    ),
+                  ),
+                  if (analysis.globalMessages.isNotEmpty) ...[
+                    const Divider(height: 28),
+                    Text(
+                      'Analyse globale',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    ...analysis.globalMessages.map(
+                      (message) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(message),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(
+                    'Ces alertes sont des repères de suivi. '
+                    'En cas de gonflement, choc, fuite, odeur ou '
+                    'échauffement anormal, retire la batterie du service.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Fermer'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  _MeasurementAnalysis _analyzeMeasurement(
+    BatteryMeasurement measurement,
+  ) {
+    final thresholds = _internalResistanceThresholds();
+    final voltageThresholds = _voltageSpreadThresholds();
+
+    var hasWarning = false;
+    var hasCritical = false;
+
+    final cellMessages = <String>[];
+
+    for (var index = 0;
+        index < measurement.cellInternalResistances.length;
+        index++) {
+      final resistance =
+          measurement.cellInternalResistances[index];
+      final voltage = measurement.cellVoltages[index];
+
+      final messages = <String>[];
+      final averageVoltage = measurement.cellVoltages.fold<double>(
+            0,
+            (sum, item) => sum + item,
+          ) /
+          measurement.cellVoltages.length;
+      final voltageDeviation = (voltage - averageVoltage).abs();
+
+      if (voltageDeviation >= voltageThresholds.critical) {
+        hasCritical = true;
+        messages.add(
+          voltage < averageVoltage
+              ? 'tension nettement trop basse (${voltage.toStringAsFixed(3)} V)'
+              : 'tension nettement trop haute (${voltage.toStringAsFixed(3)} V)',
+        );
+      } else if (voltageDeviation >= voltageThresholds.warning) {
+        hasWarning = true;
+        messages.add(
+          voltage < averageVoltage
+              ? 'tension plus basse que les autres (${voltage.toStringAsFixed(3)} V)'
+              : 'tension plus haute que les autres (${voltage.toStringAsFixed(3)} V)',
+        );
+      }
+
+      if (resistance >= thresholds.critical) {
+        hasCritical = true;
+        messages.add(
+          'RI critique (${resistance.toStringAsFixed(2)} mΩ)',
+        );
+      } else if (resistance >= thresholds.warning) {
+        hasWarning = true;
+        messages.add(
+          'RI élevée (${resistance.toStringAsFixed(2)} mΩ)',
+        );
+      }
+
+      final averageResistance =
+          measurement.averageInternalResistance;
+
+      if (measurement.cellInternalResistances.length > 1 &&
+          resistance > averageResistance * 1.5 &&
+          resistance - averageResistance >= 2) {
+        hasWarning = true;
+        messages.add('écart important avec les autres cellules');
+      }
+
+      if (messages.isEmpty) {
+        cellMessages.add(
+          'Cellule ${index + 1} : normale — '
+          '${voltage.toStringAsFixed(3)} V • '
+          '${resistance.toStringAsFixed(2)} mΩ',
+        );
+      } else {
+        cellMessages.add(
+          'Cellule ${index + 1} : ${messages.join(' • ')}',
+        );
+      }
+    }
+
+    final globalMessages = <String>[];
+
+    if (measurement.averageInternalResistance >=
+        thresholds.critical) {
+      hasCritical = true;
+      globalMessages.add(
+        'La RI moyenne dépasse le seuil indicatif critique estimé pour '
+        '${battery.technology} ${battery.capacity} mAh.',
+      );
+    } else if (measurement.averageInternalResistance >=
+        thresholds.warning) {
+      hasWarning = true;
+      globalMessages.add(
+        'La RI moyenne est élevée selon le seuil indicatif retenu pour '
+        '${battery.technology} ${battery.capacity} mAh.',
+      );
+    }
+
+    if (measurement.maximumVoltageDifference >=
+        voltageThresholds.critical) {
+      hasCritical = true;
+      globalMessages.add(
+        'Écart de tension critique entre cellules '
+        '(${measurement.maximumVoltageDifference.toStringAsFixed(3)} V).',
+      );
+    } else if (measurement.maximumVoltageDifference >=
+        voltageThresholds.warning) {
+      hasWarning = true;
+      globalMessages.add(
+        'Écart de tension à surveiller entre cellules '
+        '(${measurement.maximumVoltageDifference.toStringAsFixed(3)} V).',
+      );
+    }
+
+    final temperature = measurement.batteryTemperature;
+
+    if (temperature != null) {
+      if (temperature >= 55) {
+        hasCritical = true;
+        globalMessages.add(
+          'Température batterie critique '
+          '(${temperature.toStringAsFixed(1)} °C).',
+        );
+      } else if (temperature >= 45) {
+        hasWarning = true;
+        globalMessages.add(
+          'Température batterie élevée '
+          '(${temperature.toStringAsFixed(1)} °C).',
+        );
+      }
+    }
+
+    if (globalMessages.isEmpty) {
+      globalMessages.add(
+        'Aucune anomalie globale détectée sur cette mesure.',
+      );
+    }
+
+    return _MeasurementAnalysis(
+      hasWarning: hasWarning,
+      hasCritical: hasCritical,
+      cellMessages: cellMessages,
+      globalMessages: globalMessages,
+    );
+  }
+
+  _ResistanceThresholds _internalResistanceThresholds() {
+    final capacityAh = battery.capacity / 1000;
+    final safeCapacityAh = capacityAh <= 0 ? 1.0 : capacityAh;
+
+    final technology = battery.technology
+        .toLowerCase()
+        .replaceAll('-', '')
+        .replaceAll(' ', '');
+
+    late final double warningFactor;
+    late final double criticalFactor;
+
+    switch (technology) {
+      case 'lipo':
+      case 'lihv':
+        warningFactor = 30;
+        criticalFactor = 50;
+      case 'liion':
+        warningFactor = 60;
+        criticalFactor = 100;
+      case 'life':
+        warningFactor = 40;
+        criticalFactor = 65;
+      case 'nimh':
+        warningFactor = 90;
+        criticalFactor = 150;
+      case 'nicd':
+        warningFactor = 80;
+        criticalFactor = 130;
+      default:
+        warningFactor = 50;
+        criticalFactor = 90;
+    }
+
+    return _ResistanceThresholds(
+      warning: warningFactor / safeCapacityAh,
+      critical: criticalFactor / safeCapacityAh,
+    );
+  }
+
+  _VoltageSpreadThresholds _voltageSpreadThresholds() {
+    final technology = battery.technology
+        .toLowerCase()
+        .replaceAll('-', '')
+        .replaceAll(' ', '');
+
+    switch (technology) {
+      case 'lipo':
+      case 'lihv':
+      case 'liion':
+      case 'life':
+        return const _VoltageSpreadThresholds(
+          warning: 0.030,
+          critical: 0.050,
+        );
+      default:
+        return const _VoltageSpreadThresholds(
+          warning: 0.050,
+          critical: 0.100,
+        );
+    }
+  }
+
+  Future<void> _deleteMeasurement(
+    BatteryMeasurement measurement,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Supprimer cette mesure ?'),
+          content: const Text(
+            'Cette action est irréversible.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    Theme.of(context).colorScheme.error,
+                foregroundColor:
+                    Theme.of(context).colorScheme.onError,
+              ),
+              child: const Text('Supprimer'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      await BatteryService.deleteBatteryMeasurement(measurement);
+      await _loadMeasurements();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Mesure supprimée'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Suppression impossible : $error'),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(battery.id),
+        title: const Text('Batterie'),
         actions: [
           IconButton(
             onPressed: _editBattery,
@@ -357,41 +1162,576 @@ ScaffoldMessenger.of(context).showSnackBar(
             icon: const Icon(Icons.edit),
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabs: const [
+            Tab(
+              icon: Icon(Icons.qr_code_2),
+              text: 'QR Code',
+            ),
+            Tab(
+              icon: Icon(Icons.add_chart),
+              text: 'Mesures',
+            ),
+            Tab(
+              icon: Icon(Icons.monitor_heart_outlined),
+              text: 'État de la batterie',
+            ),
+          ],
+        ),
       ),
-      body: ListView(
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildQrTab(),
+          _buildMeasurementsTab(),
+          _buildHealthTab(),
+        ],
+      ),
+    );
+  }
+
+  Widget _batteryHeader() {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.battery_charging_full, size: 42),
+        title: Text(
+          battery.id,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(
+          '${battery.technology} • ${battery.brand} • '
+          '${battery.cells} • ${battery.capacity} mAh • ${battery.cRate}C\n'
+          '${battery.isPaired ? 'Paire ${battery.pairId}' : 'Batterie seule'}',
+        ),
+        isThreeLine: true,
+      ),
+    );
+  }
+
+  Widget _buildQrTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _batteryHeader(),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                const Icon(Icons.qr_code_2, size: 80),
+                const SizedBox(height: 12),
+                const Text(
+                  'Étiquette QR Code individuelle',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Le QR Code identifie uniquement cette batterie, '
+                  'même lorsqu’elle appartient à une paire.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.push<void>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => QrLabelPage(battery: battery),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.print),
+                  label: const Text('Préparer et imprimer l’étiquette'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMeasurementsTab() {
+    return RefreshIndicator(
+      onRefresh: _loadMeasurements,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.qr_code_2, size: 42),
-              title: Text(battery.id),
-              subtitle: Text(
-                battery.isPaired
-                    ? 'Paire ${battery.pairId}'
-                    : 'Batterie seule',
+          _batteryHeader(),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _addMeasurement,
+              icon: const Icon(Icons.add),
+              label: Text(
+                _measurements.isEmpty
+                    ? 'Ajouter la mesure de référence'
+                    : 'Nouvelle mesure',
               ),
             ),
           ),
-          _info('Technologie', battery.technology),
-          _info('Marque', battery.brand),
-          _info('Capacité', '${battery.capacity} mAh'),
-          _info('Cellules', battery.cells),
-          _info('Taux C', '${battery.cRate}C'),
-          _info('Statut', battery.status),
-          if (battery.notes != null && battery.notes!.trim().isNotEmpty)
-            _info('Notes', battery.notes!),
+          const SizedBox(height: 12),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'À l’enregistrement, indique simplement s’il s’agit '
+                'd’une mesure après charge ou d’une mesure de contrôle. '
+                'La température de la batterie reste facultative.',
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
-          FilledButton.icon(
-            onPressed: () {
-              Navigator.push<void>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => QrLabelPage(battery: battery),
+          Text(
+            'Historique des mesures',
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          if (_isLoadingMeasurements)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_measurementsError != null)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Text(
+                      _measurementsError!,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: _loadMeasurements,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Réessayer'),
+                    ),
+                  ],
                 ),
-              );
-            },
-            icon: const Icon(Icons.print),
-            label: const Text('Préparer étiquette QR Code'),
+              ),
+            )
+          else if (_measurements.isEmpty)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                  'Aucune mesure enregistrée pour cette batterie.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          else
+            ..._measurements.asMap().entries.map(
+                  (entry) => _measurementCard(
+                    entry.value,
+                    isReference: entry.key == _measurements.length - 1,
+                  ),
+                ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryTab() {
+    return RefreshIndicator(
+      onRefresh: _loadMeasurements,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          _batteryHeader(),
+          const SizedBox(height: 16),
+          if (_isLoadingMeasurements)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_measurementsError != null)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Text(
+                      _measurementsError!,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: _loadMeasurements,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Réessayer'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_measurements.isEmpty)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                  'Aucune mesure enregistrée pour cette batterie.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          else
+            ..._measurements.asMap().entries.map(
+                  (entry) => _measurementCard(
+                    entry.value,
+                    isReference: entry.key == _measurements.length - 1,
+                  ),
+                ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHealthTab() {
+    if (_isLoadingMeasurements) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_measurementsError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _measurementsError!,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    if (_measurements.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _batteryHeader(),
+          const SizedBox(height: 16),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  Icon(Icons.monitor_heart_outlined, size: 64),
+                  SizedBox(height: 12),
+                  Text(
+                    'ÉTAT NON ÉVALUÉ*',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Ajoute une mesure de référence pour commencer '
+                    'le suivi de santé de cette batterie.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final latest = _measurements.first;
+    final reference = _measurements.last;
+    final analysis = _analyzeMeasurement(latest);
+
+    final resistanceEvolution =
+        reference.averageInternalResistance == 0
+            ? 0.0
+            : ((latest.averageInternalResistance -
+                        reference.averageInternalResistance) /
+                    reference.averageInternalResistance) *
+                100;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _batteryHeader(),
+        const SizedBox(height: 16),
+        Card(
+          color: analysis.hasCritical
+              ? Theme.of(context).colorScheme.errorContainer
+              : analysis.hasWarning
+                  ? Colors.orange.shade100
+                  : Colors.green.shade100,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      analysis.hasCritical
+                          ? Icons.error
+                          : analysis.hasWarning
+                              ? Icons.warning_amber
+                              : Icons.check_circle,
+                      size: 46,
+                      color: analysis.hasCritical
+                          ? Theme.of(context).colorScheme.error
+                          : analysis.hasWarning
+                              ? Colors.orange.shade900
+                              : Colors.green.shade800,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        analysis.hasCritical
+                            ? 'ALERTE CRITIQUE*'
+                            : analysis.hasWarning
+                                ? 'À SURVEILLER*'
+                                : 'BON ÉTAT*',
+                        style: const TextStyle(
+                          fontSize: 23,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Justification :',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                ...analysis.cellMessages
+                    .where((message) => !message.contains('normale'))
+                    .map((message) => Padding(
+                          padding: const EdgeInsets.only(bottom: 5),
+                          child: Text('• $message'),
+                        )),
+                ...analysis.globalMessages.map(
+                  (message) => Padding(
+                    padding: const EdgeInsets.only(bottom: 5),
+                    child: Text('• $message'),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Dernière mesure : ${_formatDateTime(latest.measuredAt)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
+        _info(
+          'Nombre de mesures',
+          _measurements.length.toString(),
+        ),
+        _info(
+          'RI moyenne actuelle',
+          '${latest.averageInternalResistance.toStringAsFixed(2)} mΩ',
+        ),
+        _info(
+          'RI moyenne de référence',
+          '${reference.averageInternalResistance.toStringAsFixed(2)} mΩ',
+        ),
+        _info(
+          'Évolution de la RI moyenne',
+          '${resistanceEvolution >= 0 ? '+' : ''}'
+              '${resistanceEvolution.toStringAsFixed(1)} %',
+        ),
+        _info(
+          'Écart maximal de tension',
+          '${latest.maximumVoltageDifference.toStringAsFixed(3)} V',
+        ),
+        if (latest.batteryTemperature != null)
+          _info(
+            'Dernière température batterie',
+            '${latest.batteryTemperature!.toStringAsFixed(1)} °C',
+          ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Analyse actuelle',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...analysis.cellMessages.map(
+                  (message) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(message),
+                  ),
+                ),
+                const Divider(height: 24),
+                ...analysis.globalMessages.map(
+                  (message) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(message),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          '* Les informations, calculs et alertes affichés par RC Companion '
+          'sont fournis à titre indicatif afin d’aider au suivi des batteries. '
+          'Ils ne remplacent pas les recommandations du fabricant, la notice '
+          'd’utilisation ni un contrôle visuel et technique. L’utilisateur '
+          'reste seul responsable de la charge, de l’utilisation, du stockage '
+          'et de la mise hors service de ses batteries. RC Companion et son '
+          'concepteur ne sauraient être tenus responsables d’un dommage matériel '
+          'ou corporel lié à l’utilisation d’une batterie.',
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey,
+          ),
+          textAlign: TextAlign.justify,
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _measurementCard(
+    BatteryMeasurement measurement, {
+    required bool isReference,
+  }) {
+    final analysis = _analyzeMeasurement(measurement);
+
+    return Card(
+      child: ExpansionTile(
+        key: PageStorageKey<String>(
+          'measurement-${measurement.id ?? measurement.measuredAt.toIso8601String()}',
+        ),
+        leading: Icon(
+          analysis.hasCritical
+              ? Icons.error
+              : analysis.hasWarning
+                  ? Icons.warning_amber
+                  : Icons.check_circle,
+          color: analysis.hasCritical
+              ? Theme.of(context).colorScheme.error
+              : analysis.hasWarning
+                  ? Colors.orange
+                  : Colors.green,
+        ),
+        title: Text(
+          _formatDateTime(measurement.measuredAt),
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          '${measurement.measurementType} • '
+          '${measurement.chargePercent}% • '
+          '${measurement.totalVoltage.toStringAsFixed(3)} V • '
+          'RI ${measurement.averageInternalResistance.toStringAsFixed(2)} mΩ'
+          '${isReference ? ' • Référence' : ''}',
+        ),
+        controlAffinity: ListTileControlAffinity.trailing,
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          _resultLine(
+            'Type de mesure',
+            measurement.measurementType,
+          ),
+          _resultLine(
+            'Niveau de charge',
+            '${measurement.chargePercent}%',
+          ),
+          _resultLine(
+            'Tension totale',
+            '${measurement.totalVoltage.toStringAsFixed(3)} V',
+          ),
+          _resultLine(
+            'Écart maximal tension',
+            '${measurement.maximumVoltageDifference.toStringAsFixed(3)} V',
+          ),
+          _resultLine(
+            'RI moyenne',
+            '${measurement.averageInternalResistance.toStringAsFixed(2)} mΩ',
+          ),
+          _resultLine(
+            'Écart maximal RI',
+            '${measurement.maximumInternalResistanceDifference.toStringAsFixed(2)} mΩ',
+          ),
+          if (measurement.batteryTemperature != null)
+            _resultLine(
+              'Température batterie',
+              '${measurement.batteryTemperature!.toStringAsFixed(1)} °C',
+            ),
+          const Divider(height: 24),
+          for (var index = 0;
+              index < measurement.cellVoltages.length;
+              index++)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text('Cellule ${index + 1}'),
+              trailing: Text(
+                '${measurement.cellVoltages[index].toStringAsFixed(3)} V • '
+                '${measurement.cellInternalResistances[index].toStringAsFixed(2)} mΩ',
+              ),
+            ),
+          if (measurement.notes != null &&
+              measurement.notes!.trim().isNotEmpty) ...[
+            const Divider(height: 24),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Note : ${measurement.notes}'),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _deleteMeasurement(measurement),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Supprimer la mesure'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _resultLine(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(title)),
+          const SizedBox(width: 12),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -412,4 +1752,49 @@ ScaffoldMessenger.of(context).showSnackBar(
       ),
     );
   }
+
+  String _formatDateTime(DateTime date) {
+    final localDate = date.toLocal();
+    final day = localDate.day.toString().padLeft(2, '0');
+    final month = localDate.month.toString().padLeft(2, '0');
+    final year = localDate.year.toString();
+    final hour = localDate.hour.toString().padLeft(2, '0');
+    final minute = localDate.minute.toString().padLeft(2, '0');
+
+    return '$day/$month/$year à $hour:$minute';
+  }
+}
+
+class _ResistanceThresholds {
+  const _ResistanceThresholds({
+    required this.warning,
+    required this.critical,
+  });
+
+  final double warning;
+  final double critical;
+}
+
+class _VoltageSpreadThresholds {
+  const _VoltageSpreadThresholds({
+    required this.warning,
+    required this.critical,
+  });
+
+  final double warning;
+  final double critical;
+}
+
+class _MeasurementAnalysis {
+  const _MeasurementAnalysis({
+    required this.hasWarning,
+    required this.hasCritical,
+    required this.cellMessages,
+    required this.globalMessages,
+  });
+
+  final bool hasWarning;
+  final bool hasCritical;
+  final List<String> cellMessages;
+  final List<String> globalMessages;
 }
