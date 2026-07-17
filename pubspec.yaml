@@ -23,6 +23,7 @@ dependencies:
 
   # Affichage des PDF directement dans RC Companion
   pdfrx: ^2.4.7
+  mobile_scanner: ^7.3.0
 
 dev_dependencies:
   flutter_test:

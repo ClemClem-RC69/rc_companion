@@ -763,7 +763,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       return;
     }
 
-    _tabController.animateTo(2);
+    _tabController.animateTo(1);
     await _showMeasurementResult(measurement);
   }
 
@@ -866,7 +866,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                     'Ces alertes sont des repères de suivi. '
                     'En cas de gonflement, choc, fuite, odeur ou '
                     'échauffement anormal, retire la batterie du service.',
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: Colors.white70),
                   ),
                 ],
               ),
@@ -1167,10 +1170,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
           isScrollable: true,
           tabs: const [
             Tab(
-              icon: Icon(Icons.qr_code_2),
-              text: 'QR Code',
-            ),
-            Tab(
               icon: Icon(Icons.add_chart),
               text: 'Mesures',
             ),
@@ -1178,34 +1177,128 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               icon: Icon(Icons.monitor_heart_outlined),
               text: 'État de la batterie',
             ),
+            Tab(
+              icon: Icon(Icons.qr_code_2),
+              text: 'QR Code',
+            ),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildQrTab(),
           _buildMeasurementsTab(),
           _buildHealthTab(),
+          _buildQrTab(),
         ],
       ),
     );
   }
 
+  _MeasurementAnalysis? get _latestAnalysis {
+    if (_measurements.isEmpty) {
+      return null;
+    }
+
+    return _analyzeMeasurement(_measurements.first);
+  }
+
+  String get _healthLabel {
+    final analysis = _latestAnalysis;
+
+    if (analysis == null) {
+      return 'Non évaluée';
+    }
+
+    if (analysis.hasCritical) {
+      return 'État critique*';
+    }
+
+    if (analysis.hasWarning) {
+      return 'À surveiller*';
+    }
+
+    return 'Bon état*';
+  }
+
+  Color _healthBackgroundColor(BuildContext context) {
+    final analysis = _latestAnalysis;
+
+    if (analysis == null) {
+      return Theme.of(context).colorScheme.surfaceContainerHighest;
+    }
+
+    if (analysis.hasCritical) {
+      return Theme.of(context).colorScheme.error;
+    }
+
+    if (analysis.hasWarning) {
+      return Colors.orange.shade700;
+    }
+
+    return Colors.green.shade700;
+  }
+
+  Color _healthForegroundColor(BuildContext context) {
+    if (_latestAnalysis == null) {
+      return Theme.of(context).colorScheme.onSurfaceVariant;
+    }
+
+    return Colors.white;
+  }
+
   Widget _batteryHeader() {
     return Card(
-      child: ListTile(
-        leading: const Icon(Icons.battery_charging_full, size: 42),
-        title: Text(
-          battery.id,
-          style: const TextStyle(fontWeight: FontWeight.w700),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.battery_charging_full,
+              size: 42,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    battery.id,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 17,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    '${battery.technology} • ${battery.brand} • '
+                    '${battery.cells} • ${battery.capacity} mAh • '
+                    '${battery.cRate}C',
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    battery.isPaired
+                        ? 'Paire ${battery.pairId}'
+                        : 'Batterie seule',
+                  ),
+                  const SizedBox(height: 10),
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    backgroundColor: _healthBackgroundColor(context),
+                    label: Text(
+                      _healthLabel,
+                      style: TextStyle(
+                        color: _healthForegroundColor(context),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        subtitle: Text(
-          '${battery.technology} • ${battery.brand} • '
-          '${battery.cells} • ${battery.capacity} mAh • ${battery.cRate}C\n'
-          '${battery.isPaired ? 'Paire ${battery.pairId}' : 'Batterie seule'}',
-        ),
-        isThreeLine: true,
       ),
     );
   }
@@ -1347,64 +1440,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     );
   }
 
-  Widget _buildHistoryTab() {
-    return RefreshIndicator(
-      onRefresh: _loadMeasurements,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        children: [
-          _batteryHeader(),
-          const SizedBox(height: 16),
-          if (_isLoadingMeasurements)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: CircularProgressIndicator(),
-              ),
-            )
-          else if (_measurementsError != null)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Text(
-                      _measurementsError!,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
-                      onPressed: _loadMeasurements,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Réessayer'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else if (_measurements.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(20),
-                child: Text(
-                  'Aucune mesure enregistrée pour cette batterie.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            )
-          else
-            ..._measurements.asMap().entries.map(
-                  (entry) => _measurementCard(
-                    entry.value,
-                    isReference: entry.key == _measurements.length - 1,
-                  ),
-                ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildHealthTab() {
     if (_isLoadingMeasurements) {
       return const Center(child: CircularProgressIndicator());
@@ -1475,10 +1510,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         const SizedBox(height: 16),
         Card(
           color: analysis.hasCritical
-              ? Theme.of(context).colorScheme.errorContainer
+              ? Colors.red
               : analysis.hasWarning
-                  ? Colors.orange.shade100
-                  : Colors.green.shade100,
+                  ? Colors.orange.shade700
+                  : Colors.green.shade700,
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(
@@ -1493,11 +1528,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                               ? Icons.warning_amber
                               : Icons.check_circle,
                       size: 46,
-                      color: analysis.hasCritical
-                          ? Theme.of(context).colorScheme.error
-                          : analysis.hasWarning
-                              ? Colors.orange.shade900
-                              : Colors.green.shade800,
+                      color: Colors.white,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1510,6 +1541,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                         style: const TextStyle(
                           fontSize: 23,
                           fontWeight: FontWeight.w800,
+                          color: Colors.white,
                         ),
                       ),
                     ),
@@ -1518,19 +1550,28 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 const SizedBox(height: 12),
                 const Text(
                   'Justification :',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 ...analysis.cellMessages
                     .where((message) => !message.contains('normale'))
                     .map((message) => Padding(
                           padding: const EdgeInsets.only(bottom: 5),
-                          child: Text('• $message'),
+                          child: Text(
+                            '• $message',
+                            style: const TextStyle(color: Colors.white),
+                          ),
                         )),
                 ...analysis.globalMessages.map(
                   (message) => Padding(
                     padding: const EdgeInsets.only(bottom: 5),
-                    child: Text('• $message'),
+                    child: Text(
+                      '• $message',
+                      style: const TextStyle(color: Colors.white),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),

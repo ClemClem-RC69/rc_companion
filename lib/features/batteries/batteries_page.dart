@@ -4,6 +4,7 @@ import '../../models/battery.dart';
 import '../../models/battery_measurement.dart';
 import '../../services/battery_service.dart';
 import 'battery_detail_page.dart';
+import 'battery_scanner_page.dart';
 
 class BatteriesPage extends StatefulWidget {
   const BatteriesPage({super.key});
@@ -101,6 +102,44 @@ class _BatteriesPageState extends State<BatteriesPage> {
     if (created == true) {
       await _loadBatteries();
     }
+  }
+
+  Future<void> _scanBattery() async {
+    final scannedCode = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const BatteryScannerPage(),
+      ),
+    );
+
+    if (!mounted || scannedCode == null) {
+      return;
+    }
+
+    final normalizedCode = scannedCode.trim();
+
+    Battery? matchingBattery;
+
+    for (final battery in _batteries) {
+      if (battery.id.trim().toLowerCase() ==
+          normalizedCode.toLowerCase()) {
+        matchingBattery = battery;
+        break;
+      }
+    }
+
+    if (matchingBattery == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Aucune batterie trouvée pour le QR Code : $normalizedCode',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await _openBattery(matchingBattery);
   }
 
   Future<void> _openBattery(Battery battery) async {
@@ -370,7 +409,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
         colors.surfaceContainerHighest,
       _BatteryHealthLevel.good => Colors.green.shade700,
       _BatteryHealthLevel.warning => Colors.orange.shade700,
-      _BatteryHealthLevel.critical => colors.error,
+      _BatteryHealthLevel.critical => Colors.red,
     };
   }
 
@@ -402,21 +441,52 @@ class _BatteriesPageState extends State<BatteriesPage> {
   Widget _buildActions() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: [
-          FilledButton.icon(
-            onPressed: _addBattery,
-            icon: const Icon(Icons.add),
-            label: const Text('Créer une batterie'),
-          ),
-          OutlinedButton.icon(
-            onPressed: _createPair,
-            icon: const Icon(Icons.link),
-            label: const Text('Créer une paire'),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final scannerButton = FilledButton.tonalIcon(
+            onPressed: _isLoading ? null : _scanBattery,
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Scanner'),
+          );
+
+          if (constraints.maxWidth < 720) {
+            return Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilledButton.icon(
+                  onPressed: _addBattery,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Créer une batterie'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _createPair,
+                  icon: const Icon(Icons.link),
+                  label: const Text('Créer une paire'),
+                ),
+                scannerButton,
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              FilledButton.icon(
+                onPressed: _addBattery,
+                icon: const Icon(Icons.add),
+                label: const Text('Créer une batterie'),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: _createPair,
+                icon: const Icon(Icons.link),
+                label: const Text('Créer une paire'),
+              ),
+              const Spacer(),
+              scannerButton,
+            ],
+          );
+        },
       ),
     );
   }
