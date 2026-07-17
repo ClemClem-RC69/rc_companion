@@ -11,11 +11,15 @@ class BatteryMeasurement {
     this.notes,
   });
 
+  static const String referenceType = 'Mesure de référence';
   static const String afterChargeType = 'Après charge';
+  static const String endOfSessionType = 'Fin de session';
   static const String controlType = 'Contrôle';
 
   static const List<String> measurementTypes = [
+    referenceType,
     afterChargeType,
+    endOfSessionType,
     controlType,
   ];
 
@@ -31,7 +35,11 @@ class BatteryMeasurement {
 
   int get cellCount => cellVoltages.length;
 
+  bool get isReference => measurementType == referenceType;
+
   bool get isAfterCharge => measurementType == afterChargeType;
+
+  bool get isEndOfSession => measurementType == endOfSessionType;
 
   bool get isControl => measurementType == controlType;
 
@@ -81,6 +89,13 @@ class BatteryMeasurement {
     );
 
     return total / cellInternalResistances.length;
+  }
+
+  double get totalInternalResistance {
+    return cellInternalResistances.fold<double>(
+      0,
+      (total, resistance) => total + resistance,
+    );
   }
 
   double get minimumInternalResistance {

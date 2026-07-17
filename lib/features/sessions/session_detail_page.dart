@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../models/battery.dart';
 import '../../models/rc_session.dart';
 import '../../services/session_service.dart';
-import '../../services/supabase_service.dart';
 
 class SessionDetailPage extends StatefulWidget {
   const SessionDetailPage({
@@ -94,55 +93,6 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
     setState(() => _isSavingMeasurement = true);
 
     try {
-      final sessionId = _session.id;
-
-      if (sessionId == null || sessionId.isEmpty) {
-        throw StateError('Session introuvable');
-      }
-
-      final user = SupabaseService.client.auth.currentUser;
-
-      if (user == null) {
-        throw StateError('Utilisateur non connecté');
-      }
-
-      final runRow = await SupabaseService.client
-          .from('session_runs')
-          .select('id')
-          .eq('session_id', sessionId)
-          .eq(
-            'started_at',
-            run.startedAt.toUtc().toIso8601String(),
-          )
-          .maybeSingle();
-
-      if (runRow == null) {
-        throw StateError('Roulage introuvable');
-      }
-
-      final runId = runRow['id'] as String;
-
-      await SupabaseService.client
-          .from('session_run_measurements')
-          .upsert(
-            {
-              'run_id': runId,
-              'user_id': user.id,
-              'battery_code': battery.id,
-              'measured_at': (updatedReading.measuredAt ?? DateTime.now())
-                  .toUtc()
-                  .toIso8601String(),
-              'remaining_capacity_percent':
-                  updatedReading.remainingCapacityPercent,
-              'temperature_celsius':
-                  updatedReading.temperatureCelsius,
-              'cell_voltages': updatedReading.cellVoltages,
-              'cell_resistances': updatedReading.cellResistances,
-              'updated_at': DateTime.now().toUtc().toIso8601String(),
-            },
-            onConflict: 'run_id,battery_code',
-          );
-
       final updatedRuns = List<RcRun>.from(_session.runs);
       final updatedReadings =
           List<BatteryRunReading>.from(updatedRuns[runIndex].readings);
@@ -161,18 +111,26 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         readings: List<BatteryRunReading>.unmodifiable(updatedReadings),
       );
 
+      final updatedSession = _session.copyWith(
+        runs: List<RcRun>.unmodifiable(updatedRuns),
+      );
+
+      final savedSession = await SessionService.saveSession(updatedSession);
+
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _session = _session.copyWith(
-          runs: List<RcRun>.unmodifiable(updatedRuns),
-        );
+        _session = savedSession;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mesures mises à jour.')),
+        const SnackBar(
+          content: Text(
+            'Mesures enregistrées dans la session et l’historique batterie.',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) {

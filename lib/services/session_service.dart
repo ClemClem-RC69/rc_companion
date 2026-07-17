@@ -8,6 +8,9 @@ class SessionService {
 
   static final _client = SupabaseService.client;
 
+  static const String _automaticMeasurementNotePrefix =
+      'Mesure automatique après roulage|session:';
+
   static Future<List<RcSession>> getSessions({
     required List<RcModel> models,
     required List<Battery> batteries,
@@ -107,8 +110,7 @@ class SessionService {
         final readings = rawMeasurements.map(
           (measurementRow) {
             return BatteryRunReading(
-              batteryId:
-                  measurementRow['battery_code'] as String,
+              batteryId: measurementRow['battery_code'] as String,
               measuredAt: _parseNullableDate(
                 measurementRow['measured_at'],
               ),
@@ -220,6 +222,8 @@ class SessionService {
 
     await _replaceRuns(
       sessionId: sessionId,
+      userId: user.id,
+      modelName: session.model.name,
       runs: session.runs,
     );
 
@@ -233,6 +237,11 @@ class SessionService {
       throw StateError('Utilisateur non connecté');
     }
 
+    await _deleteAutomaticBatteryMeasurements(
+      sessionId: sessionId,
+      userId: user.id,
+    );
+
     await _client
         .from('rc_sessions')
         .delete()
@@ -242,8 +251,18 @@ class SessionService {
 
   static Future<void> _replaceRuns({
     required String sessionId,
+    required String userId,
+    required String modelName,
     required List<RcRun> runs,
   }) async {
+    // Les roulages sont entièrement recréés à chaque sauvegarde.
+    // On supprime donc d'abord les relevés automatiques précédemment générés
+    // pour cette session afin d'éviter les doublons dans l'historique batterie.
+    await _deleteAutomaticBatteryMeasurements(
+      sessionId: sessionId,
+      userId: userId,
+    );
+
     await _client
         .from('session_runs')
         .delete()
@@ -277,23 +296,20 @@ class SessionService {
             );
       }
 
-      if (run.readings.isNotEmpty) {
-        final user = _client.auth.currentUser;
+      final validReadings = run.readings
+          .where((reading) => reading.hasMeasurements)
+          .toList(growable: false);
 
-        if (user == null) {
-          throw StateError('Utilisateur non connecté');
-        }
-
+      if (validReadings.isNotEmpty) {
         await _client.from('session_run_measurements').insert(
-              run.readings
-                  .where((reading) => reading.hasMeasurements)
+              validReadings
                   .map(
                     (reading) => {
                       'run_id': runId,
-                      'user_id': user.id,
+                      'user_id': userId,
                       'battery_code': reading.batteryId,
                       'measured_at':
-                          (reading.measuredAt ?? DateTime.now())
+                          _measurementDate(reading, run)
                               .toUtc()
                               .toIso8601String(),
                       'remaining_capacity_percent':
@@ -308,8 +324,90 @@ class SessionService {
                   )
                   .toList(),
             );
+
+        final batteryHistoryRows = validReadings
+            .where(_canCreateBatteryHistoryMeasurement)
+            .map(
+              (reading) => {
+                'user_id': userId,
+                'battery_code': reading.batteryId,
+                'measured_at':
+                    _measurementDate(reading, run)
+                        .toUtc()
+                        .toIso8601String(),
+                'measurement_type': 'Fin de session',
+                'charge_percent':
+                    reading.remainingCapacityPercent!
+                        .round()
+                        .clamp(0, 100),
+                'cell_voltages': reading.cellVoltages,
+                'cell_internal_resistances':
+                    reading.cellResistances,
+                'battery_temperature_c':
+                    reading.temperatureCelsius,
+                'notes': _automaticMeasurementNote(
+                  sessionId: sessionId,
+                  run: run,
+                  batteryCode: reading.batteryId,
+                  modelName: modelName,
+                ),
+              },
+            )
+            .toList(growable: false);
+
+        if (batteryHistoryRows.isNotEmpty) {
+          await _client
+              .from('battery_measurements')
+              .insert(batteryHistoryRows);
+        }
       }
     }
+  }
+
+  static bool _canCreateBatteryHistoryMeasurement(
+    BatteryRunReading reading,
+  ) {
+    return reading.remainingCapacityPercent != null &&
+        reading.cellVoltages.isNotEmpty &&
+        reading.cellResistances.isNotEmpty &&
+        reading.cellVoltages.length == reading.cellResistances.length;
+  }
+
+  static DateTime _measurementDate(
+    BatteryRunReading reading,
+    RcRun run,
+  ) {
+    return reading.measuredAt ??
+        run.endedAt ??
+        run.startedAt.add(
+          Duration(minutes: run.effectiveDurationMinutes),
+        );
+  }
+
+  static String _automaticMeasurementNote({
+    required String sessionId,
+    required RcRun run,
+    required String batteryCode,
+    required String modelName,
+  }) {
+    return '$_automaticMeasurementNotePrefix$sessionId'
+        '|model:$modelName'
+        '|run:${run.startedAt.toUtc().toIso8601String()}'
+        '|battery:$batteryCode';
+  }
+
+  static Future<void> _deleteAutomaticBatteryMeasurements({
+    required String sessionId,
+    required String userId,
+  }) async {
+    await _client
+        .from('battery_measurements')
+        .delete()
+        .eq('user_id', userId)
+        .like(
+          'notes',
+          '$_automaticMeasurementNotePrefix$sessionId%',
+        );
   }
 
   static List<double> _toDoubleList(dynamic value) {

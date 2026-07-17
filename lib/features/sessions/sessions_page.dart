@@ -180,7 +180,7 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   String _batteryLabel(Battery battery) {
-    return '${battery.id} — ${battery.brand} — ${battery.technology} — '
+    return '${battery.brand} — ${battery.technology} — '
         '${battery.cells} — ${battery.capacity} mAh — ${battery.cRate}C';
   }
 
@@ -779,6 +779,22 @@ class _SessionsPageState extends State<SessionsPage> {
   Future<RcSession?> _askForMeasurementsBeforeClosing(
     RcSession session,
   ) async {
+    final hasMissingMeasurements = session.runs.any(
+      (run) => run.batteries.any(
+        (battery) {
+          final reading = run.readings.where(
+            (item) => item.batteryId == battery.id,
+          );
+
+          return reading.isEmpty || !reading.first.hasMeasurements;
+        },
+      ),
+    );
+
+    if (!hasMissingMeasurements) {
+      return session;
+    }
+
     final choice = await showDialog<_MeasurementChoice>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1517,7 +1533,20 @@ class _BatterySelector extends StatelessWidget {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.battery_full),
-                title: Text(battery!.id),
+                title: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(text: battery!.id),
+                      if (battery!.isPaired)
+                        TextSpan(
+                          text: '  [P-${battery!.pairId!.split('-').last}]',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
                 subtitle: Text(labelBuilder(battery!)),
                 trailing: IconButton(
                   tooltip: 'Retirer',
@@ -1564,7 +1593,20 @@ class _BatteryChoiceDialog extends StatelessWidget {
 
                   return ListTile(
                     leading: const Icon(Icons.battery_charging_full),
-                    title: Text(battery.id),
+                    title: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(text: battery.id),
+                          if (battery.isPaired)
+                            TextSpan(
+                              text: '  [P-${battery.pairId!.split('-').last}]',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                     subtitle: Text(labelBuilder(battery)),
                     onTap: () => Navigator.of(context).pop(battery),
                   );
@@ -2367,8 +2409,22 @@ class _BatteryMeasurementDialogState
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(
-        'Roulage ${widget.runNumber} — ${widget.battery.id}',
+      title: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: 'Roulage ${widget.runNumber} — ${widget.battery.id}',
+            ),
+            if (widget.battery.isPaired)
+              TextSpan(
+                text:
+                    '  [P-${widget.battery.pairId!.split('-').last}]',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+          ],
+        ),
       ),
       content: SizedBox(
         width: 560,

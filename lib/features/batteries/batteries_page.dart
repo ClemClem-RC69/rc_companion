@@ -207,6 +207,62 @@ class _BatteriesPageState extends State<BatteriesPage> {
     }
   }
 
+  Future<void> _editReferenceMeasurement(
+    Battery battery,
+  ) async {
+    try {
+      final existing =
+          await BatteryService.getReferenceMeasurement(battery.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      final measurement = await showDialog<BatteryMeasurement>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _ReferenceMeasurementDialog(
+          battery: battery,
+          initialMeasurement: existing,
+        ),
+      );
+
+      if (measurement == null) {
+        return;
+      }
+
+      await BatteryService.saveReferenceMeasurement(measurement);
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            existing == null
+                ? 'Mesure de référence enregistrée'
+                : 'Mesure de référence modifiée',
+          ),
+        ),
+      );
+
+      await _loadBatteries();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Mesure de référence impossible : $error',
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _deleteBattery(Battery battery) async {
     final pairMessage = battery.isPaired
         ? '\n\nLa batterie restante sera automatiquement retirée de la paire ${battery.pairId}.'
@@ -557,6 +613,8 @@ class _BatteriesPageState extends State<BatteriesPage> {
         trailing: PopupMenuButton<String>(
           onSelected: (value) {
             switch (value) {
+              case 'reference':
+                _editReferenceMeasurement(battery);
               case 'dissolve':
                 _dissolvePair(battery);
               case 'delete':
@@ -564,6 +622,14 @@ class _BatteriesPageState extends State<BatteriesPage> {
             }
           },
           itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'reference',
+              child: ListTile(
+                leading: Icon(Icons.straighten_outlined),
+                title: Text('Modifier la mesure de référence'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
             if (battery.isPaired)
               const PopupMenuItem(
                 value: 'dissolve',
@@ -850,6 +916,15 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
       );
 
       await BatteryService.createBattery(battery);
+
+      if (!mounted) {
+        return;
+      }
+
+      await _proposeReferenceMeasurement(
+        context: context,
+        battery: battery,
+      );
 
       if (mounted) {
         Navigator.pop(context, true);
@@ -1211,30 +1286,46 @@ class _CreatePairPageState extends State<CreatePairPage>
       return;
     }
 
-    final valid1 = _source1 == PairBatterySource.existingBattery
-        ? _existing1 != null
-        : (_formKey1.currentState?.validate() ?? false);
+    FocusScope.of(context).unfocus();
 
-    final valid2 = _source2 == PairBatterySource.existingBattery
-        ? _existing2 != null
-        : (_formKey2.currentState?.validate() ?? false);
+    final firstDraft = _batteryForSlot(1);
+    final secondDraft = _batteryForSlot(2);
 
-    if (!valid1) {
+    if (firstDraft == null) {
       _tabController.animateTo(0);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Complète les informations de la batterie 1.'),
+          ),
+        );
+      }
+
       return;
     }
 
-    if (!valid2) {
+    if (secondDraft == null) {
       _tabController.animateTo(1);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Complète les informations de la batterie 2.'),
+          ),
+        );
+      }
+
       return;
     }
 
-    if (!_compatible) {
+    if (_sameExisting ||
+        !BatteryService.arePairCompatible(firstDraft, secondDraft)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Batterie incompatible pour la paire, '
-            'choisir ou renseigner un autre modèle.',
+            'Batteries incompatibles : technologie, cellules, capacité '
+            'et taux C doivent être identiques.',
           ),
         ),
       );
@@ -1242,6 +1333,8 @@ class _CreatePairPageState extends State<CreatePairPage>
     }
 
     setState(() => _isSaving = true);
+
+    final newBatteries = <Battery>[];
 
     try {
       if (_source1 == PairBatterySource.existingBattery &&
@@ -1252,16 +1345,24 @@ class _CreatePairPageState extends State<CreatePairPage>
         );
       } else if (_source1 == PairBatterySource.newBattery &&
           _source2 == PairBatterySource.existingBattery) {
+        final newBattery = await _buildNewBattery(1);
+
         await BatteryService.createBatteryPairedWithExisting(
-          newBattery: await _buildNewBattery(1),
+          newBattery: newBattery,
           existingBatteryCode: _existing2!.id,
         );
+
+        newBatteries.add(newBattery);
       } else if (_source1 == PairBatterySource.existingBattery &&
           _source2 == PairBatterySource.newBattery) {
+        final newBattery = await _buildNewBattery(2);
+
         await BatteryService.createBatteryPairedWithExisting(
-          newBattery: await _buildNewBattery(2),
+          newBattery: newBattery,
           existingBatteryCode: _existing1!.id,
         );
+
+        newBatteries.add(newBattery);
       } else {
         final now = DateTime.now();
         final pairNumber = await BatteryService.getNextPairNumber(now);
@@ -1271,48 +1372,48 @@ class _CreatePairPageState extends State<CreatePairPage>
         );
 
         final firstNumber = await BatteryService.getNextBatteryNumber(
-          technology: _technology1,
+          technology: firstDraft.technology,
           date: now,
         );
 
-        final first = Battery(
+        final first = firstDraft.copyWith(
           id: BatteryService.buildBatteryCode(
-            technology: _technology1,
+            technology: firstDraft.technology,
             date: now,
             number: firstNumber,
           ),
-          technology: _technology1,
-          brand: _brand1.text.trim(),
-          capacity: int.parse(_capacity1.text.trim()),
-          cells: _cells1,
-          cRate: int.parse(_cRate1.text.trim()),
-          status: 'Active',
           pairId: pairId,
-          notes: _notes1.text.trim().isEmpty ? null : _notes1.text.trim(),
         );
 
-        final second = Battery(
+        final second = secondDraft.copyWith(
           id: BatteryService.buildBatteryCode(
-            technology: _technology2,
+            technology: secondDraft.technology,
             date: now,
             number: firstNumber + 1,
           ),
-          technology: _technology2,
-          brand: _brand2.text.trim(),
-          capacity: int.parse(_capacity2.text.trim()),
-          cells: _cells2,
-          cRate: int.parse(_cRate2.text.trim()),
-          status: 'Active',
           pairId: pairId,
-          notes: _notes2.text.trim().isEmpty ? null : _notes2.text.trim(),
         );
 
         await BatteryService.createBatteries([first, second]);
+        newBatteries.addAll([first, second]);
       }
 
-      if (mounted) {
-        Navigator.pop(context, true);
+      if (!mounted) {
+        return;
       }
+
+      for (final battery in newBatteries) {
+        await _proposeReferenceMeasurement(
+          context: context,
+          battery: battery,
+        );
+
+        if (!mounted) {
+          return;
+        }
+      }
+
+      Navigator.pop(context, true);
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1499,15 +1600,45 @@ class _CreatePairPageState extends State<CreatePairPage>
     return DropdownButtonFormField<String>(
       initialValue: selected?.id,
       isExpanded: true,
-      itemHeight: null,
+      itemHeight: 68,
+      menuMaxHeight: 420,
       decoration: const InputDecoration(
         labelText: 'Batterie existante',
         border: OutlineInputBorder(),
       ),
       hint: const Text('Sélectionner une batterie'),
+      selectedItemBuilder: (context) {
+        return choices.map((battery) {
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.battery_charging_full,
+                  color: _technologyColor(battery.technology),
+                  size: 24,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${battery.id} — ${battery.brand} — '
+                    '${battery.cells} — ${battery.capacity} mAh — '
+                    '${battery.cRate}C',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList();
+      },
       items: choices
           .map(
-            (battery) => DropdownMenuItem(
+            (battery) => DropdownMenuItem<String>(
               value: battery.id,
               child: Row(
                 children: [
@@ -1524,15 +1655,17 @@ class _CreatePairPageState extends State<CreatePairPage>
                       children: [
                         Text(
                           battery.id,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                         Text(
                           '${battery.brand} • ${battery.technology} • '
                           '${battery.cells} • ${battery.capacity} mAh • '
                           '${battery.cRate}C',
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
@@ -1665,8 +1798,7 @@ class _CreatePairPageState extends State<CreatePairPage>
                         child: SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
-                            onPressed:
-                                _isSaving || !_compatible ? null : _savePair,
+                            onPressed: _isSaving ? null : _savePair,
                             icon: _isSaving
                                 ? const SizedBox.square(
                                     dimension: 18,
@@ -1688,6 +1820,399 @@ class _CreatePairPageState extends State<CreatePairPage>
   }
 }
 
+
+Future<void> _proposeReferenceMeasurement({
+  required BuildContext context,
+  required Battery battery,
+}) async {
+  final now = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => AlertDialog(
+      icon: const Icon(Icons.straighten_outlined),
+      title: const Text('Mesure de référence'),
+      content: Text(
+        'La batterie ${battery.id} est enregistrée.\n\n'
+        'Souhaites-tu renseigner sa mesure de référence maintenant ?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Plus tard'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('Renseigner maintenant'),
+        ),
+      ],
+    ),
+  );
+
+  if (now != true || !context.mounted) {
+    return;
+  }
+
+  final measurement = await showDialog<BatteryMeasurement>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => _ReferenceMeasurementDialog(
+      battery: battery,
+    ),
+  );
+
+  if (measurement == null) {
+    return;
+  }
+
+  await BatteryService.saveReferenceMeasurement(measurement);
+
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Mesure de référence enregistrée pour ${battery.id}',
+        ),
+      ),
+    );
+  }
+}
+
+class _ReferenceMeasurementDialog extends StatefulWidget {
+  const _ReferenceMeasurementDialog({
+    required this.battery,
+    this.initialMeasurement,
+  });
+
+  final Battery battery;
+  final BatteryMeasurement? initialMeasurement;
+
+  @override
+  State<_ReferenceMeasurementDialog> createState() =>
+      _ReferenceMeasurementDialogState();
+}
+
+class _ReferenceMeasurementDialogState
+    extends State<_ReferenceMeasurementDialog> {
+  final _formKey = GlobalKey<FormState>();
+
+  late final TextEditingController _chargeController;
+  late final TextEditingController _temperatureController;
+  late final List<TextEditingController> _voltageControllers;
+  late final List<TextEditingController> _resistanceControllers;
+
+  bool _isSaving = false;
+
+  int get _cellCount {
+    return int.tryParse(
+          widget.battery.cells.replaceAll('S', ''),
+        ) ??
+        1;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    final initial = widget.initialMeasurement;
+
+    _chargeController = TextEditingController(
+      text: initial?.chargePercent.toString() ?? '100',
+    );
+    _temperatureController = TextEditingController(
+      text: initial?.batteryTemperature?.toStringAsFixed(1) ?? '',
+    );
+
+    _voltageControllers = List.generate(
+      _cellCount,
+      (index) => TextEditingController(
+        text: initial != null && index < initial.cellVoltages.length
+            ? initial.cellVoltages[index].toStringAsFixed(3)
+            : '',
+      ),
+    );
+
+    _resistanceControllers = List.generate(
+      _cellCount,
+      (index) => TextEditingController(
+        text: initial != null &&
+                index < initial.cellInternalResistances.length
+            ? initial.cellInternalResistances[index].toStringAsFixed(2)
+            : '',
+      ),
+    );
+
+    for (final controller in [
+      ..._voltageControllers,
+      ..._resistanceControllers,
+    ]) {
+      controller.addListener(_refreshTotals);
+    }
+  }
+
+  @override
+  void dispose() {
+    _chargeController.dispose();
+    _temperatureController.dispose();
+
+    for (final controller in _voltageControllers) {
+      controller.dispose();
+    }
+
+    for (final controller in _resistanceControllers) {
+      controller.dispose();
+    }
+
+    super.dispose();
+  }
+
+  void _refreshTotals() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  double? _parseDecimal(String value) {
+    return double.tryParse(
+      value.trim().replaceAll(',', '.'),
+    );
+  }
+
+  double get _totalVoltage {
+    return _voltageControllers.fold<double>(
+      0,
+      (sum, controller) =>
+          sum + (_parseDecimal(controller.text) ?? 0),
+    );
+  }
+
+  double get _totalResistance {
+    return _resistanceControllers.fold<double>(
+      0,
+      (sum, controller) =>
+          sum + (_parseDecimal(controller.text) ?? 0),
+    );
+  }
+
+  String? _validatePositiveDecimal(
+    String? value,
+    String label,
+  ) {
+    final parsed = _parseDecimal(value ?? '');
+
+    if (parsed == null || parsed <= 0) {
+      return '$label invalide';
+    }
+
+    return null;
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate() || _isSaving) {
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    final temperatureText = _temperatureController.text.trim();
+
+    Navigator.pop(
+      context,
+      BatteryMeasurement(
+        id: widget.initialMeasurement?.id,
+        batteryCode: widget.battery.id,
+        measuredAt:
+            widget.initialMeasurement?.measuredAt ?? DateTime.now(),
+        measurementType: BatteryMeasurement.referenceType,
+        chargePercent: int.parse(_chargeController.text.trim()),
+        cellVoltages: _voltageControllers
+            .map((controller) => _parseDecimal(controller.text)!)
+            .toList(growable: false),
+        cellInternalResistances: _resistanceControllers
+            .map((controller) => _parseDecimal(controller.text)!)
+            .toList(growable: false),
+        batteryTemperature: temperatureText.isEmpty
+            ? null
+            : _parseDecimal(temperatureText),
+        notes: widget.initialMeasurement?.notes,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+        widget.initialMeasurement == null
+            ? 'Mesure de référence — ${widget.battery.id}'
+            : 'Modifier la référence — ${widget.battery.id}',
+      ),
+      content: SizedBox(
+        width: 620,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _chargeController,
+                        enabled: !_isSaving,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Capacité restante',
+                          suffixText: '%',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          final percent = int.tryParse(
+                            value?.trim() ?? '',
+                          );
+
+                          if (percent == null ||
+                              percent < 0 ||
+                              percent > 100) {
+                            return 'Valeur entre 0 et 100';
+                          }
+
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _temperatureController,
+                        enabled: !_isSaving,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Température facultative',
+                          suffixText: '°C',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return null;
+                          }
+
+                          final parsed = _parseDecimal(value);
+
+                          if (parsed == null ||
+                              parsed < -30 ||
+                              parsed > 100) {
+                            return 'Température invalide';
+                          }
+
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                for (var index = 0; index < _cellCount; index++) ...[
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 74,
+                        child: Text(
+                          'Cellule ${index + 1}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _voltageControllers[index],
+                          enabled: !_isSaving,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Tension',
+                            suffixText: 'V',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) =>
+                              _validatePositiveDecimal(
+                            value,
+                            'Tension',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _resistanceControllers[index],
+                          enabled: !_isSaving,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Résistance',
+                            suffixText: 'mΩ',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) =>
+                              _validatePositiveDecimal(
+                            value,
+                            'Résistance',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                const Divider(height: 28),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Tension totale automatique'),
+                  trailing: Text(
+                    '${_totalVoltage.toStringAsFixed(3)} V',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Résistance totale automatique'),
+                  trailing: Text(
+                    '${_totalResistance.toStringAsFixed(2)} mΩ',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed:
+              _isSaving ? null : () => Navigator.pop(context),
+          child: const Text('Annuler'),
+        ),
+        FilledButton.icon(
+          onPressed: _isSaving ? null : _save,
+          icon: const Icon(Icons.save),
+          label: const Text('Enregistrer'),
+        ),
+      ],
+    );
+  }
+}
 
 enum _BatteryHealthLevel {
   notEvaluated,

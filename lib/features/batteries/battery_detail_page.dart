@@ -1376,9 +1376,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             child: Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'À l’enregistrement, indique simplement s’il s’agit '
-                'd’une mesure après charge ou d’une mesure de contrôle. '
-                'La température de la batterie reste facultative.',
+                'Les mesures de fin de session sont enregistrées '
+                'automatiquement. Pour une saisie manuelle, choisis '
+                'Après charge ou Contrôle. La température reste facultative.',
               ),
             ),
           ),
@@ -1429,12 +1429,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               ),
             )
           else
-            ..._measurements.asMap().entries.map(
-                  (entry) => _measurementCard(
-                    entry.value,
-                    isReference: entry.key == _measurements.length - 1,
-                  ),
-                ),
+            ..._measurements.map(_measurementCard),
         ],
       ),
     );
@@ -1492,7 +1487,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     }
 
     final latest = _measurements.first;
-    final reference = _measurements.last;
+    final reference = _measurements.firstWhere(
+      (measurement) => measurement.isReference,
+      orElse: () => _measurements.last,
+    );
     final analysis = _analyzeMeasurement(latest);
 
     final resistanceEvolution =
@@ -1662,47 +1660,141 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     );
   }
 
-  Widget _measurementCard(
-    BatteryMeasurement measurement, {
-    required bool isReference,
-  }) {
-    final analysis = _analyzeMeasurement(measurement);
+  String? _modelNameFromMeasurement(
+    BatteryMeasurement measurement,
+  ) {
+    final notes = measurement.notes;
+
+    if (notes == null || notes.isEmpty) {
+      return null;
+    }
+
+    for (final part in notes.split('|')) {
+      if (part.startsWith('model:')) {
+        final modelName = part.substring('model:'.length).trim();
+        return modelName.isEmpty ? null : modelName;
+      }
+    }
+
+    return null;
+  }
+
+  bool _isAutomaticSessionNote(String? notes) {
+    return notes?.startsWith(
+          'Mesure automatique après roulage|session:',
+        ) ??
+        false;
+  }
+
+  Color _measurementTypeColor(BatteryMeasurement measurement) {
+    if (measurement.isReference) {
+      return Colors.purple.shade700;
+    }
+
+    if (measurement.isAfterCharge) {
+      return Colors.green.shade700;
+    }
+
+    if (measurement.isEndOfSession) {
+      return Colors.blue.shade700;
+    }
+
+    return Colors.orange.shade700;
+  }
+
+  IconData _measurementTypeIcon(BatteryMeasurement measurement) {
+    if (measurement.isReference) {
+      return Icons.straighten_outlined;
+    }
+
+    if (measurement.isAfterCharge) {
+      return Icons.battery_charging_full;
+    }
+
+    if (measurement.isEndOfSession) {
+      return Icons.sports_score;
+    }
+
+    return Icons.search;
+  }
+
+  String _measurementTypeTitle(BatteryMeasurement measurement) {
+    return measurement.measurementType.toUpperCase();
+  }
+
+  Widget _measurementCard(BatteryMeasurement measurement) {
+    final typeColor = _measurementTypeColor(measurement);
+    final modelName = _modelNameFromMeasurement(measurement);
+    final visibleNote = _isAutomaticSessionNote(measurement.notes)
+        ? null
+        : measurement.notes;
 
     return Card(
       child: ExpansionTile(
         key: PageStorageKey<String>(
           'measurement-${measurement.id ?? measurement.measuredAt.toIso8601String()}',
         ),
-        leading: Icon(
-          analysis.hasCritical
-              ? Icons.error
-              : analysis.hasWarning
-                  ? Icons.warning_amber
-                  : Icons.check_circle,
-          color: analysis.hasCritical
-              ? Theme.of(context).colorScheme.error
-              : analysis.hasWarning
-                  ? Colors.orange
-                  : Colors.green,
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: typeColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            _measurementTypeIcon(measurement),
+            color: Colors.white,
+          ),
         ),
-        title: Text(
-          _formatDateTime(measurement.measuredAt),
-          style: const TextStyle(fontWeight: FontWeight.w600),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _measurementTypeTitle(measurement),
+                style: TextStyle(
+                  color: typeColor,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ],
         ),
-        subtitle: Text(
-          '${measurement.measurementType} • '
-          '${measurement.chargePercent}% • '
-          '${measurement.totalVoltage.toStringAsFixed(3)} V • '
-          'RI ${measurement.averageInternalResistance.toStringAsFixed(2)} mΩ'
-          '${isReference ? ' • Référence' : ''}',
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (measurement.isEndOfSession && modelName != null)
+                Text(
+                  'Modèle : $modelName',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              Text(_formatDateTime(measurement.measuredAt)),
+              const SizedBox(height: 3),
+              Text(
+                '${measurement.chargePercent}% • '
+                '${measurement.totalVoltage.toStringAsFixed(3)} V • '
+                'RI ${measurement.averageInternalResistance.toStringAsFixed(2)} mΩ',
+              ),
+            ],
+          ),
         ),
         controlAffinity: ListTileControlAffinity.trailing,
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
+          const SizedBox(height: 8),
           _resultLine(
             'Type de mesure',
             measurement.measurementType,
           ),
+          if (measurement.isEndOfSession && modelName != null)
+            _resultLine(
+              'Modèle utilisé',
+              modelName,
+            ),
           _resultLine(
             'Niveau de charge',
             '${measurement.chargePercent}%',
@@ -1718,6 +1810,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
           _resultLine(
             'RI moyenne',
             '${measurement.averageInternalResistance.toStringAsFixed(2)} mΩ',
+          ),
+          _resultLine(
+            'Résistance totale',
+            '${measurement.totalInternalResistance.toStringAsFixed(2)} mΩ',
           ),
           _resultLine(
             'Écart maximal RI',
@@ -1741,12 +1837,11 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 '${measurement.cellInternalResistances[index].toStringAsFixed(2)} mΩ',
               ),
             ),
-          if (measurement.notes != null &&
-              measurement.notes!.trim().isNotEmpty) ...[
+          if (visibleNote != null && visibleNote.trim().isNotEmpty) ...[
             const Divider(height: 24),
             Align(
               alignment: Alignment.centerLeft,
-              child: Text('Note : ${measurement.notes}'),
+              child: Text('Note : $visibleNote'),
             ),
           ],
           const SizedBox(height: 12),

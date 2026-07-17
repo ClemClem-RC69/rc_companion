@@ -356,6 +356,121 @@ class BatteryService {
         .toList();
   }
 
+  static Future<BatteryMeasurement?> getReferenceMeasurement(
+    String batteryCode,
+  ) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      return null;
+    }
+
+    final response = await _client
+        .from('battery_measurements')
+        .select()
+        .eq('user_id', user.id)
+        .eq('battery_code', batteryCode)
+        .eq(
+          'measurement_type',
+          BatteryMeasurement.referenceType,
+        )
+        .order('measured_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (response == null) {
+      return null;
+    }
+
+    return BatteryMeasurement.fromJson(
+      Map<String, dynamic>.from(response),
+    );
+  }
+
+  static Future<BatteryMeasurement> saveReferenceMeasurement(
+    BatteryMeasurement measurement,
+  ) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw StateError('Utilisateur non connecté');
+    }
+
+    if (measurement.cellVoltages.isEmpty) {
+      throw StateError('Aucune tension de cellule renseignée');
+    }
+
+    if (measurement.cellInternalResistances.isEmpty) {
+      throw StateError(
+        'Aucune résistance interne de cellule renseignée',
+      );
+    }
+
+    if (measurement.cellVoltages.length !=
+        measurement.cellInternalResistances.length) {
+      throw StateError(
+        'Le nombre de tensions et de résistances internes doit être identique',
+      );
+    }
+
+    final existingRows = await _client
+        .from('battery_measurements')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('battery_code', measurement.batteryCode)
+        .eq(
+          'measurement_type',
+          BatteryMeasurement.referenceType,
+        )
+        .order('measured_at');
+
+    final data = {
+      'user_id': user.id,
+      ...measurement.copyWith(
+        measurementType: BatteryMeasurement.referenceType,
+      ).toJson(),
+    };
+
+    if (existingRows.isEmpty) {
+      final insertedRow = await _client
+          .from('battery_measurements')
+          .insert(data)
+          .select()
+          .single();
+
+      return BatteryMeasurement.fromJson(
+        Map<String, dynamic>.from(insertedRow),
+      );
+    }
+
+    final referenceId = (existingRows.first['id'] as num).toInt();
+
+    final updatedRow = await _client
+        .from('battery_measurements')
+        .update(data)
+        .eq('user_id', user.id)
+        .eq('id', referenceId)
+        .select()
+        .single();
+
+    if (existingRows.length > 1) {
+      final duplicateIds = existingRows
+          .skip(1)
+          .map((row) => (row['id'] as num).toInt())
+          .toList(growable: false);
+
+      await _client
+          .from('battery_measurements')
+          .delete()
+          .eq('user_id', user.id)
+          .inFilter('id', duplicateIds);
+    }
+
+    return BatteryMeasurement.fromJson(
+      Map<String, dynamic>.from(updatedRow),
+    );
+  }
+
   static Future<BatteryMeasurement?> getLatestBatteryMeasurement(
     String batteryCode,
   ) async {
@@ -473,7 +588,7 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    final prefix = '${_technologyPrefix(technology)}-${_formatDate(date)}-';
+    final prefix = '${_technologyPrefix(technology)}-';
 
     final response = await _client
         .from('batteries')
@@ -485,11 +600,13 @@ class BatteryService {
 
     for (final row in response) {
       final code = row['battery_code'] as String?;
-      if (code == null) {
+
+      if (code == null || !code.startsWith(prefix)) {
         continue;
       }
 
-      final number = int.tryParse(code.split('-').last);
+      final number = int.tryParse(code.substring(prefix.length));
+
       if (number != null && number > highestNumber) {
         highestNumber = number;
       }
@@ -505,23 +622,23 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    final prefix = 'P-${_formatDate(date)}-';
-
     final response = await _client
         .from('batteries')
         .select('pair_id')
         .eq('user_id', user.id)
-        .like('pair_id', '$prefix%');
+        .like('pair_id', 'P-%');
 
     var highestNumber = 0;
 
     for (final row in response) {
       final pairId = row['pair_id'] as String?;
-      if (pairId == null) {
+
+      if (pairId == null || !pairId.startsWith('P-')) {
         continue;
       }
 
-      final number = int.tryParse(pairId.split('-').last);
+      final number = int.tryParse(pairId.substring(2));
+
       if (number != null && number > highestNumber) {
         highestNumber = number;
       }
@@ -543,7 +660,6 @@ class BatteryService {
     required int number,
   }) {
     return '${_technologyPrefix(technology)}-'
-        '${_formatDate(date)}-'
         '${number.toString().padLeft(3, '0')}';
   }
 
@@ -551,8 +667,7 @@ class BatteryService {
     required DateTime date,
     required int number,
   }) {
-    return 'P-${_formatDate(date)}-'
-        '${number.toString().padLeft(3, '0')}';
+    return 'P-${number.toString().padLeft(3, '0')}';
   }
 
   static Future<Battery?> _getBatteryByCode(String batteryCode) async {
@@ -579,17 +694,31 @@ class BatteryService {
   }
 
   static String _technologyPrefix(String technology) {
-    return technology
-        .toUpperCase()
+    final normalized = technology
+        .toLowerCase()
         .replaceAll('-', '')
         .replaceAll(' ', '');
-  }
 
-  static String _formatDate(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final year = date.year.toString();
+    switch (normalized) {
+      case 'lipo':
+        return 'LiPo';
+      case 'lihv':
+        return 'LiHV';
+      case 'liion':
+        return 'LiIon';
+      case 'life':
+        return 'LiFe';
+      case 'nimh':
+        return 'NiMH';
+      case 'nicd':
+        return 'NiCd';
+      default:
+        final cleaned = technology
+            .trim()
+            .replaceAll('-', '')
+            .replaceAll(' ', '');
 
-    return '$day$month$year';
+        return cleaned.isEmpty ? 'BAT' : cleaned;
+    }
   }
 }
