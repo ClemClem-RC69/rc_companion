@@ -121,8 +121,8 @@ class DashboardPage extends StatelessWidget {
           ),
           HomeCard(
             icon: Icons.route,
-            title: 'Nouvelle session',
-            subtitle: 'Enregistrer une sortie',
+            title: 'Session de roulage',
+            subtitle: 'Ouvrir ou reprendre une session',
             onTap: () => open(context, const SessionsPage()),
           ),
           HomeCard(

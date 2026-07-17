@@ -1499,7 +1499,7 @@ class _CreatePairPageState extends State<CreatePairPage>
     return DropdownButtonFormField<String>(
       initialValue: selected?.id,
       isExpanded: true,
-      itemHeight: 72,
+      itemHeight: null,
       decoration: const InputDecoration(
         labelText: 'Batterie existante',
         border: OutlineInputBorder(),
@@ -1612,18 +1612,45 @@ class _CreatePairPageState extends State<CreatePairPage>
               : Column(
                   children: [
                     if (_complete && !_compatible)
-                      MaterialBanner(
-                        leading: const Icon(Icons.error_outline),
-                        content: const Text(
-                          'Batterie incompatible pour la paire, '
-                          'choisir ou renseigner un autre modèle.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => _tabController.animateTo(1),
-                            child: const Text('Modifier'),
+                      Container(
+                        margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.red.shade700,
+                            width: 2,
                           ),
-                        ],
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.error,
+                              color: Colors.red.shade700,
+                              size: 34,
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'BATTERIES INCOMPATIBLES\n'
+                                'Les deux batteries doivent avoir la même '
+                                'technologie, le même nombre de cellules, '
+                                'la même capacité et le même taux C.',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => _tabController.animateTo(1),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red.shade700,
+                              ),
+                              child: const Text('Modifier'),
+                            ),
+                          ],
+                        ),
                       ),
                     Expanded(
                       child: TabBarView(

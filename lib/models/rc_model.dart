@@ -8,12 +8,19 @@ class RcModel {
     required this.scale,
     required this.batteryCount,
     required this.maxCells,
+    this.id,
     this.photoUrl,
     this.weightKg,
 
     // Radio associée au modèle
     this.radioId,
   });
+
+  /// Identifiant unique du modèle dans Supabase.
+  ///
+  /// Il peut rester null pour les objets créés localement avant leur
+  /// enregistrement en base.
+  final String? id;
 
   final String name;
   final String brand;
@@ -35,6 +42,7 @@ class RcModel {
   final String? radioId;
 
   RcModel copyWith({
+    String? id,
     String? name,
     String? brand,
     String? category,
@@ -46,10 +54,12 @@ class RcModel {
     String? photoUrl,
     double? weightKg,
     String? radioId,
+    bool clearId = false,
     bool clearPhoto = false,
     bool clearRadio = false,
   }) {
     return RcModel(
+      id: clearId ? null : (id ?? this.id),
       name: name ?? this.name,
       brand: brand ?? this.brand,
       category: category ?? this.category,
@@ -63,6 +73,8 @@ class RcModel {
       radioId: clearRadio ? null : (radioId ?? this.radioId),
     );
   }
+
+  bool get hasId => id != null && id!.trim().isNotEmpty;
 
   bool get hasPhoto =>
       photoUrl != null && photoUrl!.trim().isNotEmpty;

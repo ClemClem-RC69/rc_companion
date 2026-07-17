@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class BatteryScannerPage extends StatefulWidget {
-  const BatteryScannerPage({super.key});
+  const BatteryScannerPage({
+    super.key,
+    this.title = 'Scanner une batterie',
+  });
+
+  final String title;
 
   @override
   State<BatteryScannerPage> createState() => _BatteryScannerPageState();
@@ -14,36 +19,27 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
     formats: const [BarcodeFormat.qrCode],
   );
 
-  bool _hasScanned = false;
+  bool _isReturningResult = false;
 
   Future<void> _handleDetection(BarcodeCapture capture) async {
-    if (_hasScanned) {
+    if (_isReturningResult || capture.barcodes.isEmpty) {
       return;
     }
 
-    String? scannedValue;
+    final rawValue = capture.barcodes.first.rawValue?.trim();
 
-    for (final barcode in capture.barcodes) {
-      final value = barcode.rawValue?.trim();
-
-      if (value != null && value.isNotEmpty) {
-        scannedValue = value;
-        break;
-      }
-    }
-
-    if (scannedValue == null) {
+    if (rawValue == null || rawValue.isEmpty) {
       return;
     }
 
-    _hasScanned = true;
+    _isReturningResult = true;
     await _controller.stop();
 
     if (!mounted) {
       return;
     }
 
-    Navigator.pop(context, scannedValue);
+    Navigator.of(context).pop(rawValue);
   }
 
   @override
@@ -57,18 +53,18 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Scanner une batterie'),
+        title: Text(widget.title),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            tooltip: 'Activer ou désactiver le flash',
             onPressed: _controller.toggleTorch,
-            tooltip: 'Activer ou désactiver la lampe',
             icon: const Icon(Icons.flash_on),
           ),
           IconButton(
-            onPressed: _controller.switchCamera,
             tooltip: 'Changer de caméra',
+            onPressed: _controller.switchCamera,
             icon: const Icon(Icons.cameraswitch),
           ),
         ],
@@ -80,37 +76,27 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
             controller: _controller,
             onDetect: _handleDetection,
           ),
-          IgnorePointer(
-            child: CustomPaint(
-              painter: _ScannerOverlayPainter(),
-            ),
-          ),
-          const SafeArea(
+          const _ScannerOverlay(),
+          SafeArea(
             child: Align(
               alignment: Alignment.bottomCenter,
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(24, 24, 24, 36),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black87,
-                    borderRadius: BorderRadius.all(
-                      Radius.circular(14),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 14,
-                    ),
-                    child: Text(
-                      'Place le QR Code de la batterie dans le cadre.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+              child: Container(
+                margin: const EdgeInsets.all(20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Text(
+                  'Place le QR Code de la batterie dans le cadre.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -122,88 +108,63 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
   }
 }
 
-class _ScannerOverlayPainter extends CustomPainter {
+class _ScannerOverlay extends StatelessWidget {
+  const _ScannerOverlay();
+
   @override
-  void paint(Canvas canvas, Size size) {
-    final cutOutSize = size.shortestSide * 0.62;
-    final left = (size.width - cutOutSize) / 2;
-    final top = (size.height - cutOutSize) / 2;
-    final cutOutRect = Rect.fromLTWH(
-      left,
-      top,
-      cutOutSize,
-      cutOutSize,
-    );
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final shortestSide = constraints.biggest.shortestSide;
+          final scanSize = (shortestSide * 0.72).clamp(240.0, 360.0);
 
-    final overlayPath = Path()
-      ..fillType = PathFillType.evenOdd
-      ..addRect(Offset.zero & size)
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          cutOutRect,
-          const Radius.circular(18),
-        ),
-      );
-
-    canvas.drawPath(
-      overlayPath,
-      Paint()..color = Colors.black54,
-    );
-
-    const borderLength = 30.0;
-    const borderWidth = 4.0;
-
-    final borderPaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = borderWidth
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    final right = cutOutRect.right;
-    final bottom = cutOutRect.bottom;
-
-    canvas.drawLine(
-      Offset(left, top + borderLength),
-      Offset(left, top),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(left, top),
-      Offset(left + borderLength, top),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(right - borderLength, top),
-      Offset(right, top),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(right, top),
-      Offset(right, top + borderLength),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(left, bottom - borderLength),
-      Offset(left, bottom),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(left, bottom),
-      Offset(left + borderLength, bottom),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(right - borderLength, bottom),
-      Offset(right, bottom),
-      borderPaint,
-    );
-    canvas.drawLine(
-      Offset(right, bottom),
-      Offset(right, bottom - borderLength),
-      borderPaint,
+          return Stack(
+            children: [
+              ColorFiltered(
+                colorFilter: ColorFilter.mode(
+                  Colors.black.withValues(alpha: 0.58),
+                  BlendMode.srcOut,
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.black,
+                        backgroundBlendMode: BlendMode.dstOut,
+                      ),
+                    ),
+                    Center(
+                      child: Container(
+                        width: scanSize,
+                        height: scanSize,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Center(
+                child: Container(
+                  width: scanSize,
+                  height: scanSize,
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Colors.white,
+                      width: 3,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
