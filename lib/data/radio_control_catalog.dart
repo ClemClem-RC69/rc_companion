@@ -166,6 +166,67 @@ const List<RadioControlLayout> radioControlCatalog = [
   ),
   RadioControlLayout(
     brand: 'Spektrum',
+    model: 'DX3 Smart Promoto',
+    controls: [
+      RadioControlDefinition(
+        key: 'power_button',
+        label: 'Marche / Arrêt',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'ms6x_gain',
+        label: 'Gain MS6X',
+        type: RadioControlType.dial,
+      ),
+      RadioControlDefinition(
+        key: 'throttle_limit',
+        label: 'Limiteur de gaz',
+        type: RadioControlType.switchControl,
+      ),
+      RadioControlDefinition(
+        key: 'flywheel_switch',
+        label: 'Volant d’inertie',
+        type: RadioControlType.switchControl,
+      ),
+      RadioControlDefinition(
+        key: 'steering_reverse',
+        label: 'Inversion de direction',
+        type: RadioControlType.switchControl,
+      ),
+      RadioControlDefinition(
+        key: 'front_brake_travel',
+        label: 'Course frein avant',
+        type: RadioControlType.dial,
+      ),
+      RadioControlDefinition(
+        key: 'steering_sub_trim',
+        label: 'Sub-trim direction',
+        type: RadioControlType.trim,
+      ),
+      RadioControlDefinition(
+        key: 'front_brake_trim',
+        label: 'Trim frein avant',
+        type: RadioControlType.trim,
+      ),
+      RadioControlDefinition(
+        key: 'bind_button',
+        label: 'Bind',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'ride_mode_up',
+        label: 'Mode de conduite +',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'ride_mode_down',
+        label: 'Mode de conduite −',
+        type: RadioControlType.button,
+      ),
+    ],
+  ),
+  RadioControlLayout(
+    brand: 'Spektrum',
     model: 'DX5C',
     controls: [
       RadioControlDefinition(

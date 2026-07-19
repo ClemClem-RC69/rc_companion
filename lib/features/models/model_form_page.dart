@@ -65,6 +65,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
 
   final categories = const [
     'Voiture',
+    'Moto',
     'Bateau',
   ];
 
@@ -81,6 +82,17 @@ class _ModelFormPageState extends State<ModelFormPage> {
     'Rally',
     'Basher',
     'Formule',
+    'Autre',
+  ];
+
+  final motorcycleDisciplines = const [
+    'Moto',
+    'Piste',
+    'Motocross',
+    'Supermotard',
+    'Trail',
+    'Scale',
+    'Basher',
     'Autre',
   ];
 
@@ -113,6 +125,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
     '1/7',
     '1/6',
     '1/5',
+    '1/4',
     'Autre',
   ];
 
@@ -161,9 +174,11 @@ class _ModelFormPageState extends State<ModelFormPage> {
           ? model.category
           : 'Voiture';
 
-      final availableDisciplines = category == 'Voiture'
-          ? carDisciplines
-          : boatDisciplines;
+      final availableDisciplines = switch (category) {
+        'Bateau' => boatDisciplines,
+        'Moto' => motorcycleDisciplines,
+        _ => carDisciplines,
+      };
 
       discipline = availableDisciplines.contains(model.discipline)
           ? model.discipline
@@ -615,9 +630,11 @@ class _ModelFormPageState extends State<ModelFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    final availableDisciplines = category == 'Voiture'
-        ? carDisciplines
-        : boatDisciplines;
+    final availableDisciplines = switch (category) {
+      'Bateau' => boatDisciplines,
+      'Moto' => motorcycleDisciplines,
+      _ => carDisciplines,
+    };
     final isElectric = motorization == 'Électrique';
 
     return Scaffold(
@@ -711,10 +728,11 @@ class _ModelFormPageState extends State<ModelFormPage> {
                     setState(() {
                       category = value;
 
-                      final newDisciplines =
-                          category == 'Voiture'
-                              ? carDisciplines
-                              : boatDisciplines;
+                      final newDisciplines = switch (category) {
+                        'Bateau' => boatDisciplines,
+                        'Moto' => motorcycleDisciplines,
+                        _ => carDisciplines,
+                      };
 
                       if (!newDisciplines.contains(discipline)) {
                         discipline = newDisciplines.first;

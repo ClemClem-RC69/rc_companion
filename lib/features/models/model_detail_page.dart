@@ -952,12 +952,8 @@ class _InformationTab extends StatelessWidget {
     switch (category) {
       case 'Bateau':
         return Icons.sailing;
-      case 'Avion':
-        return Icons.flight;
-      case 'Hélicoptère':
-        return Icons.air;
-      case 'Drone':
-        return Icons.flight_takeoff;
+      case 'Moto':
+        return Icons.two_wheeler;
       case 'Voiture':
       default:
         return Icons.directions_car;
@@ -1118,12 +1114,8 @@ class _EmptyModelPhoto extends StatelessWidget {
     switch (category) {
       case 'Bateau':
         return Icons.sailing;
-      case 'Avion':
-        return Icons.flight;
-      case 'Hélicoptère':
-        return Icons.air;
-      case 'Drone':
-        return Icons.flight_takeoff;
+      case 'Moto':
+        return Icons.two_wheeler;
       case 'Voiture':
       default:
         return Icons.directions_car;

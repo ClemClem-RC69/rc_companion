@@ -55,6 +55,16 @@ const List<RadioCatalogItem> radioCatalog = [
     programmable: true,
   ),
   RadioCatalogItem(
+    id: 'spektrum_dx3_smart_promoto',
+    brand: 'Spektrum',
+    model: 'DX3 Smart Promoto',
+    level: RadioLevel.intermediate,
+    type: RadioType.wheel,
+    channels: 3,
+    protocols: ['DSMR', 'Smart'],
+    programmable: false,
+  ),
+  RadioCatalogItem(
     id: 'spektrum_dx5c',
     brand: 'Spektrum',
     model: 'DX5C',
