@@ -11,6 +11,9 @@ class BatteryRunReading {
     this.measuredAt,
     this.remainingCapacityPercent,
     this.cellVoltages = const [],
+    // Anciens champs conservés temporairement pour que les écrans et les
+    // données existantes continuent de fonctionner pendant la refonte.
+    // Les nouveaux relevés de fin de roulage ne les renseignent plus.
     this.cellResistances = const [],
     this.temperatureCelsius,
   });
@@ -24,17 +27,28 @@ class BatteryRunReading {
   /// Tension de chaque cellule en volts.
   final List<double> cellVoltages;
 
-  /// Résistance interne de chaque cellule en milliohms.
+  /// Compatibilité avec les anciennes données uniquement.
   final List<double> cellResistances;
 
-  /// Température du pack en degrés Celsius.
+  /// Compatibilité avec les anciennes données uniquement.
   final double? temperatureCelsius;
 
+  double get totalVoltage {
+    return cellVoltages.fold<double>(
+      0,
+      (total, voltage) => total + voltage,
+    );
+  }
+
+  /// Un relevé de fin de roulage est considéré comme renseigné dès qu'il
+  /// contient un pourcentage ou au moins une tension de cellule.
   bool get hasMeasurements {
-    return remainingCapacityPercent != null ||
-        cellVoltages.isNotEmpty ||
-        cellResistances.isNotEmpty ||
-        temperatureCelsius != null;
+    return remainingCapacityPercent != null || cellVoltages.isNotEmpty;
+  }
+
+  /// Relevé complet pouvant être ajouté à l'historique batterie.
+  bool get isCompleteEndOfRunReading {
+    return remainingCapacityPercent != null && cellVoltages.isNotEmpty;
   }
 
   BatteryRunReading copyWith({
@@ -47,6 +61,7 @@ class BatteryRunReading {
     bool clearMeasuredAt = false,
     bool clearCapacity = false,
     bool clearTemperature = false,
+    bool clearResistances = false,
   }) {
     return BatteryRunReading(
       batteryId: batteryId ?? this.batteryId,
@@ -55,7 +70,9 @@ class BatteryRunReading {
           ? null
           : remainingCapacityPercent ?? this.remainingCapacityPercent,
       cellVoltages: cellVoltages ?? this.cellVoltages,
-      cellResistances: cellResistances ?? this.cellResistances,
+      cellResistances: clearResistances
+          ? const []
+          : cellResistances ?? this.cellResistances,
       temperatureCelsius: clearTemperature
           ? null
           : temperatureCelsius ?? this.temperatureCelsius,

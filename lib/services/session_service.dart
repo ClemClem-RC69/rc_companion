@@ -117,14 +117,8 @@ class SessionService {
               remainingCapacityPercent:
                   (measurementRow['remaining_capacity_percent'] as num?)
                       ?.toDouble(),
-              temperatureCelsius:
-                  (measurementRow['temperature_celsius'] as num?)
-                      ?.toDouble(),
               cellVoltages: _toDoubleList(
                 measurementRow['cell_voltages'],
-              ),
-              cellResistances: _toDoubleList(
-                measurementRow['cell_resistances'],
               ),
             );
           },
@@ -314,10 +308,9 @@ class SessionService {
                               .toIso8601String(),
                       'remaining_capacity_percent':
                           reading.remainingCapacityPercent,
-                      'temperature_celsius':
-                          reading.temperatureCelsius,
+                      'temperature_celsius': null,
                       'cell_voltages': reading.cellVoltages,
-                      'cell_resistances': reading.cellResistances,
+                      'cell_resistances': const <double>[],
                       'updated_at':
                           DateTime.now().toUtc().toIso8601String(),
                     },
@@ -335,16 +328,16 @@ class SessionService {
                     _measurementDate(reading, run)
                         .toUtc()
                         .toIso8601String(),
+                // La base Supabase conserve temporairement l'ancien libellé autorisé.
+                // BatteryMeasurement le convertit en « Relevé fin de roulage » à la lecture.
                 'measurement_type': 'Fin de session',
                 'charge_percent':
                     reading.remainingCapacityPercent!
                         .round()
                         .clamp(0, 100),
                 'cell_voltages': reading.cellVoltages,
-                'cell_internal_resistances':
-                    reading.cellResistances,
-                'battery_temperature_c':
-                    reading.temperatureCelsius,
+                'cell_internal_resistances': const <double>[],
+                'battery_temperature_c': null,
                 'notes': _automaticMeasurementNote(
                   sessionId: sessionId,
                   run: run,
@@ -367,10 +360,7 @@ class SessionService {
   static bool _canCreateBatteryHistoryMeasurement(
     BatteryRunReading reading,
   ) {
-    return reading.remainingCapacityPercent != null &&
-        reading.cellVoltages.isNotEmpty &&
-        reading.cellResistances.isNotEmpty &&
-        reading.cellVoltages.length == reading.cellResistances.length;
+    return reading.isCompleteEndOfRunReading;
   }
 
   static DateTime _measurementDate(

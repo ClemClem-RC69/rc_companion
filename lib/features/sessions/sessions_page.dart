@@ -648,8 +648,8 @@ class _SessionsPageState extends State<SessionsPage> {
         icon: const Icon(Icons.monitor_heart_outlined),
         title: const Text('Mesures des batteries'),
         content: const Text(
-          'Souhaites-tu renseigner maintenant les tensions et résistances '
-          'des batteries utilisées pendant ce roulage ?',
+          'Souhaites-tu renseigner maintenant le relevé de fin de roulage '
+          'des batteries utilisées ?',
         ),
         actions: [
           TextButton(
@@ -801,8 +801,8 @@ class _SessionsPageState extends State<SessionsPage> {
         icon: const Icon(Icons.monitor_heart_outlined),
         title: const Text('Mesures des batteries'),
         content: const Text(
-          'Souhaites-tu renseigner maintenant les tensions et résistances '
-          'des batteries utilisées pendant cette session ?',
+          'Souhaites-tu renseigner maintenant les relevés de fin de roulage '
+          'manquants des batteries utilisées pendant cette session ?',
         ),
         actions: [
           TextButton(
@@ -2051,8 +2051,7 @@ class _EndRunDialogState extends State<_EndRunDialog> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Les tensions et résistances pourront être ajoutées depuis '
-                'l’historique de chaque batterie.',
+                'Le relevé de fin de roulage pourra être complété depuis le détail de la session.',
               ),
             ],
           ),
@@ -2209,57 +2208,60 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       title: const Text('Clôturer la session'),
       content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              TextField(
-                controller: _drivingNotesController,
-                maxLines: 3,
-                decoration: _decoration('Comportement et réglages constatés'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _breakagesController,
-                maxLines: 2,
-                decoration: _decoration('Casses'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _partsReplacedController,
-                maxLines: 2,
-                decoration: _decoration('Pièces remplacées sur place'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _maintenanceController,
-                maxLines: 2,
-                decoration: _decoration('Entretien à effectuer'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _partsToOrderController,
-                maxLines: 2,
-                decoration: _decoration('Pièces à commander'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _changesController,
-                maxLines: 2,
-                decoration: _decoration(
-                  'Modifications avant la prochaine session',
+        width: 760,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final fieldWidth = constraints.maxWidth < 620
+                ? (constraints.maxWidth - 10) / 2
+                : (constraints.maxWidth - 20) / 3;
+
+            Widget field(
+              TextEditingController controller,
+              String label,
+            ) {
+              return SizedBox(
+                width: fieldWidth,
+                child: TextField(
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 2,
+                  decoration: _decoration(label).copyWith(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _generalNotesController,
-                maxLines: 3,
-                decoration: _decoration('Notes générales'),
-              ),
-            ],
-          ),
+              );
+            }
+
+            return Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                field(
+                  _drivingNotesController,
+                  'Comportement et réglages',
+                ),
+                field(_breakagesController, 'Casses'),
+                field(
+                  _partsReplacedController,
+                  'Pièces remplacées sur place',
+                ),
+                field(_maintenanceController, 'Entretien à effectuer'),
+                field(_partsToOrderController, 'Pièces à commander'),
+                field(
+                  _changesController,
+                  'Modifications avant prochaine session',
+                ),
+                field(_generalNotesController, 'Notes générales'),
+              ],
+            );
+          },
         ),
       ),
       actions: [
@@ -2311,10 +2313,8 @@ class _BatteryMeasurementDialog extends StatefulWidget {
 class _BatteryMeasurementDialogState
     extends State<_BatteryMeasurementDialog> {
   final _capacityController = TextEditingController();
-  final _temperatureController = TextEditingController();
-
   late final List<TextEditingController> _cellVoltageControllers;
-  late final List<TextEditingController> _cellResistanceControllers;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -2327,23 +2327,13 @@ class _BatteryMeasurementDialogState
       cellCount,
       (_) => TextEditingController(),
     );
-
-    _cellResistanceControllers = List.generate(
-      cellCount,
-      (_) => TextEditingController(),
-    );
   }
 
   @override
   void dispose() {
     _capacityController.dispose();
-    _temperatureController.dispose();
 
     for (final controller in _cellVoltageControllers) {
-      controller.dispose();
-    }
-
-    for (final controller in _cellResistanceControllers) {
       controller.dispose();
     }
 
@@ -2360,37 +2350,38 @@ class _BatteryMeasurementDialogState
     return double.tryParse(normalized);
   }
 
-  List<double> _parseValues(
-    List<TextEditingController> controllers,
-  ) {
-    final values = <double>[];
+  void _save() {
+    final capacity = _parseDouble(_capacityController.text);
 
-    for (final controller in controllers) {
-      final value = _parseDouble(controller.text);
-
-      if (value != null) {
-        values.add(value);
-      }
+    if (capacity == null || capacity < 0 || capacity > 100) {
+      setState(() {
+        _errorMessage =
+            'La capacité restante doit être comprise entre 0 et 100 %.';
+      });
+      return;
     }
 
-    return values;
-  }
+    final voltages = <double>[];
 
-  void _save() {
+    for (final controller in _cellVoltageControllers) {
+      final voltage = _parseDouble(controller.text);
+
+      if (voltage == null || voltage <= 0) {
+        setState(() {
+          _errorMessage = 'Renseigne la tension de chaque cellule.';
+        });
+        return;
+      }
+
+      voltages.add(voltage);
+    }
+
     Navigator.of(context).pop(
       BatteryRunReading(
         batteryId: widget.battery.id,
         measuredAt: DateTime.now(),
-        remainingCapacityPercent: _parseDouble(
-          _capacityController.text,
-        ),
-        cellVoltages: _parseValues(_cellVoltageControllers),
-        cellResistances: _parseValues(
-          _cellResistanceControllers,
-        ),
-        temperatureCelsius: _parseDouble(
-          _temperatureController.text,
-        ),
+        remainingCapacityPercent: capacity,
+        cellVoltages: List<double>.unmodifiable(voltages),
       ),
     );
   }
@@ -2406,144 +2397,128 @@ class _BatteryMeasurementDialogState
     );
   }
 
+  double get _totalVoltage {
+    return _cellVoltageControllers.fold<double>(
+      0,
+      (total, controller) =>
+          total + (_parseDouble(controller.text) ?? 0),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       title: Text.rich(
         TextSpan(
           children: [
             TextSpan(
-              text: 'Roulage ${widget.runNumber} — ${widget.battery.id}',
+              text:
+                  'Relevé fin de roulage ${widget.runNumber} — ${widget.battery.id}',
             ),
             if (widget.battery.isPaired)
               TextSpan(
                 text:
                     '  [P-${widget.battery.pairId!.split('-').last}]',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                ),
+                style: const TextStyle(fontWeight: FontWeight.w900),
               ),
           ],
         ),
       ),
       content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _capacityController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: _decoration(
-                        'Capacité restante',
-                        suffix: '%',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _temperatureController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: _decoration(
-                        'Température',
-                        suffix: '°C',
+        width: 760,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth < 430
+                ? 3
+                : constraints.maxWidth < 680
+                    ? 4
+                    : 6;
+            final itemWidth =
+                (constraints.maxWidth - ((columns - 1) * 8)) / columns;
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _capacityController,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(decimal: true),
+                        decoration: _decoration(
+                          'Capacité restante',
+                          suffix: '%',
+                        ).copyWith(isDense: true),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Row(
-                children: [
-                  Expanded(
-                    flex: 1,
-                    child: Text(
-                      'Cellule',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      'Tension (V)',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      'Résistance (mΩ)',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              for (var index = 0;
-                  index < _cellVoltageControllers.length;
-                  index++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 1,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Container(
+                        height: 50,
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                         child: Text(
-                          '${index + 1}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                          ),
+                          'Total : ${_totalVoltage.toStringAsFixed(3)} V',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
-                      Expanded(
-                        flex: 2,
-                        child: TextField(
-                          controller:
-                              _cellVoltageControllers[index],
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: '0,00',
-                            suffixText: 'V',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: TextField(
-                          controller:
-                              _cellResistanceControllers[index],
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: '0,0',
-                            suffixText: 'mΩ',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-            ],
-          ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var index = 0;
+                        index < _cellVoltageControllers.length;
+                        index++)
+                      SizedBox(
+                        width: itemWidth,
+                        child: TextField(
+                          controller: _cellVoltageControllers[index],
+                          onChanged: (_) => setState(() {}),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'C${index + 1}',
+                            hintText: '0,000',
+                            suffixText: 'V',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 12,
+                            ),
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
         ),
       ),
       actions: [
@@ -2553,7 +2528,7 @@ class _BatteryMeasurementDialogState
         ),
         FilledButton(
           onPressed: _save,
-          child: const Text('Enregistrer les mesures'),
+          child: const Text('Enregistrer le relevé'),
         ),
       ],
     );

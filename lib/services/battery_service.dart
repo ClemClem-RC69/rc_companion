@@ -370,9 +370,12 @@ class BatteryService {
         .select()
         .eq('user_id', user.id)
         .eq('battery_code', batteryCode)
-        .eq(
+        .inFilter(
           'measurement_type',
-          BatteryMeasurement.referenceType,
+          const [
+            BatteryMeasurement.referenceType,
+            'Mesure de référence',
+          ],
         )
         .order('measured_at', ascending: false)
         .limit(1)
@@ -396,39 +399,31 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    if (measurement.cellVoltages.isEmpty) {
-      throw StateError('Aucune tension de cellule renseignée');
-    }
+    final referenceMeasurement = measurement.copyWith(
+      measurementType: BatteryMeasurement.referenceType,
+      removeBatteryTemperature: true,
+      removeNotes: true,
+    );
 
-    if (measurement.cellInternalResistances.isEmpty) {
-      throw StateError(
-        'Aucune résistance interne de cellule renseignée',
-      );
-    }
-
-    if (measurement.cellVoltages.length !=
-        measurement.cellInternalResistances.length) {
-      throw StateError(
-        'Le nombre de tensions et de résistances internes doit être identique',
-      );
-    }
+    _validateMeasurement(referenceMeasurement);
 
     final existingRows = await _client
         .from('battery_measurements')
         .select('id')
         .eq('user_id', user.id)
         .eq('battery_code', measurement.batteryCode)
-        .eq(
+        .inFilter(
           'measurement_type',
-          BatteryMeasurement.referenceType,
+          const [
+            BatteryMeasurement.referenceType,
+            'Mesure de référence',
+          ],
         )
         .order('measured_at');
 
     final data = {
       'user_id': user.id,
-      ...measurement.copyWith(
-        measurementType: BatteryMeasurement.referenceType,
-      ).toJson(),
+      ...referenceMeasurement.toJson(),
     };
 
     if (existingRows.isEmpty) {
@@ -507,22 +502,7 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    if (measurement.cellVoltages.isEmpty) {
-      throw StateError('Aucune tension de cellule renseignée');
-    }
-
-    if (measurement.cellInternalResistances.isEmpty) {
-      throw StateError(
-        'Aucune résistance interne de cellule renseignée',
-      );
-    }
-
-    if (measurement.cellVoltages.length !=
-        measurement.cellInternalResistances.length) {
-      throw StateError(
-        'Le nombre de tensions et de résistances internes doit être identique',
-      );
-    }
+    _validateMeasurement(measurement);
 
     final insertedRow = await _client
         .from('battery_measurements')
@@ -551,6 +531,8 @@ class BatteryService {
       throw StateError('Mesure introuvable');
     }
 
+    _validateMeasurement(measurement);
+
     await _client
         .from('battery_measurements')
         .update(measurement.toJson())
@@ -576,6 +558,56 @@ class BatteryService {
         .delete()
         .eq('user_id', user.id)
         .eq('id', measurement.id!);
+  }
+
+  static void _validateMeasurement(
+    BatteryMeasurement measurement,
+  ) {
+    if (!BatteryMeasurement.measurementTypes.contains(
+      measurement.measurementType,
+    )) {
+      throw StateError('Type de relevé invalide');
+    }
+
+    if (measurement.chargePercent < 0 ||
+        measurement.chargePercent > 100) {
+      throw StateError(
+        'Le pourcentage doit être compris entre 0 et 100',
+      );
+    }
+
+    if (measurement.cellVoltages.isEmpty) {
+      throw StateError('Aucune tension de cellule renseignée');
+    }
+
+    if (measurement.cellVoltages.any((voltage) => voltage <= 0)) {
+      throw StateError('Les tensions de cellule doivent être positives');
+    }
+
+    if (!measurement.usesInternalResistance) {
+      return;
+    }
+
+    if (measurement.cellInternalResistances.isEmpty) {
+      throw StateError(
+        'Aucune résistance interne de cellule renseignée',
+      );
+    }
+
+    if (measurement.cellVoltages.length !=
+        measurement.cellInternalResistances.length) {
+      throw StateError(
+        'Le nombre de tensions et de résistances internes doit être identique',
+      );
+    }
+
+    if (measurement.cellInternalResistances.any(
+      (resistance) => resistance <= 0,
+    )) {
+      throw StateError(
+        'Les résistances internes doivent être positives',
+      );
+    }
   }
 
   static Future<int> getNextBatteryNumber({

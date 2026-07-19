@@ -327,16 +327,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                                 },
                         ),
                         const SizedBox(height: 14),
-                        TextFormField(
-                          controller: notesController,
-                          enabled: !isSaving,
-                          minLines: 2,
-                          maxLines: 4,
-                          decoration: const InputDecoration(
-                            labelText: 'Notes',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -397,25 +387,25 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     );
   }
 
-  Future<void> _addMeasurement() async {
+  Future<void> _addMeasurement(String measurementType) async {
     final formKey = GlobalKey<FormState>();
+    final usesResistance = measurementType != BatteryMeasurement.endOfRunType;
 
-    final chargeController = TextEditingController(text: '100');
-    final temperatureController = TextEditingController();
-    final notesController = TextEditingController();
-
+    final chargeController = TextEditingController(
+      text: usesResistance ? '100' : '',
+    );
     final voltageControllers = List.generate(
       _cellCount,
       (_) => TextEditingController(),
     );
-
-    final resistanceControllers = List.generate(
-      _cellCount,
-      (_) => TextEditingController(),
-    );
+    final resistanceControllers = usesResistance
+        ? List.generate(
+            _cellCount,
+            (_) => TextEditingController(),
+          )
+        : <TextEditingController>[];
 
     var isSaving = false;
-    var measurementType = BatteryMeasurement.afterChargeType;
 
     final measurement = await showDialog<BatteryMeasurement>(
       context: context,
@@ -427,6 +417,37 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               return double.tryParse(
                 value.trim().replaceAll(',', '.'),
               );
+            }
+
+            List<double> enteredVoltages() {
+              return voltageControllers
+                  .map((controller) => parseDecimal(controller.text))
+                  .whereType<double>()
+                  .toList(growable: false);
+            }
+
+            double enteredTotalVoltage() {
+              return enteredVoltages().fold<double>(
+                0,
+                (total, voltage) => total + voltage,
+              );
+            }
+
+            double enteredMaximumDifference() {
+              final values = enteredVoltages();
+
+              if (values.length < 2) {
+                return 0;
+              }
+
+              final minimum = values.reduce(
+                (current, next) => current < next ? current : next,
+              );
+              final maximum = values.reduce(
+                (current, next) => current > next ? current : next,
+              );
+
+              return maximum - minimum;
             }
 
             String? validatePositiveDecimal(
@@ -458,14 +479,13 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                     )
                     .toList();
 
-                final internalResistances = resistanceControllers
-                    .map(
-                      (controller) => parseDecimal(controller.text)!,
-                    )
-                    .toList();
-
-                final temperatureText =
-                    temperatureController.text.trim();
+                final internalResistances = usesResistance
+                    ? resistanceControllers
+                        .map(
+                          (controller) => parseDecimal(controller.text)!,
+                        )
+                        .toList()
+                    : const <double>[];
 
                 final newMeasurement = BatteryMeasurement(
                   batteryCode: battery.id,
@@ -476,18 +496,16 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   ),
                   cellVoltages: cellVoltages,
                   cellInternalResistances: internalResistances,
-                  batteryTemperature: temperatureText.isEmpty
-                      ? null
-                      : parseDecimal(temperatureText),
-                  notes: notesController.text.trim().isEmpty
-                      ? null
-                      : notesController.text.trim(),
                 );
 
-                final savedMeasurement =
-                    await BatteryService.createBatteryMeasurement(
-                  newMeasurement,
-                );
+                final savedMeasurement = measurementType ==
+                        BatteryMeasurement.referenceType
+                    ? await BatteryService.saveReferenceMeasurement(
+                        newMeasurement,
+                      )
+                    : await BatteryService.createBatteryMeasurement(
+                        newMeasurement,
+                      );
 
                 if (!dialogContext.mounted) {
                   return;
@@ -514,202 +532,176 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             }
 
             return AlertDialog(
-              title: Text(
-                _measurements.isEmpty
-                    ? 'Ajouter la mesure de référence'
-                    : 'Ajouter une mesure',
-              ),
+              title: Text(measurementType),
               content: SizedBox(
-                width: 560,
+                width: usesResistance ? 720 : 610,
                 child: Form(
                   key: formKey,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Batterie ${battery.id} • ${battery.technology} '
-                          '• ${battery.capacity} mAh • ${battery.cells}',
-                        ),
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<String>(
-                          initialValue: measurementType,
-                          decoration: const InputDecoration(
-                            labelText: 'Type de mesure',
-                            border: OutlineInputBorder(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Batterie ${battery.id} • ${battery.technology} '
+                        '• ${battery.capacity} mAh • ${battery.cells}',
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: chargeController,
+                              enabled: !isSaving,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                labelText: usesResistance
+                                    ? 'Niveau de charge'
+                                    : 'Capacité restante',
+                                border: const OutlineInputBorder(),
+                                suffixText: '%',
+                                isDense: true,
+                              ),
+                              validator: (value) {
+                                final percent = int.tryParse(
+                                  value?.trim() ?? '',
+                                );
+
+                                if (percent == null ||
+                                    percent < 0 ||
+                                    percent > 100) {
+                                  return 'Pourcentage entre 0 et 100';
+                                }
+
+                                return null;
+                              },
+                            ),
                           ),
-                          items: BatteryMeasurement.measurementTypes
-                              .map(
-                                (type) => DropdownMenuItem<String>(
-                                  value: type,
-                                  child: Text(type),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: 'Tension totale automatique',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              child: Text(
+                                '${enteredTotalVoltage().toStringAsFixed(3)} V',
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
                                 ),
-                              )
-                              .toList(),
-                          onChanged: isSaving
-                              ? null
-                              : (value) {
-                                  if (value != null) {
-                                    setDialogState(() {
-                                      measurementType = value;
-                                    });
-                                  }
-                                },
-                        ),
-                        const SizedBox(height: 14),
-                        TextFormField(
-                          controller: chargeController,
-                          enabled: !isSaving,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Niveau de charge (%)',
-                            border: OutlineInputBorder(),
-                            suffixText: '%',
-                          ),
-                          validator: (value) {
-                            final percent = int.tryParse(
-                              value?.trim() ?? '',
-                            );
-
-                            if (percent == null ||
-                                percent < 0 ||
-                                percent > 100) {
-                              return 'Renseigne un pourcentage entre 0 et 100';
-                            }
-
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 14),
-                        TextFormField(
-                          controller: temperatureController,
-                          enabled: !isSaving,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText:
-                                'Température batterie (facultatif)',
-                            border: OutlineInputBorder(),
-                            suffixText: '°C',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return null;
-                            }
-
-                            final temperature = parseDecimal(value);
-
-                            if (temperature == null ||
-                                temperature < -30 ||
-                                temperature > 100) {
-                              return 'Température invalide';
-                            }
-
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 18),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Mesures par cellule',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        for (var index = 0;
-                            index < _cellCount;
-                            index++) ...[
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                children: [
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      'Cellule ${index + 1}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller:
-                                              voltageControllers[index],
-                                          enabled: !isSaving,
-                                          keyboardType:
-                                              const TextInputType
-                                                  .numberWithOptions(
-                                            decimal: true,
-                                          ),
-                                          decoration:
-                                              const InputDecoration(
-                                            labelText: 'Tension',
-                                            border: OutlineInputBorder(),
-                                            suffixText: 'V',
-                                          ),
-                                          validator: (value) =>
-                                              validatePositiveDecimal(
-                                            value,
-                                            'de tension',
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller:
-                                              resistanceControllers[index],
-                                          enabled: !isSaving,
-                                          keyboardType:
-                                              const TextInputType
-                                                  .numberWithOptions(
-                                            decimal: true,
-                                          ),
-                                          decoration:
-                                              const InputDecoration(
-                                            labelText: 'Résistance interne',
-                                            border: OutlineInputBorder(),
-                                            suffixText: 'mΩ',
-                                          ),
-                                          validator: (value) =>
-                                              validatePositiveDecimal(
-                                            value,
-                                            'de résistance',
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
                               ),
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: 'Écart maximal entre cellules',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              child: Text(
+                                '${enteredMaximumDifference().toStringAsFixed(3)} V',
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
-                        TextFormField(
-                          controller: notesController,
-                          enabled: !isSaving,
-                          minLines: 2,
-                          maxLines: 4,
-                          decoration: const InputDecoration(
-                            labelText: 'Note facultative',
-                            border: OutlineInputBorder(),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const SizedBox(
+                            width: 90,
+                            child: Text(
+                              'Cellule',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          const Expanded(
+                            child: Text(
+                              'Tension',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          if (usesResistance) ...[
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Résistance interne',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      for (var index = 0; index < _cellCount; index++)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 90,
+                                child: Text(
+                                  'Cellule ${index + 1}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: voltageControllers[index],
+                                  enabled: !isSaving,
+                                  keyboardType: const TextInputType
+                                      .numberWithOptions(decimal: true),
+                                  decoration: const InputDecoration(
+                                    hintText: '0,000',
+                                    suffixText: 'V',
+                                    border: OutlineInputBorder(),
+                                    isDense: true,
+                                  ),
+                                  onChanged: (_) => setDialogState(() {}),
+                                  validator: (value) =>
+                                      validatePositiveDecimal(
+                                    value,
+                                    'de tension',
+                                  ),
+                                ),
+                              ),
+                              if (usesResistance) ...[
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller:
+                                        resistanceControllers[index],
+                                    enabled: !isSaving,
+                                    keyboardType: const TextInputType
+                                        .numberWithOptions(decimal: true),
+                                    decoration: const InputDecoration(
+                                      hintText: '0,0',
+                                      suffixText: 'mΩ',
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                    validator: (value) =>
+                                        validatePositiveDecimal(
+                                      value,
+                                      'de résistance',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -742,8 +734,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     );
 
     chargeController.dispose();
-    temperatureController.dispose();
-    notesController.dispose();
 
     for (final controller in voltageControllers) {
       controller.dispose();
@@ -763,8 +753,16 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       return;
     }
 
-    _tabController.animateTo(1);
-    await _showMeasurementResult(measurement);
+    if (measurement.hasInternalResistance) {
+      _tabController.animateTo(1);
+      await _showMeasurementResult(measurement);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Relevé fin de roulage enregistré.'),
+        ),
+      );
+    }
   }
 
   Future<void> _showMeasurementResult(
@@ -794,10 +792,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               Expanded(
                 child: Text(
                   analysis.hasCritical
-                      ? 'Mesure enregistrée — ALERTE'
+                      ? 'Relevé enregistré — ALERTE'
                       : analysis.hasWarning
-                          ? 'Mesure enregistrée — À surveiller'
-                          : 'Mesure enregistrée — Bon état',
+                          ? 'Relevé enregistré — À surveiller'
+                          : 'Relevé enregistré — Bon état',
                 ),
               ),
             ],
@@ -817,18 +815,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                     '${measurement.maximumVoltageDifference.toStringAsFixed(3)} V',
                   ),
                   _resultLine(
-                    'RI moyenne',
-                    '${measurement.averageInternalResistance.toStringAsFixed(2)} mΩ',
-                  ),
-                  _resultLine(
                     'Écart maximal de RI',
                     '${measurement.maximumInternalResistanceDifference.toStringAsFixed(2)} mΩ',
                   ),
-                  if (measurement.batteryTemperature != null)
-                    _resultLine(
-                      'Température batterie',
-                      '${measurement.batteryTemperature!.toStringAsFixed(1)} °C',
-                    ),
                   const Divider(height: 28),
                   Text(
                     'Analyse des cellules',
@@ -997,24 +986,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       );
     }
 
-    final temperature = measurement.batteryTemperature;
-
-    if (temperature != null) {
-      if (temperature >= 55) {
-        hasCritical = true;
-        globalMessages.add(
-          'Température batterie critique '
-          '(${temperature.toStringAsFixed(1)} °C).',
-        );
-      } else if (temperature >= 45) {
-        hasWarning = true;
-        globalMessages.add(
-          'Température batterie élevée '
-          '(${temperature.toStringAsFixed(1)} °C).',
-        );
-      }
-    }
-
     if (globalMessages.isEmpty) {
       globalMessages.add(
         'Aucune anomalie globale détectée sur cette mesure.',
@@ -1099,7 +1070,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Supprimer cette mesure ?'),
+          title: const Text('Supprimer ce relevé ?'),
           content: const Text(
             'Cette action est irréversible.',
           ),
@@ -1137,7 +1108,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Mesure supprimée'),
+          content: Text('Relevé supprimé'),
         ),
       );
     } catch (error) {
@@ -1195,12 +1166,18 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     );
   }
 
-  _MeasurementAnalysis? get _latestAnalysis {
-    if (_measurements.isEmpty) {
-      return null;
+  BatteryMeasurement? get _latestHealthMeasurement {
+    for (final measurement in _measurements) {
+      if (measurement.hasInternalResistance) {
+        return measurement;
+      }
     }
+    return null;
+  }
 
-    return _analyzeMeasurement(_measurements.first);
+  _MeasurementAnalysis? get _latestAnalysis {
+    final measurement = _latestHealthMeasurement;
+    return measurement == null ? null : _analyzeMeasurement(measurement);
   }
 
   String get _healthLabel {
@@ -1359,32 +1336,56 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         children: [
           _batteryHeader(),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _addMeasurement,
-              icon: const Icon(Icons.add),
-              label: Text(
-                _measurements.isEmpty
-                    ? 'Ajouter la mesure de référence'
-                    : 'Nouvelle mesure',
+          if (!_measurements.any((item) => item.isReference)) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _addMeasurement(
+                  BatteryMeasurement.referenceType,
+                ),
+                icon: const Icon(Icons.straighten_outlined),
+                label: const Text('Ajouter le relevé de référence'),
               ),
             ),
+            const SizedBox(height: 10),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => _addMeasurement(
+                    BatteryMeasurement.afterChargeType,
+                  ),
+                  icon: const Icon(Icons.battery_charging_full),
+                  label: const Text('Relevé après charge'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _addMeasurement(
+                    BatteryMeasurement.endOfRunType,
+                  ),
+                  icon: const Icon(Icons.sports_score),
+                  label: const Text('Relevé après roulage'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           const Card(
             child: Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'Les mesures de fin de session sont enregistrées '
-                'automatiquement. Pour une saisie manuelle, choisis '
-                'Après charge ou Contrôle. La température reste facultative.',
+                'Les relevés de fin de roulage sont enregistrés '
+                'automatiquement. Les résistances internes sont renseignées '
+                'uniquement dans le relevé de référence et les relevés après charge.',
               ),
             ),
           ),
           const SizedBox(height: 20),
           Text(
-            'Historique des mesures',
+            'Historique des relevés',
             style: Theme.of(context)
                 .textTheme
                 .titleLarge
@@ -1423,7 +1424,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               child: Padding(
                 padding: EdgeInsets.all(20),
                 child: Text(
-                  'Aucune mesure enregistrée pour cette batterie.',
+                  'Aucun relevé enregistré pour cette batterie.',
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -1452,7 +1453,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       );
     }
 
-    if (_measurements.isEmpty) {
+    if (_latestHealthMeasurement == null) {
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -1486,10 +1487,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       );
     }
 
-    final latest = _measurements.first;
+    final latest = _latestHealthMeasurement!;
     final reference = _measurements.firstWhere(
       (measurement) => measurement.isReference,
-      orElse: () => _measurements.last,
+      orElse: () => latest,
     );
     final analysis = _analyzeMeasurement(latest);
 
@@ -1583,7 +1584,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         ),
         _info(
           'Nombre de mesures',
-          _measurements.length.toString(),
+          _measurements.where((item) => item.hasInternalResistance).length.toString(),
         ),
         _info(
           'RI moyenne actuelle',
@@ -1602,11 +1603,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
           'Écart maximal de tension',
           '${latest.maximumVoltageDifference.toStringAsFixed(3)} V',
         ),
-        if (latest.batteryTemperature != null)
-          _info(
-            'Dernière température batterie',
-            '${latest.batteryTemperature!.toStringAsFixed(1)} °C',
-          ),
         const SizedBox(height: 16),
         Card(
           child: Padding(
@@ -1679,12 +1675,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     return null;
   }
 
-  bool _isAutomaticSessionNote(String? notes) {
-    return notes?.startsWith(
-          'Mesure automatique après roulage|session:',
-        ) ??
-        false;
-  }
 
   Color _measurementTypeColor(BatteryMeasurement measurement) {
     if (measurement.isReference) {
@@ -1725,9 +1715,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
   Widget _measurementCard(BatteryMeasurement measurement) {
     final typeColor = _measurementTypeColor(measurement);
     final modelName = _modelNameFromMeasurement(measurement);
-    final visibleNote = _isAutomaticSessionNote(measurement.notes)
-        ? null
-        : measurement.notes;
 
     return Card(
       child: ExpansionTile(
@@ -1776,8 +1763,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               const SizedBox(height: 3),
               Text(
                 '${measurement.chargePercent}% • '
-                '${measurement.totalVoltage.toStringAsFixed(3)} V • '
-                'RI ${measurement.averageInternalResistance.toStringAsFixed(2)} mΩ',
+                '${measurement.totalVoltage.toStringAsFixed(3)} V',
               ),
             ],
           ),
@@ -1787,7 +1773,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         children: [
           const SizedBox(height: 8),
           _resultLine(
-            'Type de mesure',
+            'Type de relevé',
             measurement.measurementType,
           ),
           if (measurement.isEndOfSession && modelName != null)
@@ -1807,23 +1793,12 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             'Écart maximal tension',
             '${measurement.maximumVoltageDifference.toStringAsFixed(3)} V',
           ),
-          _resultLine(
-            'RI moyenne',
-            '${measurement.averageInternalResistance.toStringAsFixed(2)} mΩ',
-          ),
-          _resultLine(
-            'Résistance totale',
-            '${measurement.totalInternalResistance.toStringAsFixed(2)} mΩ',
-          ),
-          _resultLine(
-            'Écart maximal RI',
-            '${measurement.maximumInternalResistanceDifference.toStringAsFixed(2)} mΩ',
-          ),
-          if (measurement.batteryTemperature != null)
+          if (measurement.hasInternalResistance) ...[
             _resultLine(
-              'Température batterie',
-              '${measurement.batteryTemperature!.toStringAsFixed(1)} °C',
+              'Écart maximal RI',
+              '${measurement.maximumInternalResistanceDifference.toStringAsFixed(2)} mΩ',
             ),
+          ],
           const Divider(height: 24),
           for (var index = 0;
               index < measurement.cellVoltages.length;
@@ -1833,24 +1808,20 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               dense: true,
               title: Text('Cellule ${index + 1}'),
               trailing: Text(
-                '${measurement.cellVoltages[index].toStringAsFixed(3)} V • '
-                '${measurement.cellInternalResistances[index].toStringAsFixed(2)} mΩ',
+                measurement.hasInternalResistance &&
+                        index < measurement.cellInternalResistances.length
+                    ? '${measurement.cellVoltages[index].toStringAsFixed(3)} V • '
+                        '${measurement.cellInternalResistances[index].toStringAsFixed(2)} mΩ'
+                    : '${measurement.cellVoltages[index].toStringAsFixed(3)} V',
               ),
             ),
-          if (visibleNote != null && visibleNote.trim().isNotEmpty) ...[
-            const Divider(height: 24),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Note : $visibleNote'),
-            ),
-          ],
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
               onPressed: () => _deleteMeasurement(measurement),
               icon: const Icon(Icons.delete_outline),
-              label: const Text('Supprimer la mesure'),
+              label: const Text('Supprimer le relevé'),
             ),
           ),
         ],

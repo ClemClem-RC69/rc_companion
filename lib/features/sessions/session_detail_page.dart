@@ -273,18 +273,11 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
     BatteryRunReading reading,
   ) {
     final hasCapacity = reading.remainingCapacityPercent != null;
-    final hasTemperature = reading.temperatureCelsius != null;
-    final hasCells = reading.cellVoltages.isNotEmpty ||
-        reading.cellResistances.isNotEmpty;
+    final hasCells = reading.cellVoltages.isNotEmpty;
 
-    if (!hasCapacity && !hasTemperature && !hasCells) {
+    if (!hasCapacity && !hasCells) {
       return const SizedBox.shrink();
     }
-
-    final rowCount = reading.cellVoltages.length >
-            reading.cellResistances.length
-        ? reading.cellVoltages.length
-        : reading.cellResistances.length;
 
     return Container(
       margin: const EdgeInsets.only(top: 12),
@@ -296,28 +289,21 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (hasCapacity || hasTemperature)
-            Wrap(
-              spacing: 16,
-              runSpacing: 8,
-              children: [
-                if (hasCapacity)
-                  Text(
-                    'Capacité restante : '
-                    '${reading.remainingCapacityPercent!.toStringAsFixed(0)} %',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                if (hasTemperature)
-                  Text(
-                    'Température : '
-                    '${reading.temperatureCelsius!.toStringAsFixed(1)} °C',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-              ],
+          if (hasCapacity)
+            Text(
+              'Capacité restante : '
+              '${reading.remainingCapacityPercent!.toStringAsFixed(0)} %',
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
-          if ((hasCapacity || hasTemperature) && hasCells)
-            const SizedBox(height: 14),
+          if (hasCapacity && hasCells) const SizedBox(height: 8),
+          if (hasCells)
+            Text(
+              'Tension totale : '
+              '${reading.totalVoltage.toStringAsFixed(3)} V',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
           if (hasCells) ...[
+            const SizedBox(height: 14),
             const Row(
               children: [
                 Expanded(
@@ -329,13 +315,6 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                 Expanded(
                   child: Text(
                     'Tension',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    'Résistance',
                     textAlign: TextAlign.end,
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
@@ -343,7 +322,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
               ],
             ),
             const Divider(),
-            for (var index = 0; index < rowCount; index++)
+            for (var index = 0; index < reading.cellVoltages.length; index++)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 5),
                 child: Row(
@@ -351,17 +330,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                     Expanded(child: Text('${index + 1}')),
                     Expanded(
                       child: Text(
-                        index < reading.cellVoltages.length
-                            ? '${reading.cellVoltages[index].toStringAsFixed(3)} V'
-                            : '—',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        index < reading.cellResistances.length
-                            ? '${reading.cellResistances[index].toStringAsFixed(1)} mΩ'
-                            : '—',
+                        '${reading.cellVoltages[index].toStringAsFixed(3)} V',
                         textAlign: TextAlign.end,
                       ),
                     ),
@@ -784,14 +753,6 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
     super.dispose();
   }
 
-  InputDecoration _decoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      border: const OutlineInputBorder(),
-      alignLabelWithHint: true,
-    );
-  }
-
   void _save() {
     Navigator.of(context).pop(
       _EditTerrainResult(
@@ -806,61 +767,167 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Modifier les informations terrain'),
-      content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
+  Future<void> _openLargeEditor(
+    TextEditingController controller,
+    String label,
+  ) async {
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _TerrainTextEditorPage(
+          title: label,
+          initialText: controller.text,
+        ),
+      ),
+    );
+
+    if (result == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      controller.text = result;
+      controller.selection = TextSelection.collapsed(
+        offset: controller.text.length,
+      );
+    });
+  }
+
+  Widget _compactField(
+    TextEditingController controller,
+    String label,
+  ) {
+    final text = controller.text.trim();
+    final hasText = text.isNotEmpty;
+    final normalizedText = text.replaceAll(RegExp(r'\s+'), ' ');
+    final hasMoreContent = text.contains('\n') || normalizedText.length > 70;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _openLargeEditor(controller, label),
+        child: Container(
+          height: 92,
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 8),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outline,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
-                controller: _drivingNotesController,
-                maxLines: 3,
-                decoration:
-                    _decoration('Comportement et réglages constatés'),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.open_in_full, size: 18),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _breakagesController,
-                maxLines: 2,
-                decoration: _decoration('Casses'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _partsReplacedController,
-                maxLines: 2,
-                decoration: _decoration('Pièces remplacées sur place'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _maintenanceController,
-                maxLines: 2,
-                decoration: _decoration('Entretien à effectuer'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _partsToOrderController,
-                maxLines: 2,
-                decoration: _decoration('Pièces à commander'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _changesController,
-                maxLines: 2,
-                decoration: _decoration(
-                  'Modifications avant la prochaine session',
+              const SizedBox(height: 6),
+              Expanded(
+                child: Text(
+                  hasText ? text : 'Toucher pour saisir…',
+                  maxLines: hasMoreContent ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: hasText
+                        ? Theme.of(context).colorScheme.onSurface
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _generalNotesController,
-                maxLines: 3,
-                decoration: _decoration('Notes générales'),
-              ),
+              if (hasMoreContent)
+                Row(
+                  children: [
+                    Icon(
+                      Icons.more_horiz,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        'Suite…',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenSize = MediaQuery.sizeOf(context);
+    final dialogWidth = (screenSize.width - 24).clamp(320.0, 980.0);
+
+    return AlertDialog(
+      insetPadding: const EdgeInsets.all(12),
+      title: const Text('Modifier les informations terrain'),
+      content: SizedBox(
+        width: dialogWidth,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 760 ? 3 : 2;
+            final spacing = 10.0;
+            final itemWidth =
+                (constraints.maxWidth - spacing * (columns - 1)) / columns;
+
+            final fields = <Widget>[
+              _compactField(
+                _drivingNotesController,
+                'Comportement et réglages',
+              ),
+              _compactField(_breakagesController, 'Casses'),
+              _compactField(
+                _partsReplacedController,
+                'Pièces remplacées sur place',
+              ),
+              _compactField(
+                _maintenanceController,
+                'Entretien à effectuer',
+              ),
+              _compactField(
+                _partsToOrderController,
+                'Pièces à commander',
+              ),
+              _compactField(
+                _changesController,
+                'Modifications prochaine session',
+              ),
+              _compactField(_generalNotesController, 'Notes générales'),
+            ];
+
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                for (final field in fields)
+                  SizedBox(width: itemWidth, child: field),
+              ],
+            );
+          },
         ),
       ),
       actions: [
@@ -873,6 +940,133 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
           child: const Text('Enregistrer'),
         ),
       ],
+    );
+  }
+}
+
+class _TerrainTextEditorPage extends StatefulWidget {
+  const _TerrainTextEditorPage({
+    required this.title,
+    required this.initialText,
+  });
+
+  final String title;
+  final String initialText;
+
+  @override
+  State<_TerrainTextEditorPage> createState() =>
+      _TerrainTextEditorPageState();
+}
+
+class _TerrainTextEditorPageState extends State<_TerrainTextEditorPage> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+  late bool _isEditing;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+    _focusNode = FocusNode();
+    _isEditing = widget.initialText.trim().isEmpty;
+
+    if (_isEditing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _focusNode.requestFocus();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _startEditing() {
+    setState(() {
+      _isEditing = true;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+        _controller.selection = TextSelection.collapsed(
+          offset: _controller.text.length,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: _isEditing ? 'Annuler les modifications' : 'Fermer',
+          onPressed: () => Navigator.of(context).pop(),
+          icon: Icon(_isEditing ? Icons.close : Icons.arrow_back),
+        ),
+        title: Text(widget.title),
+        actions: [
+          if (_isEditing)
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).pop(_controller.text),
+              icon: const Icon(Icons.check),
+              label: const Text('Valider'),
+            )
+          else
+            TextButton.icon(
+              onPressed: _startEditing,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Modifier'),
+            ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: _isEditing
+              ? TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  expands: true,
+                  minLines: null,
+                  maxLines: null,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: const InputDecoration(
+                    hintText: 'Saisir les informations…',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                )
+              : Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      _controller.text.trim().isEmpty
+                          ? 'Aucune information renseignée.'
+                          : _controller.text,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                  ),
+                ),
+        ),
+      ),
     );
   }
 }
@@ -894,9 +1088,7 @@ class _EditBatteryMeasurementDialog extends StatefulWidget {
 class _EditBatteryMeasurementDialogState
     extends State<_EditBatteryMeasurementDialog> {
   late final TextEditingController _capacityController;
-  late final TextEditingController _temperatureController;
   late final List<TextEditingController> _voltageControllers;
-  late final List<TextEditingController> _resistanceControllers;
 
   String? _errorMessage;
 
@@ -911,9 +1103,6 @@ class _EditBatteryMeasurementDialogState
     _capacityController = TextEditingController(
       text: reading?.remainingCapacityPercent?.toString() ?? '',
     );
-    _temperatureController = TextEditingController(
-      text: reading?.temperatureCelsius?.toString() ?? '',
-    );
 
     _voltageControllers = List.generate(
       cellCount,
@@ -923,27 +1112,13 @@ class _EditBatteryMeasurementDialogState
             : '',
       ),
     );
-
-    _resistanceControllers = List.generate(
-      cellCount,
-      (index) => TextEditingController(
-        text: reading != null && index < reading.cellResistances.length
-            ? reading.cellResistances[index].toString()
-            : '',
-      ),
-    );
   }
 
   @override
   void dispose() {
     _capacityController.dispose();
-    _temperatureController.dispose();
 
     for (final controller in _voltageControllers) {
-      controller.dispose();
-    }
-
-    for (final controller in _resistanceControllers) {
       controller.dispose();
     }
 
@@ -962,32 +1137,28 @@ class _EditBatteryMeasurementDialogState
 
   void _save() {
     final capacity = _parseDouble(_capacityController.text);
-    final temperature = _parseDouble(_temperatureController.text);
 
-    if (capacity != null && (capacity < 0 || capacity > 100)) {
+    if (capacity == null || capacity < 0 || capacity > 100) {
       setState(() {
-        _errorMessage = 'La capacité restante doit être comprise entre 0 et 100 %.';
+        _errorMessage =
+            'La capacité restante doit être comprise entre 0 et 100 %.';
       });
       return;
     }
 
     final voltages = <double>[];
-    final resistances = <double>[];
 
     for (var index = 0; index < _voltageControllers.length; index++) {
       final voltage = _parseDouble(_voltageControllers[index].text);
-      final resistance = _parseDouble(_resistanceControllers[index].text);
 
-      if (voltage == null || resistance == null) {
+      if (voltage == null || voltage <= 0) {
         setState(() {
-          _errorMessage =
-              'Renseigne la tension et la résistance de chaque cellule.';
+          _errorMessage = 'Renseigne la tension de chaque cellule.';
         });
         return;
       }
 
       voltages.add(voltage);
-      resistances.add(resistance);
     }
 
     Navigator.of(context).pop(
@@ -995,9 +1166,7 @@ class _EditBatteryMeasurementDialogState
         batteryId: widget.battery.id,
         measuredAt: DateTime.now(),
         remainingCapacityPercent: capacity,
-        temperatureCelsius: temperature,
         cellVoltages: List<double>.unmodifiable(voltages),
-        cellResistances: List<double>.unmodifiable(resistances),
       ),
     );
   }
@@ -1013,125 +1182,111 @@ class _EditBatteryMeasurementDialogState
     );
   }
 
+  double get _totalVoltage {
+    return _voltageControllers.fold<double>(0, (total, controller) {
+      return total + (_parseDouble(controller.text) ?? 0);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.sizeOf(context);
+    final dialogWidth = (screenSize.width - 24).clamp(320.0, 980.0);
+
     return AlertDialog(
-      title: Text('Mesures — ${widget.battery.id}'),
+      insetPadding: const EdgeInsets.all(12),
+      title: Text('Relevé fin de roulage — ${widget.battery.id}'),
       content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _capacityController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: _decoration(
-                        'Capacité restante',
-                        suffix: '%',
+        width: dialogWidth,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 820
+                ? 4
+                : constraints.maxWidth >= 520
+                    ? 3
+                    : 2;
+            final spacing = 8.0;
+            final itemWidth =
+                (constraints.maxWidth - spacing * (columns - 1)) / columns;
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _capacityController,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(decimal: true),
+                        decoration: _decoration(
+                          'Capacité restante',
+                          suffix: '%',
+                        ).copyWith(isDense: true),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _temperatureController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: _decoration(
-                        'Température',
-                        suffix: '°C',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Cellule',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Tension',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Résistance',
-                      textAlign: TextAlign.end,
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              for (var index = 0;
-                  index < _voltageControllers.length;
-                  index++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Tension totale automatique',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
                         child: Text(
-                          '${index + 1}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                          ),
+                          '${_totalVoltage.toStringAsFixed(3)} V',
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
-                      Expanded(
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: [
+                    for (var index = 0;
+                        index < _voltageControllers.length;
+                        index++)
+                      SizedBox(
+                        width: itemWidth,
                         child: TextField(
                           controller: _voltageControllers[index],
                           keyboardType:
-                              const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
+                              const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            labelText: 'Cellule ${index + 1}',
                             suffixText: 'V',
-                            border: OutlineInputBorder(),
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 11,
+                            ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _resistanceControllers[index],
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            suffixText: 'mΩ',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
+                  ],
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.w600,
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              if (_errorMessage != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _errorMessage!,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                ],
               ],
-            ],
-          ),
+            );
+          },
         ),
       ),
       actions: [

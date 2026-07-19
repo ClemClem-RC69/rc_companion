@@ -6,21 +6,30 @@ class BatteryMeasurement {
     required this.measurementType,
     required this.chargePercent,
     required this.cellVoltages,
-    required this.cellInternalResistances,
+    this.cellInternalResistances = const [],
+    // Champs conservés uniquement pour relire les anciennes données.
+    // Les nouveaux écrans ne les utiliseront plus.
     this.batteryTemperature,
     this.notes,
   });
 
-  static const String referenceType = 'Mesure de référence';
-  static const String afterChargeType = 'Après charge';
-  static const String endOfSessionType = 'Fin de session';
-  static const String controlType = 'Contrôle';
+  static const String referenceType = 'Relevé de référence';
+  static const String afterChargeType = 'Relevé après charge';
+  static const String endOfRunType = 'Relevé fin de roulage';
+
+  // Alias temporaire pour éviter de casser les fichiers qui seront remplacés
+  // aux étapes suivantes.
+  static const String endOfSessionType = endOfRunType;
 
   static const List<String> measurementTypes = [
     referenceType,
     afterChargeType,
-    endOfSessionType,
-    controlType,
+    endOfRunType,
+  ];
+
+  static const List<String> manualMeasurementTypes = [
+    referenceType,
+    afterChargeType,
   ];
 
   final int? id;
@@ -29,7 +38,12 @@ class BatteryMeasurement {
   final String measurementType;
   final int chargePercent;
   final List<double> cellVoltages;
+
+  /// Renseignées uniquement pour un relevé de référence ou après charge.
   final List<double> cellInternalResistances;
+
+  /// Anciens champs conservés pour la compatibilité avec les données déjà
+  /// enregistrées. Ils seront ignorés par les nouveaux formulaires.
   final double? batteryTemperature;
   final String? notes;
 
@@ -39,9 +53,19 @@ class BatteryMeasurement {
 
   bool get isAfterCharge => measurementType == afterChargeType;
 
-  bool get isEndOfSession => measurementType == endOfSessionType;
+  bool get isEndOfRun => measurementType == endOfRunType;
 
-  bool get isControl => measurementType == controlType;
+  // Alias temporaire pour les écrans actuels.
+  bool get isEndOfSession => isEndOfRun;
+
+  // Le type « Contrôle » est supprimé. Ce getter reste uniquement pour que
+  // les anciens fichiers compilent jusqu'à leur remplacement.
+  bool get isControl => false;
+
+  bool get usesInternalResistance => isReference || isAfterCharge;
+
+  bool get hasInternalResistance =>
+      usesInternalResistance && cellInternalResistances.isNotEmpty;
 
   double get totalVoltage {
     return cellVoltages.fold<double>(
@@ -79,7 +103,7 @@ class BatteryMeasurement {
   }
 
   double get averageInternalResistance {
-    if (cellInternalResistances.isEmpty) {
+    if (!hasInternalResistance) {
       return 0;
     }
 
@@ -91,7 +115,14 @@ class BatteryMeasurement {
     return total / cellInternalResistances.length;
   }
 
+  /// Conservé temporairement pour la compatibilité du code existant.
+  /// Cette valeur ne devra plus être affichée ni utilisée pour évaluer la
+  /// santé de la batterie.
   double get totalInternalResistance {
+    if (!hasInternalResistance) {
+      return 0;
+    }
+
     return cellInternalResistances.fold<double>(
       0,
       (total, resistance) => total + resistance,
@@ -99,7 +130,7 @@ class BatteryMeasurement {
   }
 
   double get minimumInternalResistance {
-    if (cellInternalResistances.isEmpty) {
+    if (!hasInternalResistance) {
       return 0;
     }
 
@@ -109,7 +140,7 @@ class BatteryMeasurement {
   }
 
   double get maximumInternalResistance {
-    if (cellInternalResistances.isEmpty) {
+    if (!hasInternalResistance) {
       return 0;
     }
 
@@ -119,7 +150,7 @@ class BatteryMeasurement {
   }
 
   double get maximumInternalResistanceDifference {
-    if (cellInternalResistances.isEmpty) {
+    if (!hasInternalResistance) {
       return 0;
     }
 
@@ -127,24 +158,27 @@ class BatteryMeasurement {
   }
 
   factory BatteryMeasurement.fromJson(Map<String, dynamic> json) {
+    final measurementType = _normalizeMeasurementType(
+      json['measurement_type'] as String?,
+    );
+
     final voltages = _toDoubleList(json['cell_voltages']);
-    final resistances = _toDoubleList(
+    final storedResistances = _toDoubleList(
       json['cell_internal_resistances'],
     );
 
-    final rawMeasurementType =
-        json['measurement_type'] as String? ?? afterChargeType;
+    final keepsResistance = measurementType == referenceType ||
+        measurementType == afterChargeType;
 
     return BatteryMeasurement(
       id: (json['id'] as num?)?.toInt(),
       batteryCode: json['battery_code'] as String,
       measuredAt: DateTime.parse(json['measured_at'] as String),
-      measurementType: measurementTypes.contains(rawMeasurementType)
-          ? rawMeasurementType
-          : afterChargeType,
-      chargePercent: (json['charge_percent'] as num).toInt(),
+      measurementType: measurementType,
+      chargePercent: (json['charge_percent'] as num?)?.toInt() ?? 0,
       cellVoltages: voltages,
-      cellInternalResistances: resistances,
+      cellInternalResistances:
+          keepsResistance ? storedResistances : const [],
       batteryTemperature:
           (json['battery_temperature_c'] as num?)?.toDouble(),
       notes: json['notes'] as String?,
@@ -158,8 +192,12 @@ class BatteryMeasurement {
       'measurement_type': measurementType,
       'charge_percent': chargePercent,
       'cell_voltages': cellVoltages,
-      'cell_internal_resistances': cellInternalResistances,
-      'battery_temperature_c': batteryTemperature,
+      'cell_internal_resistances':
+          usesInternalResistance ? cellInternalResistances : const <double>[],
+      // Null pour tous les nouveaux relevés.
+      'battery_temperature_c': null,
+      // Les notes ne sont plus saisies manuellement. Le service Session peut
+      // encore utiliser ce champ comme marqueur technique jusqu'à sa refonte.
       'notes': notes,
     };
   }
@@ -177,20 +215,45 @@ class BatteryMeasurement {
     bool removeBatteryTemperature = false,
     bool removeNotes = false,
   }) {
+    final nextType = measurementType ?? this.measurementType;
+    final keepsResistance = nextType == referenceType ||
+        nextType == afterChargeType;
+
     return BatteryMeasurement(
       id: id ?? this.id,
       batteryCode: batteryCode ?? this.batteryCode,
       measuredAt: measuredAt ?? this.measuredAt,
-      measurementType: measurementType ?? this.measurementType,
+      measurementType: nextType,
       chargePercent: chargePercent ?? this.chargePercent,
       cellVoltages: cellVoltages ?? this.cellVoltages,
-      cellInternalResistances:
-          cellInternalResistances ?? this.cellInternalResistances,
+      cellInternalResistances: keepsResistance
+          ? cellInternalResistances ?? this.cellInternalResistances
+          : const [],
       batteryTemperature: removeBatteryTemperature
           ? null
           : batteryTemperature ?? this.batteryTemperature,
       notes: removeNotes ? null : notes ?? this.notes,
     );
+  }
+
+  static String _normalizeMeasurementType(String? value) {
+    switch (value?.trim()) {
+      case referenceType:
+      case 'Mesure de référence':
+        return referenceType;
+      case afterChargeType:
+      case 'Après charge':
+        return afterChargeType;
+      case endOfRunType:
+      case 'Fin de session':
+        return endOfRunType;
+      case 'Contrôle':
+        // Les anciens contrôles contiennent des résistances et sont donc
+        // assimilés à des relevés après charge dans l'historique.
+        return afterChargeType;
+      default:
+        return afterChargeType;
+    }
   }
 
   static List<double> _toDoubleList(dynamic value) {
@@ -199,7 +262,8 @@ class BatteryMeasurement {
     }
 
     return value
-        .map((item) => (item as num).toDouble())
+        .whereType<num>()
+        .map((item) => item.toDouble())
         .toList(growable: false);
   }
 }

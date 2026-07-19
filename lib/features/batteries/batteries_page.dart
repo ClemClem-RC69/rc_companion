@@ -1896,7 +1896,6 @@ class _ReferenceMeasurementDialogState
   final _formKey = GlobalKey<FormState>();
 
   late final TextEditingController _chargeController;
-  late final TextEditingController _temperatureController;
   late final List<TextEditingController> _voltageControllers;
   late final List<TextEditingController> _resistanceControllers;
 
@@ -1918,9 +1917,6 @@ class _ReferenceMeasurementDialogState
     _chargeController = TextEditingController(
       text: initial?.chargePercent.toString() ?? '100',
     );
-    _temperatureController = TextEditingController(
-      text: initial?.batteryTemperature?.toStringAsFixed(1) ?? '',
-    );
 
     _voltageControllers = List.generate(
       _cellCount,
@@ -1941,18 +1937,14 @@ class _ReferenceMeasurementDialogState
       ),
     );
 
-    for (final controller in [
-      ..._voltageControllers,
-      ..._resistanceControllers,
-    ]) {
-      controller.addListener(_refreshTotals);
+    for (final controller in _voltageControllers) {
+      controller.addListener(_refreshCalculatedValues);
     }
   }
 
   @override
   void dispose() {
     _chargeController.dispose();
-    _temperatureController.dispose();
 
     for (final controller in _voltageControllers) {
       controller.dispose();
@@ -1965,7 +1957,7 @@ class _ReferenceMeasurementDialogState
     super.dispose();
   }
 
-  void _refreshTotals() {
+  void _refreshCalculatedValues() {
     if (mounted) {
       setState(() {});
     }
@@ -1977,20 +1969,40 @@ class _ReferenceMeasurementDialogState
     );
   }
 
+  List<double> get _enteredVoltages {
+    return _voltageControllers
+        .map((controller) => _parseDecimal(controller.text))
+        .whereType<double>()
+        .toList(growable: false);
+  }
+
   double get _totalVoltage {
-    return _voltageControllers.fold<double>(
+    return _enteredVoltages.fold<double>(
       0,
-      (sum, controller) =>
-          sum + (_parseDecimal(controller.text) ?? 0),
+      (sum, voltage) => sum + voltage,
     );
   }
 
-  double get _totalResistance {
-    return _resistanceControllers.fold<double>(
-      0,
-      (sum, controller) =>
-          sum + (_parseDecimal(controller.text) ?? 0),
-    );
+  double get _maximumVoltageDifference {
+    final voltages = _enteredVoltages;
+
+    if (voltages.length < 2) {
+      return 0;
+    }
+
+    var minimum = voltages.first;
+    var maximum = voltages.first;
+
+    for (final voltage in voltages.skip(1)) {
+      if (voltage < minimum) {
+        minimum = voltage;
+      }
+      if (voltage > maximum) {
+        maximum = voltage;
+      }
+    }
+
+    return maximum - minimum;
   }
 
   String? _validatePositiveDecimal(
@@ -2013,8 +2025,6 @@ class _ReferenceMeasurementDialogState
 
     setState(() => _isSaving = true);
 
-    final temperatureText = _temperatureController.text.trim();
-
     Navigator.pop(
       context,
       BatteryMeasurement(
@@ -2030,184 +2040,286 @@ class _ReferenceMeasurementDialogState
         cellInternalResistances: _resistanceControllers
             .map((controller) => _parseDecimal(controller.text)!)
             .toList(growable: false),
-        batteryTemperature: temperatureText.isEmpty
-            ? null
-            : _parseDecimal(temperatureText),
-        notes: widget.initialMeasurement?.notes,
+      ),
+    );
+  }
+
+  Widget _summaryCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _CompactCalculatedValue(
+              label: 'Tension totale',
+              value: '${_totalVoltage.toStringAsFixed(3)} V',
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _CompactCalculatedValue(
+              label: 'Écart maximal',
+              value:
+                  '${_maximumVoltageDifference.toStringAsFixed(3)} V',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cellEditor(int index) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Cellule ${index + 1}',
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _voltageControllers[index],
+                  enabled: !_isSaving,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.next,
+                  style: const TextStyle(fontSize: 14),
+                  decoration: const InputDecoration(
+                    labelText: 'Tension',
+                    suffixText: 'V',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 10,
+                    ),
+                  ),
+                  validator: (value) =>
+                      _validatePositiveDecimal(value, 'Tension'),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: TextFormField(
+                  controller: _resistanceControllers[index],
+                  enabled: !_isSaving,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: index == _cellCount - 1
+                      ? TextInputAction.done
+                      : TextInputAction.next,
+                  style: const TextStyle(fontSize: 14),
+                  decoration: const InputDecoration(
+                    labelText: 'Résistance',
+                    suffixText: 'mΩ',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 10,
+                    ),
+                  ),
+                  validator: (value) =>
+                      _validatePositiveDecimal(value, 'Résistance'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(
-        widget.initialMeasurement == null
-            ? 'Mesure de référence — ${widget.battery.id}'
-            : 'Modifier la référence — ${widget.battery.id}',
-      ),
-      content: SizedBox(
-        width: 620,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+    final mediaQuery = MediaQuery.of(context);
+    final availableWidth = mediaQuery.size.width - 16;
+    final availableHeight = mediaQuery.size.height -
+        mediaQuery.padding.vertical -
+        mediaQuery.viewInsets.bottom -
+        16;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(8),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 980,
+          maxHeight: availableHeight,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+          child: Form(
+            key: _formKey,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final columns = width >= 760
+                    ? 3
+                    : width >= 430
+                        ? 2
+                        : 2;
+                final spacing = 8.0;
+                final itemWidth =
+                    (width - spacing * (columns - 1)) / columns;
+
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _chargeController,
-                        enabled: !_isSaving,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Capacité restante',
-                          suffixText: '%',
-                          border: OutlineInputBorder(),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.initialMeasurement == null
+                                ? 'Relevé de référence — ${widget.battery.id}'
+                                : 'Modifier les valeurs de référence — ${widget.battery.id}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
                         ),
-                        validator: (value) {
-                          final percent = int.tryParse(
-                            value?.trim() ?? '',
-                          );
+                        IconButton(
+                          tooltip: 'Fermer',
+                          onPressed: _isSaving
+                              ? null
+                              : () => Navigator.pop(context),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 150,
+                          child: TextFormField(
+                            controller: _chargeController,
+                            enabled: !_isSaving,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(fontSize: 14),
+                            decoration: const InputDecoration(
+                              labelText: 'Niveau de charge',
+                              suffixText: '%',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 11,
+                              ),
+                            ),
+                            validator: (value) {
+                              final percent = int.tryParse(
+                                value?.trim() ?? '',
+                              );
 
-                          if (percent == null ||
-                              percent < 0 ||
-                              percent > 100) {
-                            return 'Valeur entre 0 et 100';
-                          }
+                              if (percent == null ||
+                                  percent < 0 ||
+                                  percent > 100) {
+                                return '0 à 100';
+                              }
 
-                          return null;
-                        },
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(child: _summaryCard()),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Flexible(
+                      fit: FlexFit.loose,
+                      child: Wrap(
+                        spacing: spacing,
+                        runSpacing: spacing,
+                        children: [
+                          for (var index = 0;
+                              index < _cellCount;
+                              index++)
+                            SizedBox(
+                              width: itemWidth,
+                              child: _cellEditor(index),
+                            ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _temperatureController,
-                        enabled: !_isSaving,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(
-                          decimal: true,
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: _isSaving
+                              ? null
+                              : () => Navigator.pop(context),
+                          child: const Text('Annuler'),
                         ),
-                        decoration: const InputDecoration(
-                          labelText: 'Température facultative',
-                          suffixText: '°C',
-                          border: OutlineInputBorder(),
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          onPressed: _isSaving ? null : _save,
+                          icon: const Icon(Icons.save),
+                          label: const Text('Enregistrer'),
                         ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return null;
-                          }
-
-                          final parsed = _parseDecimal(value);
-
-                          if (parsed == null ||
-                              parsed < -30 ||
-                              parsed > 100) {
-                            return 'Température invalide';
-                          }
-
-                          return null;
-                        },
-                      ),
+                      ],
                     ),
                   ],
-                ),
-                const SizedBox(height: 18),
-                for (var index = 0; index < _cellCount; index++) ...[
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: 74,
-                        child: Text(
-                          'Cellule ${index + 1}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _voltageControllers[index],
-                          enabled: !_isSaving,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Tension',
-                            suffixText: 'V',
-                            border: OutlineInputBorder(),
-                          ),
-                          validator: (value) =>
-                              _validatePositiveDecimal(
-                            value,
-                            'Tension',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _resistanceControllers[index],
-                          enabled: !_isSaving,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Résistance',
-                            suffixText: 'mΩ',
-                            border: OutlineInputBorder(),
-                          ),
-                          validator: (value) =>
-                              _validatePositiveDecimal(
-                            value,
-                            'Résistance',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                const Divider(height: 28),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Tension totale automatique'),
-                  trailing: Text(
-                    '${_totalVoltage.toStringAsFixed(3)} V',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Résistance totale automatique'),
-                  trailing: Text(
-                    '${_totalResistance.toStringAsFixed(2)} mΩ',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
+                );
+              },
             ),
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed:
-              _isSaving ? null : () => Navigator.pop(context),
-          child: const Text('Annuler'),
+    );
+  }
+}
+
+class _CompactCalculatedValue extends StatelessWidget {
+  const _CompactCalculatedValue({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall,
         ),
-        FilledButton.icon(
-          onPressed: _isSaving ? null : _save,
-          icon: const Icon(Icons.save),
-          label: const Text('Enregistrer'),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          maxLines: 1,
+          style: const TextStyle(fontWeight: FontWeight.w800),
         ),
       ],
     );
