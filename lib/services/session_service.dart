@@ -226,6 +226,115 @@ class SessionService {
     return session.copyWith(id: sessionId);
   }
 
+  static Future<void> updateRunReading({
+    required String sessionId,
+    required String modelName,
+    required RcRun run,
+    required BatteryRunReading reading,
+  }) async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw StateError('Utilisateur non connecté');
+    }
+
+    final runRow = await _client
+        .from('session_runs')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('started_at', run.startedAt.toUtc().toIso8601String())
+        .maybeSingle();
+
+    if (runRow == null) {
+      throw StateError('Roulage introuvable');
+    }
+
+    final runId = runRow['id'] as String;
+    final measuredAt = _measurementDate(reading, run).toUtc();
+
+    final runMeasurementData = <String, dynamic>{
+      'run_id': runId,
+      'user_id': user.id,
+      'battery_code': reading.batteryId,
+      'measured_at': measuredAt.toIso8601String(),
+      'remaining_capacity_percent': reading.remainingCapacityPercent,
+      'temperature_celsius': reading.temperatureCelsius,
+      'cell_voltages': reading.cellVoltages,
+      'cell_resistances': const <double>[],
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+
+    final existingRunMeasurement = await _client
+        .from('session_run_measurements')
+        .select('id')
+        .eq('run_id', runId)
+        .eq('battery_code', reading.batteryId)
+        .maybeSingle();
+
+    if (existingRunMeasurement == null) {
+      await _client
+          .from('session_run_measurements')
+          .insert(runMeasurementData);
+    } else {
+      await _client
+          .from('session_run_measurements')
+          .update(runMeasurementData)
+          .eq('id', existingRunMeasurement['id']);
+    }
+
+    final automaticNote = _automaticMeasurementNote(
+      sessionId: sessionId,
+      run: run,
+      batteryCode: reading.batteryId,
+      modelName: modelName,
+    );
+
+    final batteryMeasurementData = <String, dynamic>{
+      'user_id': user.id,
+      'battery_code': reading.batteryId,
+      'measured_at': measuredAt.toIso8601String(),
+      'measurement_type': 'Fin de session',
+      'charge_percent':
+          reading.remainingCapacityPercent!.round().clamp(0, 100),
+      'cell_voltages': reading.cellVoltages,
+      'cell_internal_resistances': const <double>[],
+      'battery_temperature_c': reading.temperatureCelsius,
+      'notes': automaticNote,
+    };
+
+    final existingBatteryMeasurements = await _client
+        .from('battery_measurements')
+        .select('id, notes')
+        .eq('user_id', user.id)
+        .eq('battery_code', reading.batteryId)
+        .like(
+          'notes',
+          '$_automaticMeasurementNotePrefix$sessionId%',
+        );
+
+    Map<String, dynamic>? matchingBatteryMeasurement;
+
+    for (final rawRow in existingBatteryMeasurements) {
+      final row = Map<String, dynamic>.from(rawRow);
+      if (row['notes'] == automaticNote) {
+        matchingBatteryMeasurement = row;
+        break;
+      }
+    }
+
+    if (matchingBatteryMeasurement == null) {
+      await _client
+          .from('battery_measurements')
+          .insert(batteryMeasurementData);
+    } else {
+      await _client
+          .from('battery_measurements')
+          .update(batteryMeasurementData)
+          .eq('user_id', user.id)
+          .eq('id', matchingBatteryMeasurement['id']);
+    }
+  }
+
   static Future<void> deleteSession(String sessionId) async {
     final user = _client.auth.currentUser;
 

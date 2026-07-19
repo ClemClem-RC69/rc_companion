@@ -139,7 +139,86 @@ class _BatteriesPageState extends State<BatteriesPage> {
       return;
     }
 
-    await _openBattery(matchingBattery);
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(matchingBattery!.id),
+        content: const Text('Que souhaitez-vous faire ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Annuler'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, 'open'),
+            icon: const Icon(Icons.description_outlined),
+            label: const Text('Consulter la fiche batterie'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, 'after_charge'),
+            icon: const Icon(Icons.battery_charging_full),
+            label: const Text('Relevé après charge'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || action == null) {
+      return;
+    }
+
+    if (action == 'open') {
+      await _openBattery(matchingBattery);
+      return;
+    }
+
+    final state = await showDialog<BatteryChargeState>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('État après charge'),
+        content: const Text(
+          'Quel état souhaites-tu attribuer à cette batterie ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Annuler'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              BatteryChargeState.storage,
+            ),
+            icon: const Icon(Icons.inventory_2_outlined),
+            label: const Text('Storage'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              BatteryChargeState.charged,
+            ),
+            icon: const Icon(Icons.battery_charging_full),
+            label: const Text('Chargée'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || state == null) {
+      return;
+    }
+
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BatteryDetailPage(
+          battery: matchingBattery!,
+          startAfterChargeState: state,
+        ),
+      ),
+    );
+
+    await _loadBatteries();
   }
 
   Future<void> _openBattery(Battery battery) async {
@@ -482,6 +561,29 @@ class _BatteriesPageState extends State<BatteriesPage> {
     };
   }
 
+  Color _chargeStateColor(BatteryChargeState state) {
+    return switch (state) {
+      BatteryChargeState.charged => Colors.green.shade700,
+      BatteryChargeState.storage => Colors.blue.shade700,
+      BatteryChargeState.partial => Colors.orange.shade700,
+      BatteryChargeState.discharged => Colors.red.shade700,
+    };
+  }
+
+  Widget _chargeStateChip(Battery battery) {
+    return Chip(
+      visualDensity: VisualDensity.compact,
+      backgroundColor: _chargeStateColor(battery.chargeState),
+      label: Text(
+        battery.chargeState.label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
   Color _technologyColor(String technology) {
     return switch (technology) {
       'LiPo' => Colors.red,
@@ -581,6 +683,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
                 '${battery.cells} • ${battery.capacity} mAh • '
                 '${battery.cRate}C',
               ),
+              _chargeStateChip(battery),
               Builder(
                 builder: (context) {
                   final health =

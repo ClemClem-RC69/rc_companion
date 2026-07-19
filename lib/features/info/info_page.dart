@@ -6,6 +6,7 @@ class InfoPage extends StatelessWidget {
   static const String appVersion = 'V1.0';
   static const String batteryHealthVersion = 'V1.0';
   static const String batteryCompatibilityVersion = 'V1.0';
+  static const String batteryChargeStateVersion = 'V1.0';
   static const String lastUpdate = 'Juillet 2026';
 
   @override
@@ -20,6 +21,63 @@ class InfoPage extends StatelessWidget {
           _headerCard(context),
           const SizedBox(height: 16),
           _warningCard(context),
+          const SizedBox(height: 16),
+          _sectionCard(
+            context,
+            icon: Icons.battery_std,
+            title: 'État de charge',
+            children: const [
+              Text(
+                'RC Companion distingue quatre états énergétiques : '
+                'Chargée, Storage, Partiellement chargée et Déchargée.',
+              ),
+              SizedBox(height: 10),
+              _InfoBullet(
+                'Chargée et Storage sont attribués uniquement par '
+                'l’utilisateur lors d’un relevé après charge.',
+              ),
+              _InfoBullet(
+                'Partiellement chargée et Déchargée sont déterminés '
+                'automatiquement après un relevé de fin de roulage.',
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Seuils automatiques actuellement retenus :',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'LiPo et LiHV : Déchargée si la capacité restante est '
+                'inférieure ou égale à 15 % ou si une cellule est '
+                'inférieure ou égale à 3,50 V.',
+              ),
+              _InfoBullet(
+                'Li-Ion : Déchargée si la capacité restante est '
+                'inférieure ou égale à 15 % ou si une cellule est '
+                'inférieure ou égale à 3,20 V.',
+              ),
+              _InfoBullet(
+                'LiFe : Déchargée si la capacité restante est '
+                'inférieure ou égale à 15 % ou si une cellule est '
+                'inférieure ou égale à 2,90 V.',
+              ),
+              _InfoBullet(
+                'NiMH et NiCd : Déchargée si la capacité restante est '
+                'inférieure ou égale à 15 %.',
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Une batterie Storage ou Déchargée n’est pas proposée '
+                'pour un roulage. Une batterie Chargée ou Partiellement '
+                'chargée reste sélectionnable.',
+              ),
+              SizedBox(height: 12),
+              _VersionLine(
+                label: 'Version de l’algorithme',
+                value: batteryChargeStateVersion,
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           _sectionCard(
             context,
@@ -225,10 +283,7 @@ class InfoPage extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  icon,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                Icon(icon, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 10),
                 Text(
                   title,

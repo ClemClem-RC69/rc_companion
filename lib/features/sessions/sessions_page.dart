@@ -203,7 +203,8 @@ class _SessionsPageState extends State<SessionsPage> {
 
   String _batteryLabel(Battery battery) {
     return '${battery.brand} — ${battery.technology} — '
-        '${battery.cells} — ${battery.capacity} mAh — ${battery.cRate}C';
+        '${battery.cells} — ${battery.capacity} mAh — ${battery.cRate}C — '
+        '${battery.chargeState.label}';
   }
 
   Future<void> _openSession() async {
@@ -271,6 +272,13 @@ class _SessionsPageState extends State<SessionsPage> {
     if (battery == null) {
       _showMessage(
         'Aucune batterie enregistrée ne correspond à ce QR Code.',
+      );
+      return;
+    }
+
+    if (!battery.isUsable) {
+      _showMessage(
+        '${battery.id} est « ${battery.chargeState.label} » et ne peut pas être utilisée pour un roulage.',
       );
       return;
     }
@@ -421,7 +429,7 @@ class _SessionsPageState extends State<SessionsPage> {
       return _CompatibilityResult(
         isValid: false,
         message:
-            '${first.id} ne peut pas être utilisée car son statut est « ${first.status} ».',
+            '${first.id} ne peut pas être utilisée : état de charge « ${first.chargeState.label} ».',
       );
     }
 
@@ -484,7 +492,7 @@ class _SessionsPageState extends State<SessionsPage> {
       return _CompatibilityResult(
         isValid: false,
         message:
-            '${second.id} ne peut pas être utilisée car son statut est « ${second.status} ».',
+            '${second.id} ne peut pas être utilisée : état de charge « ${second.chargeState.label} ».',
       );
     }
 
@@ -1630,7 +1638,11 @@ class _BatteryChoiceDialog extends StatelessWidget {
                   final battery = batteries[index];
 
                   return ListTile(
-                    leading: const Icon(Icons.battery_charging_full),
+                    enabled: battery.isUsable,
+                    leading: Icon(
+                      Icons.battery_charging_full,
+                      color: battery.isUsable ? null : Colors.red.shade700,
+                    ),
                     title: Text.rich(
                       TextSpan(
                         children: [
@@ -1646,7 +1658,18 @@ class _BatteryChoiceDialog extends StatelessWidget {
                       ),
                     ),
                     subtitle: Text(labelBuilder(battery)),
-                    onTap: () => Navigator.of(context).pop(battery),
+                    trailing: battery.isUsable
+                        ? null
+                        : Text(
+                            battery.chargeState.label,
+                            style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                    onTap: battery.isUsable
+                        ? () => Navigator.of(context).pop(battery)
+                        : null,
                   );
                 },
               ),

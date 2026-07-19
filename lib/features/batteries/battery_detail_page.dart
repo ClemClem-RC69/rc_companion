@@ -11,9 +11,11 @@ class BatteryDetailPage extends StatefulWidget {
   const BatteryDetailPage({
     super.key,
     required this.battery,
+    this.startAfterChargeState,
   });
 
   final Battery battery;
+  final BatteryChargeState? startAfterChargeState;
 
   @override
   State<BatteryDetailPage> createState() => _BatteryDetailPageState();
@@ -34,6 +36,18 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     battery = widget.battery;
     _tabController = TabController(length: 3, vsync: this);
     _loadMeasurements();
+
+    final initialState = widget.startAfterChargeState;
+    if (initialState != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _addMeasurement(
+            BatteryMeasurement.afterChargeType,
+            afterChargeState: initialState,
+          );
+        }
+      });
+    }
   }
 
   @override
@@ -403,9 +417,69 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     );
   }
 
+  BatteryChargeState _afterChargeStateFromMeasurement(
+    BatteryMeasurement measurement,
+  ) {
+    final notes = measurement.notes ?? '';
+
+    return notes.split('|').any(
+          (part) => part.trim() == 'charge_state:storage',
+        )
+        ? BatteryChargeState.storage
+        : BatteryChargeState.charged;
+  }
+
+  Future<BatteryChargeState?> _chooseAfterChargeState() {
+    return showDialog<BatteryChargeState>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('État après charge'),
+        content: const Text(
+          'Quel état souhaites-tu attribuer à cette batterie ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Annuler'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              BatteryChargeState.storage,
+            ),
+            icon: const Icon(Icons.inventory_2_outlined),
+            label: const Text('Storage'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              BatteryChargeState.charged,
+            ),
+            icon: const Icon(Icons.battery_charging_full),
+            label: const Text('Chargée'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _startAfterChargeMeasurement() async {
+    final selectedState = await _chooseAfterChargeState();
+
+    if (selectedState == null || !mounted) {
+      return;
+    }
+
+    await _addMeasurement(
+      BatteryMeasurement.afterChargeType,
+      afterChargeState: selectedState,
+    );
+  }
+
   Future<void> _addMeasurement(
     String measurementType, {
     BatteryMeasurement? initialMeasurement,
+    BatteryChargeState? afterChargeState,
   }) async {
     final formKey = GlobalKey<FormState>();
     final usesResistance = measurementType != BatteryMeasurement.endOfRunType;
@@ -553,7 +627,12 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   batteryTemperature: usesResistance
                       ? null
                       : parseDecimal(temperatureController.text),
-                  notes: initialMeasurement?.notes,
+                  notes: measurementType == BatteryMeasurement.afterChargeType
+                      ? BatteryService.withAfterChargeStateNote(
+                          initialMeasurement?.notes,
+                          afterChargeState ?? BatteryChargeState.charged,
+                        )
+                      : initialMeasurement?.notes,
                 );
 
                 late final BatteryMeasurement savedMeasurement;
@@ -871,6 +950,13 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 
     if (!mounted) {
       return;
+    }
+
+    if (measurementType == BatteryMeasurement.afterChargeType &&
+        afterChargeState != null) {
+      setState(() {
+        battery = battery.copyWith(chargeState: afterChargeState);
+      });
     }
 
     if (initialMeasurement != null) {
@@ -1348,6 +1434,34 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     return Colors.white;
   }
 
+  Color _chargeStateColor(BatteryChargeState state) {
+    return switch (state) {
+      BatteryChargeState.charged => Colors.green.shade700,
+      BatteryChargeState.storage => Colors.blue.shade700,
+      BatteryChargeState.partial => Colors.orange.shade700,
+      BatteryChargeState.discharged => Colors.red.shade700,
+    };
+  }
+
+  Widget _chargeStateChip() {
+    return Chip(
+      visualDensity: VisualDensity.compact,
+      backgroundColor: _chargeStateColor(battery.chargeState),
+      avatar: const Icon(
+        Icons.battery_std,
+        size: 18,
+        color: Colors.white,
+      ),
+      label: Text(
+        battery.chargeState.label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
   Widget _batteryHeader() {
     return Card(
       child: Padding(
@@ -1384,16 +1498,23 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                         : 'Batterie seule',
                   ),
                   const SizedBox(height: 10),
-                  Chip(
-                    visualDensity: VisualDensity.compact,
-                    backgroundColor: _healthBackgroundColor(context),
-                    label: Text(
-                      _healthLabel,
-                      style: TextStyle(
-                        color: _healthForegroundColor(context),
-                        fontWeight: FontWeight.w700,
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _chargeStateChip(),
+                      Chip(
+                        visualDensity: VisualDensity.compact,
+                        backgroundColor: _healthBackgroundColor(context),
+                        label: Text(
+                          _healthLabel,
+                          style: TextStyle(
+                            color: _healthForegroundColor(context),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -1477,9 +1598,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: () => _addMeasurement(
-                    BatteryMeasurement.afterChargeType,
-                  ),
+                  onPressed: _startAfterChargeMeasurement,
                   icon: const Icon(Icons.battery_charging_full),
                   label: const Text('Relevé après charge'),
                 ),
@@ -1953,6 +2072,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 onPressed: () => _addMeasurement(
                   measurement.measurementType,
                   initialMeasurement: measurement,
+                  afterChargeState: measurement.isAfterCharge
+                      ? _afterChargeStateFromMeasurement(measurement)
+                      : null,
                 ),
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('Modifier le relevé'),

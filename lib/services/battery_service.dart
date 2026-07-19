@@ -12,19 +12,49 @@ class BatteryService {
       return [];
     }
 
-    final response = await _client
+    final batteryRows = await _client
         .from('batteries')
         .select()
         .eq('user_id', user.id)
         .order('created_at', ascending: false);
 
-    return response
-        .map<Battery>(
-          (json) => Battery.fromJson(
-            Map<String, dynamic>.from(json),
-          ),
-        )
-        .toList();
+    final measurementRows = await _client
+        .from('battery_measurements')
+        .select()
+        .eq('user_id', user.id)
+        .order('measured_at', ascending: false);
+
+    final latestUsefulMeasurementByBattery =
+        <String, BatteryMeasurement>{};
+
+    for (final rawRow in measurementRows) {
+      final measurement = BatteryMeasurement.fromJson(
+        Map<String, dynamic>.from(rawRow),
+      );
+
+      if (measurement.isReference) {
+        continue;
+      }
+
+      latestUsefulMeasurementByBattery.putIfAbsent(
+        measurement.batteryCode,
+        () => measurement,
+      );
+    }
+
+    return batteryRows.map<Battery>((json) {
+      final battery = Battery.fromJson(
+        Map<String, dynamic>.from(json),
+      );
+      final latest = latestUsefulMeasurementByBattery[battery.id];
+
+      return battery.copyWith(
+        chargeState: _chargeStateFor(
+          battery: battery,
+          measurement: latest,
+        ),
+      );
+    }).toList(growable: false);
   }
 
   static Future<List<Battery>> getAvailablePairCandidates({
@@ -803,6 +833,71 @@ class BatteryService {
     return Battery.fromJson(
       Map<String, dynamic>.from(response),
     );
+  }
+
+
+  static String withAfterChargeStateNote(
+    String? existingNotes,
+    BatteryChargeState state,
+  ) {
+    final parts = (existingNotes ?? '')
+        .split('|')
+        .where(
+          (part) =>
+              part.trim().isNotEmpty &&
+              !part.trim().startsWith('charge_state:'),
+        )
+        .toList();
+
+    parts.add(
+      'charge_state:${state == BatteryChargeState.storage ? 'storage' : 'charged'}',
+    );
+
+    return parts.join('|');
+  }
+
+  static BatteryChargeState _chargeStateFor({
+    required Battery battery,
+    required BatteryMeasurement? measurement,
+  }) {
+    if (measurement == null) {
+      return BatteryChargeState.discharged;
+    }
+
+    if (measurement.isAfterCharge) {
+      final note = measurement.notes ?? '';
+
+      if (note.split('|').any(
+            (part) => part.trim() == 'charge_state:storage',
+          )) {
+        return BatteryChargeState.storage;
+      }
+
+      return BatteryChargeState.charged;
+    }
+
+    if (!measurement.isEndOfRun) {
+      return BatteryChargeState.discharged;
+    }
+
+    final capacityIsLow = measurement.chargePercent <= 15;
+    final minimumCellVoltage = measurement.minimumCellVoltage;
+    final technology = battery.technology
+        .toLowerCase()
+        .replaceAll('-', '')
+        .replaceAll(' ', '');
+
+    final voltageIsLow = switch (technology) {
+      'lipo' || 'lihv' => minimumCellVoltage <= 3.50,
+      'liion' => minimumCellVoltage <= 3.20,
+      'life' => minimumCellVoltage <= 2.90,
+      'nimh' || 'nicd' => false,
+      _ => minimumCellVoltage <= 3.50,
+    };
+
+    return capacityIsLow || voltageIsLow
+        ? BatteryChargeState.discharged
+        : BatteryChargeState.partial;
   }
 
   static String _technologyPrefix(String technology) {

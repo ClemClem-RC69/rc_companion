@@ -115,14 +115,25 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         runs: List<RcRun>.unmodifiable(updatedRuns),
       );
 
-      final savedSession = await SessionService.saveSession(updatedSession);
+      final sessionId = updatedSession.id;
+
+      if (sessionId == null || sessionId.trim().isEmpty) {
+        throw StateError('Session introuvable');
+      }
+
+      await SessionService.updateRunReading(
+        sessionId: sessionId,
+        modelName: updatedSession.model.name,
+        run: updatedRuns[runIndex],
+        reading: updatedReading,
+      );
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _session = savedSession;
+        _session = updatedSession;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1181,7 +1192,8 @@ class _EditBatteryMeasurementDialogState
     Navigator.of(context).pop(
       BatteryRunReading(
         batteryId: widget.battery.id,
-        measuredAt: DateTime.now(),
+        measuredAt:
+            widget.initialReading?.measuredAt ?? DateTime.now(),
         remainingCapacityPercent: capacity,
         temperatureCelsius: temperature,
         cellVoltages: List<double>.unmodifiable(voltages),
