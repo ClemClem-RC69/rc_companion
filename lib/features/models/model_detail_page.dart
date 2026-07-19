@@ -7,6 +7,7 @@ import '../../services/model_document_service.dart';
 import 'widgets/model_radio_controls_tab.dart';
 import 'widgets/model_radio_setup_tab.dart';
 import 'widgets/model_setup_tab.dart';
+import 'widgets/model_history_tab.dart';
 import '../../models/radio.dart';
 import '../../services/radio_service.dart';
 
@@ -39,7 +40,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
     super.initState();
 
     tabController = TabController(
-      length: 5,
+      length: 6,
       vsync: this,
     );
 
@@ -555,6 +556,10 @@ class _ModelDetailPageState extends State<ModelDetailPage>
               icon: Icon(Icons.gamepad_outlined),
               text: 'Commandes radio',
             ),
+            Tab(
+              icon: Icon(Icons.history),
+              text: 'Historique',
+            ),
           ],
         ),
       ),
@@ -572,6 +577,9 @@ class _ModelDetailPageState extends State<ModelDetailPage>
           ),
           ModelRadioControlsTab(
             modelId: widget.modelId,
+            model: widget.model,
+          ),
+          ModelHistoryTab(
             model: widget.model,
           ),
         ],
