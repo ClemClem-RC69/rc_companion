@@ -1211,8 +1211,10 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   Widget _buildSessionHistory() {
-    final closedSessions =
-        sessions.where((session) => session.isClosed).toList().reversed;
+    final closedSessions = sessions
+        .where((session) => session.isClosed)
+        .toList()
+      ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
 
     if (closedSessions.isEmpty) {
       return const Center(
@@ -1454,7 +1456,7 @@ class _SessionsPageState extends State<SessionsPage> {
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 10),
-          for (var index = 0; index < session.runs.length; index++)
+          for (var index = session.runs.length - 1; index >= 0; index--)
             _RunCard(
               number: index + 1,
               run: session.runs[index],

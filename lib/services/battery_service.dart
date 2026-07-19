@@ -16,7 +16,7 @@ class BatteryService {
         .from('batteries')
         .select()
         .eq('user_id', user.id)
-        .order('created_at');
+        .order('created_at', ascending: false);
 
     return response
         .map<Battery>(

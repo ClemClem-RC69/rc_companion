@@ -531,7 +531,9 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
           ),
           if (_session.runs.isNotEmpty) ...[
             _sectionTitle(context, 'Roulages'),
-            for (var index = 0; index < _session.runs.length; index++)
+            for (var index = _session.runs.length - 1;
+                index >= 0;
+                index--)
               _runCard(
                 context,
                 run: _session.runs[index],
