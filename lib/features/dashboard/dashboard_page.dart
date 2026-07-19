@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../pages/radios_page.dart';
 import '../batteries/batteries_page.dart';
+import '../info/info_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../models/models_page.dart';
 import '../sessions/sessions_page.dart';
@@ -130,6 +131,15 @@ class DashboardPage extends StatelessWidget {
             title: 'Entretiens',
             subtitle: 'Réparations, réglages et modifications',
             onTap: () => open(context, const MaintenancePage()),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => open(context, const InfoPage()),
+              icon: const Icon(Icons.info_outline, size: 20),
+              label: const Text('Informations & Références'),
+            ),
           ),
         ],
       ),
