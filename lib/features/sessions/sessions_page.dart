@@ -122,10 +122,7 @@ class _SessionsPageState extends State<SessionsPage> {
     return sessions.indexWhere((item) => identical(item, session));
   }
 
-  Future<bool> _replaceSession(
-    RcSession current,
-    RcSession updated,
-  ) async {
+  Future<bool> _replaceSession(RcSession current, RcSession updated) async {
     final index = _sessionIndex(current);
 
     if (index == -1) {
@@ -152,6 +149,28 @@ class _SessionsPageState extends State<SessionsPage> {
 
   int _cellsNumber(String value) {
     return int.tryParse(value.replaceAll('S', '').trim()) ?? 0;
+  }
+
+  int _modelTotalCells(RcModel model) {
+    final cellsPerPack = _cellsNumber(model.maxCells);
+    final configuredBatteryCount = model.batteryCount <= 0
+        ? 1
+        : model.batteryCount;
+
+    return cellsPerPack * configuredBatteryCount;
+  }
+
+  bool _canAddSecondBattery(RcSession session) {
+    final first = _battery1;
+
+    if (first == null) {
+      return false;
+    }
+
+    final firstCells = _cellsNumber(first.cells);
+    final totalLimit = _modelTotalCells(session.model);
+
+    return firstCells > 0 && firstCells * 2 <= totalLimit;
   }
 
   String _formatDateTime(DateTime value) {
@@ -227,9 +246,7 @@ class _SessionsPageState extends State<SessionsPage> {
     }
   }
 
-  Future<void> _scanBattery({
-    required int position,
-  }) async {
+  Future<void> _scanBattery({required int position}) async {
     final scannedValue = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => BatteryScannerPage(
@@ -247,9 +264,7 @@ class _SessionsPageState extends State<SessionsPage> {
     final battery = _findBatteryFromQr(scannedValue);
 
     if (battery == null) {
-      _showMessage(
-        'Aucune batterie enregistrée ne correspond à ce QR Code.',
-      );
+      _showMessage('Aucune batterie enregistrée ne correspond à ce QR Code.');
       return;
     }
 
@@ -262,12 +277,18 @@ class _SessionsPageState extends State<SessionsPage> {
       }
     });
 
-    if (position == 1 &&
-        _activeSession?.model.batteryCount == 2 &&
-        mounted) {
-      _showMessage(
-        'Première batterie reconnue. Scanne maintenant la deuxième batterie.',
-      );
+    final activeSession = _activeSession;
+
+    if (position == 1 && activeSession != null && mounted) {
+      if (_canAddSecondBattery(activeSession)) {
+        _showMessage(
+          'Première batterie reconnue. Tu peux ajouter une deuxième batterie compatible.',
+        );
+      } else {
+        _showMessage(
+          'Batterie reconnue. La limite totale du modèle est atteinte : aucune deuxième batterie n’est nécessaire.',
+        );
+      }
     }
   }
 
@@ -281,9 +302,7 @@ class _SessionsPageState extends State<SessionsPage> {
     }
 
     final containedMatches = _availableBatteries.where(
-      (battery) => normalized.toLowerCase().contains(
-            battery.id.toLowerCase(),
-          ),
+      (battery) => normalized.toLowerCase().contains(battery.id.toLowerCase()),
     );
 
     if (containedMatches.length == 1) {
@@ -300,7 +319,7 @@ class _SessionsPageState extends State<SessionsPage> {
       return const [];
     }
 
-    final modelMaxCells = _cellsNumber(session.model.maxCells);
+    final modelTotalCells = _modelTotalCells(session.model);
 
     final compatible = _availableBatteries.where((battery) {
       if (battery.id == first.id) {
@@ -311,7 +330,8 @@ class _SessionsPageState extends State<SessionsPage> {
         return false;
       }
 
-      if (_cellsNumber(battery.cells) > modelMaxCells) {
+      if (_cellsNumber(first.cells) + _cellsNumber(battery.cells) >
+          modelTotalCells) {
         return false;
       }
 
@@ -325,10 +345,12 @@ class _SessionsPageState extends State<SessionsPage> {
     }).toList();
 
     compatible.sort((a, b) {
-      final aIsTwin = first.pairId != null &&
+      final aIsTwin =
+          first.pairId != null &&
           first.pairId!.isNotEmpty &&
           a.pairId == first.pairId;
-      final bIsTwin = first.pairId != null &&
+      final bIsTwin =
+          first.pairId != null &&
           first.pairId!.isNotEmpty &&
           b.pairId == first.pairId;
 
@@ -396,12 +418,33 @@ class _SessionsPageState extends State<SessionsPage> {
       );
     }
 
-    if (model.batteryCount == 1) {
-      if (_cellsNumber(first.cells) > _cellsNumber(model.maxCells)) {
+    final totalLimit = _modelTotalCells(model);
+    final firstCells = _cellsNumber(first.cells);
+
+    if (firstCells > totalLimit) {
+      return _CompatibilityResult(
+        isValid: false,
+        message:
+            '${first.id} est en ${first.cells}, alors que la configuration du modèle accepte ${totalLimit}S au total maximum.',
+      );
+    }
+
+    final second = _battery2;
+
+    if (second == null) {
+      if (_canAddSecondBattery(session)) {
+        final warnings = <String>[];
+
+        if (first.isPaired) {
+          warnings.add('Cette batterie appartient à une paire enregistrée.');
+        }
+
         return _CompatibilityResult(
-          isValid: false,
-          message:
-              '${first.id} est en ${first.cells}, alors que le modèle accepte ${model.maxCells} maximum.',
+          isValid: true,
+          hasWarning: warnings.isNotEmpty,
+          message: warnings.isNotEmpty
+              ? '${warnings.join(' ')} Tu peux l’utiliser seule ou ajouter une deuxième batterie compatible.'
+              : 'Batterie compatible. Tu peux démarrer avec cette seule batterie ou en ajouter une deuxième compatible.',
         );
       }
 
@@ -410,22 +453,14 @@ class _SessionsPageState extends State<SessionsPage> {
           isValid: true,
           hasWarning: true,
           message:
-              'Cette batterie appartient à une paire enregistrée. Vérifie que tu souhaites bien l’utiliser seule.',
+              'Cette batterie appartient à une paire enregistrée. La limite totale du modèle est atteinte, elle sera utilisée seule.',
         );
       }
 
       return const _CompatibilityResult(
         isValid: true,
-        message: 'Batterie compatible avec le modèle.',
-      );
-    }
-
-    final second = _battery2;
-
-    if (second == null) {
-      return const _CompatibilityResult(
-        isValid: false,
-        message: 'Scanne ou sélectionne la deuxième batterie.',
+        message:
+            'Batterie compatible. La limite totale du modèle est atteinte, aucune deuxième batterie n’est nécessaire.',
       );
     }
 
@@ -444,21 +479,13 @@ class _SessionsPageState extends State<SessionsPage> {
       );
     }
 
-    final modelMaxCells = _cellsNumber(model.maxCells);
+    final secondCells = _cellsNumber(second.cells);
 
-    if (_cellsNumber(first.cells) > modelMaxCells) {
+    if (firstCells + secondCells > totalLimit) {
       return _CompatibilityResult(
         isValid: false,
         message:
-            '${first.id} est en ${first.cells}, alors que le modèle accepte ${model.maxCells} maximum.',
-      );
-    }
-
-    if (_cellsNumber(second.cells) > modelMaxCells) {
-      return _CompatibilityResult(
-        isValid: false,
-        message:
-            '${second.id} est en ${second.cells}, alors que le modèle accepte ${model.maxCells} maximum.',
+            'Le total de ${firstCells + secondCells}S dépasse la limite de ${totalLimit}S du modèle.',
       );
     }
 
@@ -472,8 +499,7 @@ class _SessionsPageState extends State<SessionsPage> {
     if (first.cells != second.cells) {
       return const _CompatibilityResult(
         isValid: false,
-        message:
-            'Les deux batteries doivent avoir le même nombre de cellules.',
+        message: 'Les deux batteries doivent avoir le même nombre de cellules.',
       );
     }
 
@@ -493,7 +519,8 @@ class _SessionsPageState extends State<SessionsPage> {
 
     final warnings = <String>[];
 
-    final sameRegisteredPair = first.pairId != null &&
+    final sameRegisteredPair =
+        first.pairId != null &&
         first.pairId!.isNotEmpty &&
         first.pairId == second.pairId;
 
@@ -595,10 +622,7 @@ class _SessionsPageState extends State<SessionsPage> {
     _showMessage('Roulage démarré.');
   }
 
-  Future<void> _editRun(
-    RcSession session,
-    int runIndex,
-  ) async {
+  Future<void> _editRun(RcSession session, int runIndex) async {
     if (runIndex < 0 || runIndex >= session.runs.length) {
       return;
     }
@@ -638,10 +662,7 @@ class _SessionsPageState extends State<SessionsPage> {
     }
   }
 
-  Future<RcRun?> _askMeasurementsAfterRun(
-    RcRun run,
-    int runNumber,
-  ) async {
+  Future<RcRun?> _askMeasurementsAfterRun(RcRun run, int runNumber) async {
     final choice = await showDialog<_MeasurementChoice>(
       context: context,
       builder: (context) => AlertDialog(
@@ -653,15 +674,12 @@ class _SessionsPageState extends State<SessionsPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(
-              _MeasurementChoice.later,
-            ),
+            onPressed: () =>
+                Navigator.of(context).pop(_MeasurementChoice.later),
             child: const Text('Ultérieurement dans Batteries'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(
-              _MeasurementChoice.now,
-            ),
+            onPressed: () => Navigator.of(context).pop(_MeasurementChoice.now),
             child: const Text('Renseigner maintenant'),
           ),
         ],
@@ -695,10 +713,8 @@ class _SessionsPageState extends State<SessionsPage> {
       final reading = await showDialog<BatteryRunReading?>(
         context: context,
         barrierDismissible: false,
-        builder: (context) => _BatteryMeasurementDialog(
-          battery: battery,
-          runNumber: runNumber,
-        ),
+        builder: (context) =>
+            _BatteryMeasurementDialog(battery: battery, runNumber: runNumber),
       );
 
       if (reading == null) {
@@ -729,9 +745,7 @@ class _SessionsPageState extends State<SessionsPage> {
 
     final result = await showDialog<_EndRunResult>(
       context: context,
-      builder: (context) => _EndRunDialog(
-        suggestedDuration: elapsedMinutes,
-      ),
+      builder: (context) => _EndRunDialog(suggestedDuration: elapsedMinutes),
     );
 
     if (result == null) {
@@ -776,19 +790,15 @@ class _SessionsPageState extends State<SessionsPage> {
     _showMessage('Roulage enregistré.');
   }
 
-  Future<RcSession?> _askForMeasurementsBeforeClosing(
-    RcSession session,
-  ) async {
+  Future<RcSession?> _askForMeasurementsBeforeClosing(RcSession session) async {
     final hasMissingMeasurements = session.runs.any(
-      (run) => run.batteries.any(
-        (battery) {
-          final reading = run.readings.where(
-            (item) => item.batteryId == battery.id,
-          );
+      (run) => run.batteries.any((battery) {
+        final reading = run.readings.where(
+          (item) => item.batteryId == battery.id,
+        );
 
-          return reading.isEmpty || !reading.first.hasMeasurements;
-        },
-      ),
+        return reading.isEmpty || !reading.first.hasMeasurements;
+      }),
     );
 
     if (!hasMissingMeasurements) {
@@ -806,15 +816,12 @@ class _SessionsPageState extends State<SessionsPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(
-              _MeasurementChoice.later,
-            ),
+            onPressed: () =>
+                Navigator.of(context).pop(_MeasurementChoice.later),
             child: const Text('Ultérieurement dans Batteries'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(
-              _MeasurementChoice.now,
-            ),
+            onPressed: () => Navigator.of(context).pop(_MeasurementChoice.now),
             child: const Text('Renseigner maintenant'),
           ),
         ],
@@ -870,9 +877,7 @@ class _SessionsPageState extends State<SessionsPage> {
         }
       }
 
-      updatedRuns[runIndex] = run.copyWith(
-        readings: updatedReadings,
-      );
+      updatedRuns[runIndex] = run.copyWith(readings: updatedReadings);
     }
 
     updatedSession = session.copyWith(runs: updatedRuns);
@@ -882,10 +887,8 @@ class _SessionsPageState extends State<SessionsPage> {
   Future<void> _editSessionGeneral(RcSession session) async {
     final result = await showDialog<_EditSessionGeneralResult>(
       context: context,
-      builder: (context) => _EditSessionGeneralDialog(
-        session: session,
-        models: _availableModels,
-      ),
+      builder: (context) =>
+          _EditSessionGeneralDialog(session: session, models: _availableModels),
     );
 
     if (result == null) {
@@ -894,10 +897,7 @@ class _SessionsPageState extends State<SessionsPage> {
 
     final saved = await _replaceSession(
       session,
-      session.copyWith(
-        model: result.model,
-        location: result.location,
-      ),
+      session.copyWith(model: result.model, location: result.location),
     );
 
     if (saved) {
@@ -911,8 +911,9 @@ class _SessionsPageState extends State<SessionsPage> {
       return;
     }
 
-    final sessionWithMeasurements =
-        await _askForMeasurementsBeforeClosing(session);
+    final sessionWithMeasurements = await _askForMeasurementsBeforeClosing(
+      session,
+    );
 
     if (sessionWithMeasurements == null || !mounted) {
       return;
@@ -1013,18 +1014,14 @@ class _SessionsPageState extends State<SessionsPage> {
 
   Future<void> _openSessionDetail(RcSession session) async {
     final updatedSession = await Navigator.of(context).push<RcSession>(
-      MaterialPageRoute(
-        builder: (_) => SessionDetailPage(session: session),
-      ),
+      MaterialPageRoute(builder: (_) => SessionDetailPage(session: session)),
     );
 
     if (updatedSession == null || !mounted) {
       return;
     }
 
-    final index = sessions.indexWhere(
-      (item) => item.id == updatedSession.id,
-    );
+    final index = sessions.indexWhere((item) => item.id == updatedSession.id);
 
     if (index == -1) {
       return;
@@ -1095,9 +1092,9 @@ class _SessionsPageState extends State<SessionsPage> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -1106,20 +1103,14 @@ class _SessionsPageState extends State<SessionsPage> {
 
     if (_isLoadingData) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Mes sessions'),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        appBar: AppBar(title: const Text('Mes sessions')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_loadingError != null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Mes sessions'),
-        ),
+        appBar: AppBar(title: const Text('Mes sessions')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -1133,10 +1124,7 @@ class _SessionsPageState extends State<SessionsPage> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  _loadingError!,
-                  textAlign: TextAlign.center,
-                ),
+                Text(_loadingError!, textAlign: TextAlign.center),
                 const SizedBox(height: 18),
                 FilledButton.icon(
                   onPressed: _loadData,
@@ -1175,8 +1163,10 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   Widget _buildSessionHistory() {
-    final closedSessions =
-        sessions.where((session) => session.isClosed).toList().reversed;
+    final closedSessions = sessions
+        .where((session) => session.isClosed)
+        .toList()
+        .reversed;
 
     if (closedSessions.isEmpty) {
       return const Center(
@@ -1196,10 +1186,7 @@ class _SessionsPageState extends State<SessionsPage> {
       children: [
         const Text(
           'Historique',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
         for (final session in closedSessions)
@@ -1220,12 +1207,8 @@ class _SessionsPageState extends State<SessionsPage> {
                         children: [
                           Text(
                             session.model.name,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 6),
                           Wrap(
@@ -1238,9 +1221,7 @@ class _SessionsPageState extends State<SessionsPage> {
                               Text('${session.runs.length} roulage(s)'),
                               const Text('•'),
                               Text(
-                                _durationLabel(
-                                  session.totalDurationMinutes,
-                                ),
+                                _durationLabel(session.totalDurationMinutes),
                               ),
                               if (session.location.isNotEmpty) ...[
                                 const Text('•'),
@@ -1268,8 +1249,9 @@ class _SessionsPageState extends State<SessionsPage> {
                         TextButton.icon(
                           onPressed: () => _deleteClosedSession(session),
                           style: TextButton.styleFrom(
-                            foregroundColor:
-                                Theme.of(context).colorScheme.error,
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.error,
                           ),
                           icon: const Icon(Icons.delete_outline),
                           label: const Text('Supprimer'),
@@ -1289,7 +1271,7 @@ class _SessionsPageState extends State<SessionsPage> {
     final activeRun = session.activeRun;
     final compatibility = _checkCompatibility(session);
     final isElectric = session.model.motorization == 'Électrique';
-    final needsTwoBatteries = session.model.batteryCount == 2;
+    final canAddSecondBattery = _canAddSecondBattery(session);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -1349,9 +1331,7 @@ class _SessionsPageState extends State<SessionsPage> {
           _buildActiveRunCard(session, activeRun)
         else ...[
           Text(
-            session.runs.isEmpty
-                ? 'Premier roulage'
-                : 'Nouveau roulage',
+            session.runs.isEmpty ? 'Premier roulage' : 'Nouveau roulage',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 12),
@@ -1373,7 +1353,7 @@ class _SessionsPageState extends State<SessionsPage> {
                 });
               },
             ),
-            if (needsTwoBatteries) ...[
+            if (canAddSecondBattery) ...[
               const SizedBox(height: 14),
               _BatterySelector(
                 number: 2,
@@ -1431,9 +1411,7 @@ class _SessionsPageState extends State<SessionsPage> {
         ],
         const SizedBox(height: 24),
         OutlinedButton.icon(
-          onPressed: session.hasActiveRun
-              ? null
-              : () => _closeSession(session),
+          onPressed: session.hasActiveRun ? null : () => _closeSession(session),
           icon: const Icon(Icons.stop_circle_outlined),
           label: const Text('Clôturer la session'),
         ),
@@ -1442,10 +1420,7 @@ class _SessionsPageState extends State<SessionsPage> {
     );
   }
 
-  Widget _buildActiveRunCard(
-    RcSession session,
-    RcRun activeRun,
-  ) {
+  Widget _buildActiveRunCard(RcSession session, RcRun activeRun) {
     return Card(
       color: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
@@ -1540,9 +1515,7 @@ class _BatterySelector extends StatelessWidget {
                       if (battery!.isPaired)
                         TextSpan(
                           text: '  [P-${battery!.pairId!.split('-').last}]',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                     ],
                   ),
@@ -1560,7 +1533,6 @@ class _BatterySelector extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _BatteryChoiceDialog extends StatelessWidget {
@@ -1624,9 +1596,7 @@ class _BatteryChoiceDialog extends StatelessWidget {
 }
 
 class _CompatibilityCard extends StatelessWidget {
-  const _CompatibilityCard({
-    required this.result,
-  });
+  const _CompatibilityCard({required this.result});
 
   final _CompatibilityResult result;
 
@@ -1634,14 +1604,14 @@ class _CompatibilityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = result.isValid
         ? result.hasWarning
-            ? Icons.warning_amber_rounded
-            : Icons.check_circle
+              ? Icons.warning_amber_rounded
+              : Icons.check_circle
         : Icons.error;
 
     final accentColor = result.isValid
         ? result.hasWarning
-            ? Colors.orange.shade700
-            : Colors.green.shade700
+              ? Colors.orange.shade700
+              : Colors.green.shade700
         : Colors.red.shade700;
 
     final backgroundColor = result.isValid
@@ -1652,26 +1622,19 @@ class _CompatibilityCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: accentColor,
-          width: 2,
-        ),
+        border: Border.all(color: accentColor, width: 2),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 18,
           vertical: 10,
         ),
-        leading: Icon(
-          icon,
-          color: accentColor,
-          size: 36,
-        ),
+        leading: Icon(icon, color: accentColor, size: 36),
         title: Text(
           result.isValid
               ? result.hasWarning
-                  ? 'ATTENTION'
-                  : 'CONFIGURATION VALIDÉE'
+                    ? 'ATTENTION'
+                    : 'CONFIGURATION VALIDÉE'
               : 'VÉRIFICATION REQUISE',
           style: TextStyle(
             color: accentColor,
@@ -1683,9 +1646,7 @@ class _CompatibilityCard extends StatelessWidget {
           padding: const EdgeInsets.only(top: 6),
           child: Text(
             result.message,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -1739,10 +1700,7 @@ class _RunCard extends StatelessWidget {
 }
 
 class _HistoryLine extends StatelessWidget {
-  const _HistoryLine({
-    required this.label,
-    required this.value,
-  });
+  const _HistoryLine({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -1760,9 +1718,7 @@ class _HistoryLine extends StatelessWidget {
 }
 
 class _OpenSessionDialog extends StatefulWidget {
-  const _OpenSessionDialog({
-    required this.models,
-  });
+  const _OpenSessionDialog({required this.models});
 
   final List<RcModel> models;
 
@@ -1784,10 +1740,7 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Ouvrir une session'),
-      insetPadding: const EdgeInsets.symmetric(
-        horizontal: 24,
-        vertical: 24,
-      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
@@ -1877,8 +1830,7 @@ class _EditSessionGeneralDialog extends StatefulWidget {
       _EditSessionGeneralDialogState();
 }
 
-class _EditSessionGeneralDialogState
-    extends State<_EditSessionGeneralDialog> {
+class _EditSessionGeneralDialogState extends State<_EditSessionGeneralDialog> {
   late RcModel _selectedModel;
   late final TextEditingController _locationController;
 
@@ -1889,9 +1841,7 @@ class _EditSessionGeneralDialogState
       (model) => model.id == widget.session.model.id,
       orElse: () => widget.session.model,
     );
-    _locationController = TextEditingController(
-      text: widget.session.location,
-    );
+    _locationController = TextEditingController(text: widget.session.location);
   }
 
   @override
@@ -1969,9 +1919,7 @@ class _EditSessionGeneralDialogState
 }
 
 class _EndRunDialog extends StatefulWidget {
-  const _EndRunDialog({
-    required this.suggestedDuration,
-  });
+  const _EndRunDialog({required this.suggestedDuration});
 
   final int suggestedDuration;
 
@@ -2019,10 +1967,7 @@ class _EndRunDialogState extends State<_EndRunDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Terminer le roulage'),
-      insetPadding: const EdgeInsets.symmetric(
-        horizontal: 24,
-        vertical: 24,
-      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
@@ -2062,20 +2007,14 @@ class _EndRunDialogState extends State<_EndRunDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Annuler'),
         ),
-        FilledButton(
-          onPressed: _validate,
-          child: const Text('Enregistrer'),
-        ),
+        FilledButton(onPressed: _validate, child: const Text('Enregistrer')),
       ],
     );
   }
 }
 
 class _EditRunDialog extends StatefulWidget {
-  const _EditRunDialog({
-    required this.durationMinutes,
-    required this.notes,
-  });
+  const _EditRunDialog({required this.durationMinutes, required this.notes});
 
   final int durationMinutes;
   final String notes;
@@ -2160,10 +2099,7 @@ class _EditRunDialogState extends State<_EditRunDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Annuler'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Enregistrer'),
-        ),
+        FilledButton(onPressed: _save, child: const Text('Enregistrer')),
       ],
     );
   }
@@ -2218,10 +2154,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
                 ? (constraints.maxWidth - 10) / 2
                 : (constraints.maxWidth - 20) / 3;
 
-            Widget field(
-              TextEditingController controller,
-              String label,
-            ) {
+            Widget field(TextEditingController controller, String label) {
               return SizedBox(
                 width: fieldWidth,
                 child: TextField(
@@ -2243,15 +2176,9 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
               spacing: 10,
               runSpacing: 10,
               children: [
-                field(
-                  _drivingNotesController,
-                  'Comportement et réglages',
-                ),
+                field(_drivingNotesController, 'Comportement et réglages'),
                 field(_breakagesController, 'Casses'),
-                field(
-                  _partsReplacedController,
-                  'Pièces remplacées sur place',
-                ),
+                field(_partsReplacedController, 'Pièces remplacées sur place'),
                 field(_maintenanceController, 'Entretien à effectuer'),
                 field(_partsToOrderController, 'Pièces à commander'),
                 field(
@@ -2275,8 +2202,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
               _CloseSessionResult(
                 drivingNotes: _drivingNotesController.text.trim(),
                 breakages: _breakagesController.text.trim(),
-                partsReplacedOnSite:
-                    _partsReplacedController.text.trim(),
+                partsReplacedOnSite: _partsReplacedController.text.trim(),
                 maintenanceToDo: _maintenanceController.text.trim(),
                 partsToOrder: _partsToOrderController.text.trim(),
                 changesBeforeNextSession: _changesController.text.trim(),
@@ -2291,10 +2217,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
   }
 }
 
-enum _MeasurementChoice {
-  now,
-  later,
-}
+enum _MeasurementChoice { now, later }
 
 class _BatteryMeasurementDialog extends StatefulWidget {
   const _BatteryMeasurementDialog({
@@ -2310,8 +2233,7 @@ class _BatteryMeasurementDialog extends StatefulWidget {
       _BatteryMeasurementDialogState();
 }
 
-class _BatteryMeasurementDialogState
-    extends State<_BatteryMeasurementDialog> {
+class _BatteryMeasurementDialogState extends State<_BatteryMeasurementDialog> {
   final _capacityController = TextEditingController();
   late final List<TextEditingController> _cellVoltageControllers;
   String? _errorMessage;
@@ -2386,10 +2308,7 @@ class _BatteryMeasurementDialogState
     );
   }
 
-  InputDecoration _decoration(
-    String label, {
-    String? suffix,
-  }) {
+  InputDecoration _decoration(String label, {String? suffix}) {
     return InputDecoration(
       labelText: label,
       suffixText: suffix,
@@ -2400,8 +2319,7 @@ class _BatteryMeasurementDialogState
   double get _totalVoltage {
     return _cellVoltageControllers.fold<double>(
       0,
-      (total, controller) =>
-          total + (_parseDouble(controller.text) ?? 0),
+      (total, controller) => total + (_parseDouble(controller.text) ?? 0),
     );
   }
 
@@ -2418,8 +2336,7 @@ class _BatteryMeasurementDialogState
             ),
             if (widget.battery.isPaired)
               TextSpan(
-                text:
-                    '  [P-${widget.battery.pairId!.split('-').last}]',
+                text: '  [P-${widget.battery.pairId!.split('-').last}]',
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
           ],
@@ -2432,8 +2349,8 @@ class _BatteryMeasurementDialogState
             final columns = constraints.maxWidth < 430
                 ? 3
                 : constraints.maxWidth < 680
-                    ? 4
-                    : 6;
+                ? 4
+                : 6;
             final itemWidth =
                 (constraints.maxWidth - ((columns - 1) * 8)) / columns;
 
@@ -2446,8 +2363,9 @@ class _BatteryMeasurementDialogState
                     Expanded(
                       child: TextField(
                         controller: _capacityController,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         decoration: _decoration(
                           'Capacité restante',
                           suffix: '%',
@@ -2461,9 +2379,9 @@ class _BatteryMeasurementDialogState
                         alignment: Alignment.center,
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -2479,16 +2397,17 @@ class _BatteryMeasurementDialogState
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    for (var index = 0;
-                        index < _cellVoltageControllers.length;
-                        index++)
+                    for (
+                      var index = 0;
+                      index < _cellVoltageControllers.length;
+                      index++
+                    )
                       SizedBox(
                         width: itemWidth,
                         child: TextField(
                           controller: _cellVoltageControllers[index],
                           onChanged: (_) => setState(() {}),
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
+                          keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
                           decoration: InputDecoration(
@@ -2536,20 +2455,14 @@ class _BatteryMeasurementDialogState
 }
 
 class _OpenSessionResult {
-  const _OpenSessionResult({
-    required this.model,
-    required this.location,
-  });
+  const _OpenSessionResult({required this.model, required this.location});
 
   final RcModel model;
   final String location;
 }
 
 class _EndRunResult {
-  const _EndRunResult({
-    required this.durationMinutes,
-    required this.notes,
-  });
+  const _EndRunResult({required this.durationMinutes, required this.notes});
 
   final int durationMinutes;
   final String notes;
