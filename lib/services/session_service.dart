@@ -117,6 +117,8 @@ class SessionService {
               remainingCapacityPercent:
                   (measurementRow['remaining_capacity_percent'] as num?)
                       ?.toDouble(),
+              temperatureCelsius:
+                  (measurementRow['temperature_celsius'] as num?)?.toDouble(),
               cellVoltages: _toDoubleList(
                 measurementRow['cell_voltages'],
               ),
@@ -308,7 +310,7 @@ class SessionService {
                               .toIso8601String(),
                       'remaining_capacity_percent':
                           reading.remainingCapacityPercent,
-                      'temperature_celsius': null,
+                      'temperature_celsius': reading.temperatureCelsius,
                       'cell_voltages': reading.cellVoltages,
                       'cell_resistances': const <double>[],
                       'updated_at':
@@ -337,7 +339,7 @@ class SessionService {
                         .clamp(0, 100),
                 'cell_voltages': reading.cellVoltages,
                 'cell_internal_resistances': const <double>[],
-                'battery_temperature_c': null,
+                'battery_temperature_c': reading.temperatureCelsius,
                 'notes': _automaticMeasurementNote(
                   sessionId: sessionId,
                   run: run,

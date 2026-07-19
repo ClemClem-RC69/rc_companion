@@ -518,7 +518,7 @@ class BatteryService {
     );
   }
 
-  static Future<void> updateBatteryMeasurement(
+  static Future<BatteryMeasurement> updateBatteryMeasurement(
     BatteryMeasurement measurement,
   ) async {
     final user = _client.auth.currentUser;
@@ -533,11 +533,91 @@ class BatteryService {
 
     _validateMeasurement(measurement);
 
-    await _client
+    final updatedRow = await _client
         .from('battery_measurements')
         .update(measurement.toJson())
         .eq('user_id', user.id)
-        .eq('id', measurement.id!);
+        .eq('id', measurement.id!)
+        .select()
+        .single();
+
+    final savedMeasurement = BatteryMeasurement.fromJson(
+      Map<String, dynamic>.from(updatedRow),
+    );
+
+    if (savedMeasurement.isEndOfRun) {
+      await _synchronizeSessionRunMeasurement(
+        userId: user.id,
+        measurement: savedMeasurement,
+      );
+    }
+
+    return savedMeasurement;
+  }
+
+  static Future<void> _synchronizeSessionRunMeasurement({
+    required String userId,
+    required BatteryMeasurement measurement,
+  }) async {
+    final notes = measurement.notes;
+
+    if (notes == null || notes.trim().isEmpty) {
+      return;
+    }
+
+    String? sessionId;
+    String? runStartedAt;
+    String? batteryCode;
+
+    for (final part in notes.split('|')) {
+      if (part.startsWith('session:')) {
+        sessionId = part.substring('session:'.length).trim();
+      } else if (part.startsWith('run:')) {
+        runStartedAt = part.substring('run:'.length).trim();
+      } else if (part.startsWith('battery:')) {
+        batteryCode = part.substring('battery:'.length).trim();
+      }
+    }
+
+    if (sessionId == null ||
+        sessionId.isEmpty ||
+        runStartedAt == null ||
+        runStartedAt.isEmpty ||
+        batteryCode == null ||
+        batteryCode.isEmpty) {
+      return;
+    }
+
+    final runRow = await _client
+        .from('session_runs')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('started_at', runStartedAt)
+        .maybeSingle();
+
+    if (runRow == null) {
+      return;
+    }
+
+    final runId = runRow['id'] as String?;
+
+    if (runId == null || runId.isEmpty) {
+      return;
+    }
+
+    await _client
+        .from('session_run_measurements')
+        .update({
+          'measured_at': measurement.measuredAt.toUtc().toIso8601String(),
+          'remaining_capacity_percent': measurement.chargePercent,
+          'temperature_celsius': measurement.batteryTemperature,
+          'cell_voltages': measurement.cellVoltages,
+          'cell_resistances': const <double>[],
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('user_id', userId)
+        .eq('run_id', runId)
+        .eq('battery_code', batteryCode);
   }
 
   static Future<void> deleteBatteryMeasurement(

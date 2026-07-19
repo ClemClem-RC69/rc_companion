@@ -295,7 +295,15 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
               '${reading.remainingCapacityPercent!.toStringAsFixed(0)} %',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
-          if (hasCapacity && hasCells) const SizedBox(height: 8),
+          if (reading.temperatureCelsius != null) ...[
+            if (hasCapacity) const SizedBox(height: 8),
+            Text(
+              'Température : ${reading.temperatureCelsius} °C',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+          if ((hasCapacity || reading.temperatureCelsius != null) && hasCells)
+            const SizedBox(height: 8),
           if (hasCells)
             Text(
               'Tension totale : '
@@ -1088,6 +1096,7 @@ class _EditBatteryMeasurementDialog extends StatefulWidget {
 class _EditBatteryMeasurementDialogState
     extends State<_EditBatteryMeasurementDialog> {
   late final TextEditingController _capacityController;
+  late final TextEditingController _temperatureController;
   late final List<TextEditingController> _voltageControllers;
 
   String? _errorMessage;
@@ -1103,6 +1112,9 @@ class _EditBatteryMeasurementDialogState
     _capacityController = TextEditingController(
       text: reading?.remainingCapacityPercent?.toString() ?? '',
     );
+    _temperatureController = TextEditingController(
+      text: reading?.temperatureCelsius?.toString() ?? '',
+    );
 
     _voltageControllers = List.generate(
       cellCount,
@@ -1117,6 +1129,7 @@ class _EditBatteryMeasurementDialogState
   @override
   void dispose() {
     _capacityController.dispose();
+    _temperatureController.dispose();
 
     for (final controller in _voltageControllers) {
       controller.dispose();
@@ -1146,6 +1159,8 @@ class _EditBatteryMeasurementDialogState
       return;
     }
 
+    final temperature = _parseDouble(_temperatureController.text);
+
     final voltages = <double>[];
 
     for (var index = 0; index < _voltageControllers.length; index++) {
@@ -1166,6 +1181,7 @@ class _EditBatteryMeasurementDialogState
         batteryId: widget.battery.id,
         measuredAt: DateTime.now(),
         remainingCapacityPercent: capacity,
+        temperatureCelsius: temperature,
         cellVoltages: List<double>.unmodifiable(voltages),
       ),
     );
@@ -1222,6 +1238,18 @@ class _EditBatteryMeasurementDialogState
                         decoration: _decoration(
                           'Capacité restante',
                           suffix: '%',
+                        ).copyWith(isDense: true),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _temperatureController,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(decimal: true),
+                        decoration: _decoration(
+                          'Température (facultative)',
+                          suffix: '°C',
                         ).copyWith(isDense: true),
                       ),
                     ),

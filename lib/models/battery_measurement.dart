@@ -189,13 +189,16 @@ class BatteryMeasurement {
     return {
       'battery_code': batteryCode,
       'measured_at': measuredAt.toIso8601String(),
-      'measurement_type': measurementType,
+      // La base conserve encore ses anciens libellés dans la contrainte SQL.
+      // L'application affiche les nouveaux noms, mais enregistre les valeurs
+      // historiques acceptées par Supabase.
+      'measurement_type': _databaseMeasurementType(measurementType),
       'charge_percent': chargePercent,
       'cell_voltages': cellVoltages,
       'cell_internal_resistances':
           usesInternalResistance ? cellInternalResistances : const <double>[],
-      // Null pour tous les nouveaux relevés.
-      'battery_temperature_c': null,
+      // Température facultative uniquement pour les relevés de fin de roulage.
+      'battery_temperature_c': isEndOfRun ? batteryTemperature : null,
       // Les notes ne sont plus saisies manuellement. Le service Session peut
       // encore utiliser ce champ comme marqueur technique jusqu'à sa refonte.
       'notes': notes,
@@ -234,6 +237,19 @@ class BatteryMeasurement {
           : batteryTemperature ?? this.batteryTemperature,
       notes: removeNotes ? null : notes ?? this.notes,
     );
+  }
+
+  static String _databaseMeasurementType(String value) {
+    switch (_normalizeMeasurementType(value)) {
+      case referenceType:
+        return 'Mesure de référence';
+      case afterChargeType:
+        return 'Après charge';
+      case endOfRunType:
+        return 'Fin de session';
+      default:
+        return 'Après charge';
+    }
   }
 
   static String _normalizeMeasurementType(String? value) {
