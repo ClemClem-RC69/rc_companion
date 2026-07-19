@@ -37,17 +37,12 @@ class _BatteriesPageState extends State<BatteriesPage> {
       final healthEntries = await Future.wait(
         batteries.map(
           (battery) async {
-            final latest =
-                await BatteryService.getLatestBatteryMeasurement(
-              battery.id,
-            );
+            final measurements =
+                await BatteryService.getBatteryMeasurements(battery.id);
 
             return MapEntry(
               battery.id,
-              _healthStatusFor(
-                battery: battery,
-                measurement: latest,
-              ),
+              _healthStatusFor(measurements),
             );
           },
         ),
@@ -399,128 +394,67 @@ class _BatteriesPageState extends State<BatteriesPage> {
     }
   }
 
-  _BatteryHealthStatus _healthStatusFor({
-    required Battery battery,
-    required BatteryMeasurement? measurement,
-  }) {
-    if (measurement == null) {
+  _BatteryHealthStatus _healthStatusFor(
+    List<BatteryMeasurement> measurements,
+  ) {
+    BatteryMeasurement? reference;
+    BatteryMeasurement? latestAfterCharge;
+
+    for (final measurement in measurements) {
+      if (reference == null && measurement.isReference) {
+        reference = measurement;
+      }
+      if (latestAfterCharge == null && measurement.isAfterCharge) {
+        latestAfterCharge = measurement;
+      }
+    }
+
+    if (reference == null || latestAfterCharge == null) {
       return const _BatteryHealthStatus(
         label: 'Non évaluée',
         level: _BatteryHealthLevel.notEvaluated,
       );
     }
 
-    final technology = battery.technology
-        .toLowerCase()
-        .replaceAll('-', '')
-        .replaceAll(' ', '');
+    final voltageSpread = latestAfterCharge.maximumVoltageDifference;
+    final resistanceSpread =
+        latestAfterCharge.maximumInternalResistanceDifference;
+    final referenceAverage = reference.averageInternalResistance;
+    final currentAverage = latestAfterCharge.averageInternalResistance;
+    final evolution = referenceAverage <= 0
+        ? 0.0
+        : ((currentAverage - referenceAverage) / referenceAverage) * 100;
 
-    final capacityAh = battery.capacity <= 0
-        ? 1.0
-        : battery.capacity / 1000;
+    final severe = voltageSpread > 0.100 ||
+        resistanceSpread > 10.0 ||
+        evolution > 100.0;
 
-    late final double warningFactor;
-    late final double criticalFactor;
+    final voltageDegraded = voltageSpread > 0.050;
+    final resistanceDegraded = resistanceSpread > 5.0;
+    final evolutionWarning = evolution > 25.0;
+    final evolutionFatigued = evolution > 50.0;
 
-    switch (technology) {
-      case 'lipo':
-      case 'lihv':
-        warningFactor = 30;
-        criticalFactor = 50;
-      case 'liion':
-        warningFactor = 60;
-        criticalFactor = 100;
-      case 'life':
-        warningFactor = 40;
-        criticalFactor = 65;
-      case 'nimh':
-        warningFactor = 90;
-        criticalFactor = 150;
-      case 'nicd':
-        warningFactor = 80;
-        criticalFactor = 130;
-      default:
-        warningFactor = 50;
-        criticalFactor = 90;
-    }
-
-    final warningResistance = warningFactor / capacityAh;
-    final criticalResistance = criticalFactor / capacityAh;
-
-    final isLithiumTechnology = {
-      'lipo',
-      'lihv',
-      'liion',
-      'life',
-    }.contains(technology);
-
-    final warningVoltageSpread =
-        isLithiumTechnology ? 0.030 : 0.050;
-    final criticalVoltageSpread =
-        isLithiumTechnology ? 0.050 : 0.100;
-
-    var hasWarning = false;
-    var hasCritical = false;
-
-    if (measurement.averageInternalResistance >=
-        criticalResistance) {
-      hasCritical = true;
-    } else if (measurement.averageInternalResistance >=
-        warningResistance) {
-      hasWarning = true;
-    }
-
-    if (measurement.maximumVoltageDifference >=
-        criticalVoltageSpread) {
-      hasCritical = true;
-    } else if (measurement.maximumVoltageDifference >=
-        warningVoltageSpread) {
-      hasWarning = true;
-    }
-
-    for (var index = 0;
-        index < measurement.cellInternalResistances.length;
-        index++) {
-      final resistance =
-          measurement.cellInternalResistances[index];
-
-      if (resistance >= criticalResistance) {
-        hasCritical = true;
-      } else if (resistance >= warningResistance) {
-        hasWarning = true;
-      }
-
-      final voltage = measurement.cellVoltages[index];
-      final minimum = measurement.minimumCellVoltage;
-      final maximum = measurement.maximumCellVoltage;
-
-      if ((maximum - voltage) >= criticalVoltageSpread ||
-          (voltage - minimum) >= criticalVoltageSpread) {
-        hasCritical = true;
-      } else if ((maximum - voltage) >= warningVoltageSpread ||
-          (voltage - minimum) >= warningVoltageSpread) {
-        hasWarning = true;
-      }
-    }
-
-    final temperature = measurement.batteryTemperature;
-
-    if (temperature != null) {
-      if (temperature >= 55) {
-        hasCritical = true;
-      } else if (temperature >= 45) {
-        hasWarning = true;
-      }
-    }
-
-    if (hasCritical) {
+    if (severe) {
       return const _BatteryHealthStatus(
-        label: 'État critique*',
-        level: _BatteryHealthLevel.critical,
+        label: 'À remplacer*',
+        level: _BatteryHealthLevel.replace,
       );
     }
 
-    if (hasWarning) {
+    final degradedCount = [
+      voltageDegraded,
+      resistanceDegraded,
+      evolutionWarning,
+    ].where((value) => value).length;
+
+    if (evolutionFatigued || degradedCount >= 2) {
+      return const _BatteryHealthStatus(
+        label: 'Fatiguée*',
+        level: _BatteryHealthLevel.tired,
+      );
+    }
+
+    if (degradedCount == 1) {
       return const _BatteryHealthStatus(
         label: 'À surveiller*',
         level: _BatteryHealthLevel.warning,
@@ -528,7 +462,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
     }
 
     return const _BatteryHealthStatus(
-      label: 'Bon état*',
+      label: 'Bonne*',
       level: _BatteryHealthLevel.good,
     );
   }
@@ -543,8 +477,9 @@ class _BatteriesPageState extends State<BatteriesPage> {
       _BatteryHealthLevel.notEvaluated =>
         colors.surfaceContainerHighest,
       _BatteryHealthLevel.good => Colors.green.shade700,
-      _BatteryHealthLevel.warning => Colors.orange.shade700,
-      _BatteryHealthLevel.critical => Colors.red,
+      _BatteryHealthLevel.warning => Colors.amber.shade800,
+      _BatteryHealthLevel.tired => Colors.orange.shade800,
+      _BatteryHealthLevel.replace => Colors.red.shade800,
     };
   }
 
@@ -555,9 +490,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
     return switch (level) {
       _BatteryHealthLevel.notEvaluated =>
         Theme.of(context).colorScheme.onSurfaceVariant,
-      _BatteryHealthLevel.good ||
-      _BatteryHealthLevel.warning ||
-      _BatteryHealthLevel.critical => Colors.white,
+      _ => Colors.white,
     };
   }
 
@@ -2433,7 +2366,8 @@ enum _BatteryHealthLevel {
   notEvaluated,
   good,
   warning,
-  critical,
+  tired,
+  replace,
 }
 
 class _BatteryHealthStatus {

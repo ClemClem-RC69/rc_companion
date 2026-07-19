@@ -1088,125 +1088,100 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
   _MeasurementAnalysis _analyzeMeasurement(
     BatteryMeasurement measurement,
   ) {
-    final thresholds = _internalResistanceThresholds();
-    final voltageThresholds = _voltageSpreadThresholds();
+    BatteryMeasurement? reference;
 
-    var hasWarning = false;
-    var hasCritical = false;
-
-    final cellMessages = <String>[];
-
-    for (var index = 0;
-        index < measurement.cellInternalResistances.length;
-        index++) {
-      final resistance =
-          measurement.cellInternalResistances[index];
-      final voltage = measurement.cellVoltages[index];
-
-      final messages = <String>[];
-      final averageVoltage = measurement.cellVoltages.fold<double>(
-            0,
-            (sum, item) => sum + item,
-          ) /
-          measurement.cellVoltages.length;
-      final voltageDeviation = (voltage - averageVoltage).abs();
-
-      if (voltageDeviation >= voltageThresholds.critical) {
-        hasCritical = true;
-        messages.add(
-          voltage < averageVoltage
-              ? 'tension nettement trop basse (${_formatDecimal(voltage)} V)'
-              : 'tension nettement trop haute (${_formatDecimal(voltage)} V)',
-        );
-      } else if (voltageDeviation >= voltageThresholds.warning) {
-        hasWarning = true;
-        messages.add(
-          voltage < averageVoltage
-              ? 'tension plus basse que les autres (${_formatDecimal(voltage)} V)'
-              : 'tension plus haute que les autres (${_formatDecimal(voltage)} V)',
-        );
-      }
-
-      if (resistance >= thresholds.critical) {
-        hasCritical = true;
-        messages.add(
-          'RI critique (${_formatDecimal(resistance, maxDecimals: 2)} mΩ)',
-        );
-      } else if (resistance >= thresholds.warning) {
-        hasWarning = true;
-        messages.add(
-          'RI élevée (${_formatDecimal(resistance, maxDecimals: 2)} mΩ)',
-        );
-      }
-
-      final averageResistance =
-          measurement.averageInternalResistance;
-
-      if (measurement.cellInternalResistances.length > 1 &&
-          resistance > averageResistance * 1.5 &&
-          resistance - averageResistance >= 2) {
-        hasWarning = true;
-        messages.add('écart important avec les autres cellules');
-      }
-
-      if (messages.isEmpty) {
-        cellMessages.add(
-          'Cellule ${index + 1} : normale — '
-          '${_formatDecimal(voltage)} V • '
-          '${_formatDecimal(resistance, maxDecimals: 2)} mΩ',
-        );
-      } else {
-        cellMessages.add(
-          'Cellule ${index + 1} : ${messages.join(' • ')}',
-        );
+    for (final item in _measurements) {
+      if (item.isReference) {
+        reference = item;
+        break;
       }
     }
 
-    final globalMessages = <String>[];
+    final voltageSpread = measurement.maximumVoltageDifference;
+    final resistanceSpread =
+        measurement.maximumInternalResistanceDifference;
+    final referenceAverage = reference?.averageInternalResistance ?? 0;
+    final currentAverage = measurement.averageInternalResistance;
+    final evolution = referenceAverage <= 0
+        ? 0.0
+        : ((currentAverage - referenceAverage) / referenceAverage) * 100;
 
-    if (measurement.averageInternalResistance >=
-        thresholds.critical) {
-      hasCritical = true;
-      globalMessages.add(
-        'La RI moyenne dépasse le seuil indicatif critique estimé pour '
-        '${battery.technology} ${battery.capacity} mAh.',
-      );
-    } else if (measurement.averageInternalResistance >=
-        thresholds.warning) {
-      hasWarning = true;
-      globalMessages.add(
-        'La RI moyenne est élevée selon le seuil indicatif retenu pour '
-        '${battery.technology} ${battery.capacity} mAh.',
-      );
-    }
+    final voltageLabel = voltageSpread <= 0.020
+        ? 'Excellent'
+        : voltageSpread <= 0.050
+            ? 'Correct'
+            : voltageSpread <= 0.100
+                ? 'À surveiller'
+                : 'Mauvais';
 
-    if (measurement.maximumVoltageDifference >=
-        voltageThresholds.critical) {
-      hasCritical = true;
-      globalMessages.add(
-        'Écart de tension critique entre cellules '
-        '(${_formatDecimal(measurement.maximumVoltageDifference)} V).',
-      );
-    } else if (measurement.maximumVoltageDifference >=
-        voltageThresholds.warning) {
-      hasWarning = true;
-      globalMessages.add(
-        'Écart de tension à surveiller entre cellules '
-        '(${_formatDecimal(measurement.maximumVoltageDifference)} V).',
-      );
-    }
+    final resistanceLabel = resistanceSpread <= 3.0
+        ? 'Excellent'
+        : resistanceSpread <= 5.0
+            ? 'Correct'
+            : resistanceSpread <= 10.0
+                ? 'À surveiller'
+                : 'Mauvais';
 
-    if (globalMessages.isEmpty) {
-      globalMessages.add(
-        'Aucune anomalie globale détectée sur cette mesure.',
-      );
+    final evolutionLabel = reference == null
+        ? 'Référence absente'
+        : evolution <= 25.0
+            ? 'Normale'
+            : evolution <= 50.0
+                ? 'À surveiller'
+                : evolution <= 100.0
+                    ? 'Dégradation importante'
+                    : 'Très forte dégradation';
+
+    final reasons = <String>[
+      'Équilibrage : ${_formatDecimal(voltageSpread)} V — $voltageLabel.',
+      'Écart de résistance : '
+          '${_formatDecimal(resistanceSpread, maxDecimals: 2)} mΩ — '
+          '$resistanceLabel.',
+      reference == null
+          ? 'Évolution : mesure de référence absente.'
+          : 'Évolution de la résistance moyenne : '
+              '${evolution >= 0 ? '+' : ''}'
+              '${_formatDecimal(evolution, maxDecimals: 1)} % — '
+              '$evolutionLabel.',
+    ];
+
+    final severe = voltageSpread > 0.100 ||
+        resistanceSpread > 10.0 ||
+        evolution > 100.0;
+    final voltageDegraded = voltageSpread > 0.050;
+    final resistanceDegraded = resistanceSpread > 5.0;
+    final evolutionWarning = reference != null && evolution > 25.0;
+    final evolutionFatigued = reference != null && evolution > 50.0;
+    final degradedCount = [
+      voltageDegraded,
+      resistanceDegraded,
+      evolutionWarning,
+    ].where((value) => value).length;
+
+    late final _BatteryHealthLevel level;
+
+    if (reference == null) {
+      level = _BatteryHealthLevel.notEvaluated;
+    } else if (severe) {
+      level = _BatteryHealthLevel.replace;
+    } else if (evolutionFatigued || degradedCount >= 2) {
+      level = _BatteryHealthLevel.tired;
+    } else if (degradedCount == 1) {
+      level = _BatteryHealthLevel.warning;
+    } else {
+      level = _BatteryHealthLevel.good;
     }
 
     return _MeasurementAnalysis(
-      hasWarning: hasWarning,
-      hasCritical: hasCritical,
-      cellMessages: cellMessages,
-      globalMessages: globalMessages,
+      level: level,
+      voltageSpread: voltageSpread,
+      voltageLabel: voltageLabel,
+      resistanceSpread: resistanceSpread,
+      resistanceLabel: resistanceLabel,
+      resistanceEvolutionPercent: reference == null ? null : evolution,
+      evolutionLabel: evolutionLabel,
+      cellMessages: reasons,
+      globalMessages: const [],
     );
   }
 
@@ -1378,7 +1353,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 
   BatteryMeasurement? get _latestHealthMeasurement {
     for (final measurement in _measurements) {
-      if (measurement.hasInternalResistance) {
+      if (measurement.isAfterCharge && measurement.hasInternalResistance) {
         return measurement;
       }
     }
@@ -1393,41 +1368,25 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
   String get _healthLabel {
     final analysis = _latestAnalysis;
 
-    if (analysis == null) {
-      return 'Non évaluée';
-    }
-
-    if (analysis.hasCritical) {
-      return 'État critique*';
-    }
-
-    if (analysis.hasWarning) {
-      return 'À surveiller*';
-    }
-
-    return 'Bon état*';
+    return analysis?.label ?? 'Non évaluée';
   }
 
   Color _healthBackgroundColor(BuildContext context) {
     final analysis = _latestAnalysis;
 
-    if (analysis == null) {
-      return Theme.of(context).colorScheme.surfaceContainerHighest;
-    }
-
-    if (analysis.hasCritical) {
-      return Theme.of(context).colorScheme.error;
-    }
-
-    if (analysis.hasWarning) {
-      return Colors.orange.shade700;
-    }
-
-    return Colors.green.shade700;
+    return switch (analysis?.level) {
+      null || _BatteryHealthLevel.notEvaluated =>
+        Theme.of(context).colorScheme.surfaceContainerHighest,
+      _BatteryHealthLevel.good => Colors.green.shade700,
+      _BatteryHealthLevel.warning => Colors.amber.shade800,
+      _BatteryHealthLevel.tired => Colors.orange.shade800,
+      _BatteryHealthLevel.replace => Colors.red.shade800,
+    };
   }
 
   Color _healthForegroundColor(BuildContext context) {
-    if (_latestAnalysis == null) {
+    if (_latestAnalysis == null ||
+        _latestAnalysis!.level == _BatteryHealthLevel.notEvaluated) {
       return Theme.of(context).colorScheme.onSurfaceVariant;
     }
 
@@ -1718,8 +1677,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Ajoute une mesure de référence pour commencer '
-                    'le suivi de santé de cette batterie.',
+                    'Ajoute une mesure de référence puis un relevé '
+                    'après charge pour évaluer la santé de cette batterie.',
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -1751,11 +1710,14 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         _batteryHeader(),
         const SizedBox(height: 16),
         Card(
-          color: analysis.hasCritical
-              ? Colors.red
-              : analysis.hasWarning
-                  ? Colors.orange.shade700
-                  : Colors.green.shade700,
+          color: switch (analysis.level) {
+            _BatteryHealthLevel.good => Colors.green.shade700,
+            _BatteryHealthLevel.warning => Colors.amber.shade800,
+            _BatteryHealthLevel.tired => Colors.orange.shade800,
+            _BatteryHealthLevel.replace => Colors.red.shade800,
+            _BatteryHealthLevel.notEvaluated =>
+              Theme.of(context).colorScheme.surfaceContainerHighest,
+          },
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(
@@ -1764,22 +1726,21 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 Row(
                   children: [
                     Icon(
-                      analysis.hasCritical
-                          ? Icons.error
-                          : analysis.hasWarning
-                              ? Icons.warning_amber
-                              : Icons.check_circle,
+                      switch (analysis.level) {
+                        _BatteryHealthLevel.good => Icons.check_circle,
+                        _BatteryHealthLevel.warning => Icons.warning_amber,
+                        _BatteryHealthLevel.tired => Icons.battery_alert,
+                        _BatteryHealthLevel.replace => Icons.error,
+                        _BatteryHealthLevel.notEvaluated =>
+                          Icons.help_outline,
+                      },
                       size: 46,
                       color: Colors.white,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        analysis.hasCritical
-                            ? 'ALERTE CRITIQUE*'
-                            : analysis.hasWarning
-                                ? 'À SURVEILLER*'
-                                : 'BON ÉTAT*',
+                        analysis.label.toUpperCase(),
                         style: const TextStyle(
                           fontSize: 23,
                           fontWeight: FontWeight.w800,
@@ -1798,9 +1759,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   ),
                 ),
                 const SizedBox(height: 6),
-                ...analysis.cellMessages
-                    .where((message) => !message.contains('normale'))
-                    .map((message) => Padding(
+                ...analysis.cellMessages.map((message) => Padding(
                           padding: const EdgeInsets.only(bottom: 5),
                           child: Text(
                             '• $message',
@@ -2155,16 +2114,50 @@ class _VoltageSpreadThresholds {
   final double critical;
 }
 
+enum _BatteryHealthLevel {
+  notEvaluated,
+  good,
+  warning,
+  tired,
+  replace,
+}
+
 class _MeasurementAnalysis {
   const _MeasurementAnalysis({
-    required this.hasWarning,
-    required this.hasCritical,
+    required this.level,
+    required this.voltageSpread,
+    required this.voltageLabel,
+    required this.resistanceSpread,
+    required this.resistanceLabel,
+    required this.resistanceEvolutionPercent,
+    required this.evolutionLabel,
     required this.cellMessages,
     required this.globalMessages,
   });
 
-  final bool hasWarning;
-  final bool hasCritical;
+  final _BatteryHealthLevel level;
+  final double voltageSpread;
+  final String voltageLabel;
+  final double resistanceSpread;
+  final String resistanceLabel;
+  final double? resistanceEvolutionPercent;
+  final String evolutionLabel;
   final List<String> cellMessages;
   final List<String> globalMessages;
+
+  bool get hasWarning =>
+      level == _BatteryHealthLevel.warning ||
+      level == _BatteryHealthLevel.tired;
+
+  bool get hasCritical => level == _BatteryHealthLevel.replace;
+
+  String get label {
+    return switch (level) {
+      _BatteryHealthLevel.notEvaluated => 'Non évaluée*',
+      _BatteryHealthLevel.good => 'Bonne*',
+      _BatteryHealthLevel.warning => 'À surveiller*',
+      _BatteryHealthLevel.tired => 'Fatiguée*',
+      _BatteryHealthLevel.replace => 'À remplacer*',
+    };
+  }
 }

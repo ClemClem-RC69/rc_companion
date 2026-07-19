@@ -4,7 +4,7 @@ class InfoPage extends StatelessWidget {
   const InfoPage({super.key});
 
   static const String appVersion = 'V1.0';
-  static const String batteryHealthVersion = 'V1.0';
+  static const String batteryHealthVersion = 'V1.1';
   static const String batteryCompatibilityVersion = 'V1.0';
   static const String batteryChargeStateVersion = 'V1.0';
   static const String lastUpdate = 'Juillet 2026';
@@ -85,27 +85,45 @@ class InfoPage extends StatelessWidget {
             title: 'Santé batterie',
             children: const [
               Text(
-                'Les estimations de santé affichées par RC Companion '
-                'sont actuellement basées sur :',
-              ),
-              SizedBox(height: 10),
-              _InfoBullet('la tension de chaque cellule ;'),
-              _InfoBullet('l’écart de tension entre les cellules ;'),
-              _InfoBullet(
-                'la résistance interne de chaque cellule relevée '
-                'après charge ;',
-              ),
-              _InfoBullet(
-                'l’évolution des résistances internes par rapport '
-                'au relevé de référence ;',
-              ),
-              _InfoBullet(
-                'la cohérence des valeurs entre les cellules du pack.',
+                'La santé est évaluée uniquement à partir du dernier '
+                'relevé après charge et du relevé de référence. Les relevés '
+                'de fin de roulage ne sont pas utilisés pour ce diagnostic.',
               ),
               SizedBox(height: 12),
               Text(
-                'Les résistances internes relevées après un roulage '
-                'ne sont pas utilisées pour estimer la santé de la batterie.',
+                'Équilibrage des tensions',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              _InfoBullet('Écart ≤ 0,02 V : Excellent.'),
+              _InfoBullet('Écart de 0,021 à 0,05 V : Correct.'),
+              _InfoBullet('Écart de 0,051 à 0,10 V : À surveiller.'),
+              _InfoBullet('Écart > 0,10 V : Mauvais.'),
+              SizedBox(height: 10),
+              Text(
+                'Homogénéité des résistances internes',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              _InfoBullet('Écart ≤ 3 mΩ : Excellent.'),
+              _InfoBullet('Écart de 3,01 à 5 mΩ : Correct.'),
+              _InfoBullet('Écart de 5,01 à 10 mΩ : À surveiller.'),
+              _InfoBullet('Écart > 10 mΩ : Mauvais.'),
+              SizedBox(height: 10),
+              Text(
+                'Évolution depuis le relevé de référence',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              _InfoBullet('Hausse ≤ 25 % : Normale.'),
+              _InfoBullet('Hausse de 25,01 à 50 % : À surveiller.'),
+              _InfoBullet(
+                'Hausse de 50,01 à 100 % : Dégradation importante.',
+              ),
+              _InfoBullet('Hausse > 100 % : Très forte dégradation.'),
+              SizedBox(height: 10),
+              Text(
+                'Le diagnostic final est factuel : Bonne, À surveiller, '
+                'Fatiguée ou À remplacer. RC Companion affiche les valeurs '
+                'mesurées et les motifs ayant conduit à ce diagnostic, sans '
+                'attribuer de score artificiel.',
               ),
               SizedBox(height: 12),
               _VersionLine(
