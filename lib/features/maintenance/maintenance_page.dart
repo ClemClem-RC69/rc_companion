@@ -1,20 +1,1683 @@
 import 'package:flutter/material.dart';
 
-class MaintenancePage extends StatelessWidget {
-  const MaintenancePage({super.key});
+import '../../models/rc_model.dart';
+import '../../services/supabase_service.dart';
+
+class MaintenancePage extends StatefulWidget {
+  const MaintenancePage({super.key, this.initialModelId, this.editRecordId});
+
+  final String? initialModelId;
+  final String? editRecordId;
+
+  @override
+  State<MaintenancePage> createState() => _MaintenancePageState();
+}
+
+class _MaintenancePageState extends State<MaintenancePage> {
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  List<RcModel> _models = [];
+  List<_MaintenanceRecord> _records = [];
+
+  bool _initialRecordHandled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final user = SupabaseService.client.auth.currentUser;
+
+      if (user == null) {
+        throw StateError('Aucun utilisateur connecté.');
+      }
+
+      final modelRows = await SupabaseService.client
+          .from('rc_models')
+          .select()
+          .eq('user_id', user.id)
+          .order('name');
+
+      final recordRows = await SupabaseService.client
+          .from('maintenance_records')
+          .select()
+          .eq('user_id', user.id)
+          .order('maintenance_date', ascending: false);
+
+      final models = modelRows
+          .map((raw) {
+            final row = Map<String, dynamic>.from(raw as Map);
+
+            return RcModel(
+              id: row['id'] as String?,
+              name: row['name'] as String? ?? 'Modèle sans nom',
+              brand: row['brand'] as String? ?? 'Marque non renseignée',
+              category: row['category'] as String? ?? '',
+              discipline: row['discipline'] as String? ?? '',
+              motorization: row['motorization'] as String? ?? 'Électrique',
+              scale: row['scale'] as String? ?? '',
+              batteryCount: (row['battery_count'] as num?)?.toInt() ?? 0,
+              maxCells: row['max_cells'] == null
+                  ? 'Aucune'
+                  : '${(row['max_cells'] as num).toInt()}S',
+              photoUrl: row['photo_url'] as String?,
+              weightKg: (row['weight_kg'] as num?)?.toDouble(),
+              acquisitionDate: row['acquisition_date'] == null
+                  ? null
+                  : DateTime.tryParse(row['acquisition_date'].toString()),
+              purchaseType: row['purchase_type'] as String?,
+              purchaseLocation: row['purchase_location'] as String?,
+              radioId: row['radio_id'] as String?,
+            );
+          })
+          .toList(growable: false);
+
+      final modelById = <String, RcModel>{
+        for (final model in models)
+          if (model.id != null && model.id!.isNotEmpty) model.id!: model,
+      };
+
+      final records = recordRows
+          .map((raw) {
+            final row = Map<String, dynamic>.from(raw as Map);
+            return _MaintenanceRecord.fromMap(row, modelById);
+          })
+          .toList(growable: false);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _models = models;
+        _records = records;
+        _isLoading = false;
+      });
+
+      _openInitialRecordIfNeeded();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _errorMessage = error.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _openInitialRecordIfNeeded() {
+    if (_initialRecordHandled) {
+      return;
+    }
+
+    final recordId = widget.editRecordId;
+
+    if (recordId == null || recordId.trim().isEmpty) {
+      _initialRecordHandled = true;
+      return;
+    }
+
+    _MaintenanceRecord? record;
+
+    for (final item in _records) {
+      if (item.id == recordId) {
+        record = item;
+        break;
+      }
+    }
+
+    _initialRecordHandled = true;
+
+    if (record == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showMessage('Maintenance introuvable.');
+      });
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        return;
+      }
+
+      await _openEditDialog(record!);
+    });
+  }
+
+  Future<void> _openCreateDialog() async {
+    if (_models.isEmpty) {
+      _showMessage('Enregistre d’abord un modèle.');
+      return;
+    }
+
+    final draft = await showDialog<_MaintenanceDraft>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _MaintenanceDialog(
+        models: _models,
+        initialModelId: widget.initialModelId,
+      ),
+    );
+
+    if (draft == null) {
+      return;
+    }
+
+    await _saveMaintenance(draft);
+  }
+
+  Future<void> _openEditDialog(_MaintenanceRecord record) async {
+    final draft = await showDialog<_MaintenanceDraft>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _MaintenanceDialog(models: _models, record: record),
+    );
+
+    if (draft == null) {
+      return;
+    }
+
+    await _updateMaintenance(record, draft);
+  }
+
+  Future<void> _saveMaintenance(_MaintenanceDraft draft) async {
+    final user = SupabaseService.client.auth.currentUser;
+
+    if (user == null) {
+      _showMessage('Aucun utilisateur connecté.');
+      return;
+    }
+
+    final modelId = draft.model.id;
+
+    if (modelId == null || modelId.isEmpty) {
+      _showMessage('Ce modèle ne possède pas d’identifiant valide.');
+      return;
+    }
+
+    try {
+      final payload = <String, dynamic>{
+        'user_id': user.id,
+        'model_id': modelId,
+        'maintenance_date': draft.date.toUtc().toIso8601String(),
+        'record_type': draft.type.databaseValue,
+        'title': draft.title.trim(),
+        'notes': draft.notes.trim(),
+        'data': draft.data,
+      };
+
+      await SupabaseService.client.from('maintenance_records').insert(payload);
+
+      if (draft.type == _MaintenanceType.revision) {
+        await _recalculateRevisionCounters(modelId);
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage('${draft.type.label} enregistrée.');
+      await _loadData();
+    } catch (error) {
+      _showMessage('Enregistrement impossible : $error');
+    }
+  }
+
+  Future<void> _updateMaintenance(
+    _MaintenanceRecord record,
+    _MaintenanceDraft draft,
+  ) async {
+    final user = SupabaseService.client.auth.currentUser;
+
+    if (user == null) {
+      _showMessage('Aucun utilisateur connecté.');
+      return;
+    }
+
+    final modelId = draft.model.id;
+
+    if (modelId == null || modelId.isEmpty) {
+      _showMessage('Ce modèle ne possède pas d’identifiant valide.');
+      return;
+    }
+
+    try {
+      await SupabaseService.client
+          .from('maintenance_records')
+          .update({
+            'model_id': modelId,
+            'maintenance_date': draft.date.toUtc().toIso8601String(),
+            'record_type': draft.type.databaseValue,
+            'title': draft.title.trim(),
+            'notes': draft.notes.trim(),
+            'data': draft.data,
+          })
+          .eq('id', record.id)
+          .eq('user_id', user.id);
+
+      final affectedModelIds = <String>{};
+
+      if (record.type == _MaintenanceType.revision) {
+        affectedModelIds.add(record.modelId);
+      }
+
+      if (draft.type == _MaintenanceType.revision) {
+        affectedModelIds.add(modelId);
+      }
+
+      for (final affectedModelId in affectedModelIds) {
+        await _recalculateRevisionCounters(affectedModelId);
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage('${draft.type.label} modifiée.');
+      await _loadData();
+    } catch (error) {
+      _showMessage('Modification impossible : $error');
+    }
+  }
+
+  Future<void> _recalculateRevisionCounters(String modelId) async {
+    final user = SupabaseService.client.auth.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    final revisionRows = await SupabaseService.client
+        .from('maintenance_records')
+        .select('id, maintenance_date')
+        .eq('user_id', user.id)
+        .eq('model_id', modelId)
+        .eq('record_type', 'REVISION')
+        .order('maintenance_date');
+
+    final sessionRows = await SupabaseService.client
+        .from('rc_sessions')
+        .select('''
+          id,
+          model_id,
+          started_at,
+          session_runs (
+            started_at,
+            ended_at,
+            duration_minutes
+          )
+        ''')
+        .eq('user_id', user.id)
+        .eq('model_id', modelId)
+        .order('started_at');
+
+    final runs = <_RunStat>[];
+
+    for (final rawSession in sessionRows) {
+      final session = Map<String, dynamic>.from(rawSession as Map);
+      final rawRuns = session['session_runs'] as List<dynamic>? ?? const [];
+
+      for (final rawRun in rawRuns) {
+        final run = Map<String, dynamic>.from(rawRun as Map);
+        final startedAt = DateTime.tryParse(
+          run['started_at']?.toString() ?? '',
+        )?.toLocal();
+
+        if (startedAt == null) {
+          continue;
+        }
+
+        int? durationMinutes = (run['duration_minutes'] as num?)?.toInt();
+
+        if (durationMinutes == null) {
+          final endedAt = DateTime.tryParse(
+            run['ended_at']?.toString() ?? '',
+          )?.toLocal();
+
+          if (endedAt != null) {
+            durationMinutes = endedAt.difference(startedAt).inMinutes;
+          }
+        }
+
+        runs.add(
+          _RunStat(startedAt: startedAt, durationMinutes: durationMinutes),
+        );
+      }
+    }
+
+    DateTime? previousRevisionDate;
+
+    for (final rawRevision in revisionRows) {
+      final revision = Map<String, dynamic>.from(rawRevision as Map);
+      final revisionDate = DateTime.parse(
+        revision['maintenance_date'].toString(),
+      ).toLocal();
+
+      final eligibleRuns = runs
+          .where((run) {
+            final afterPrevious =
+                previousRevisionDate == null ||
+                run.startedAt.isAfter(previousRevisionDate!);
+            final beforeOrAtRevision = !run.startedAt.isAfter(revisionDate);
+            return afterPrevious && beforeOrAtRevision;
+          })
+          .toList(growable: false);
+
+      final packs = eligibleRuns.length;
+      final knownMinutes = eligibleRuns
+          .where((run) => run.durationMinutes != null)
+          .fold<int>(0, (total, run) => total + run.durationMinutes!);
+
+      await SupabaseService.client
+          .from('maintenance_records')
+          .update({
+            'packs_since_last_revision': packs,
+            'runtime_minutes_since_last_revision': knownMinutes,
+          })
+          .eq('id', revision['id'])
+          .eq('user_id', user.id);
+
+      previousRevisionDate = revisionDate;
+    }
+  }
+
+  Future<void> _deleteRecord(_MaintenanceRecord record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        icon: const Icon(Icons.delete_forever_outlined),
+        title: const Text('Supprimer cette maintenance ?'),
+        content: Text(
+          '${record.type.label} du ${_formatDate(record.date)} pour '
+          '${record.modelName}.\n\nCette action est irréversible.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    final user = SupabaseService.client.auth.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    try {
+      await SupabaseService.client
+          .from('maintenance_records')
+          .delete()
+          .eq('id', record.id)
+          .eq('user_id', user.id);
+
+      if (record.type == _MaintenanceType.revision) {
+        await _recalculateRevisionCounters(record.modelId);
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage('Maintenance supprimée.');
+      await _loadData();
+    } catch (error) {
+      _showMessage('Suppression impossible : $error');
+    }
+  }
+
+  Future<void> _showDetails(_MaintenanceRecord record) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _MaintenanceDetailsDialog(record: record),
+    );
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  static String _formatDate(DateTime value) {
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    return '$day/$month/${value.year}';
+  }
+
+  static String _durationLabel(int? minutes) {
+    if (minutes == null) {
+      return 'Non calculé';
+    }
+
+    final hours = minutes ~/ 60;
+    final remaining = minutes % 60;
+
+    if (hours == 0) {
+      return '$remaining min';
+    }
+
+    if (remaining == 0) {
+      return '${hours}h';
+    }
+
+    return '${hours}h ${remaining}min';
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Maintenance')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Maintenance')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_off_outlined, size: 52),
+                const SizedBox(height: 16),
+                const Text(
+                  'Impossible de charger les maintenances.',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(_errorMessage!, textAlign: TextAlign.center),
+                const SizedBox(height: 18),
+                FilledButton.icon(
+                  onPressed: _loadData,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Réessayer'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Maintenance'),
+        actions: [
+          IconButton(
+            tooltip: 'Actualiser',
+            onPressed: _loadData,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
-      body: const Center(
-        child: Text(
-          'Les maintenances arriveront ici.',
-          style: TextStyle(fontSize: 22),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openCreateDialog,
+        icon: const Icon(Icons.add),
+        label: const Text('Nouvelle maintenance'),
+      ),
+      body: _records.isEmpty
+          ? const _EmptyMaintenanceState()
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                children: [
+                  const Text(
+                    'Historique',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  for (final record in _records)
+                    Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => _showDetails(record),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+                          child: Row(
+                            children: [
+                              CircleAvatar(child: Icon(record.type.icon)),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      record.modelName,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${record.type.label} • '
+                                      '${_formatDate(record.date)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    if (record.title.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(record.title),
+                                    ],
+                                    if (record.type ==
+                                        _MaintenanceType.revision) ...[
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          Chip(
+                                            avatar: const Icon(
+                                              Icons.battery_charging_full,
+                                              size: 18,
+                                            ),
+                                            label: Text(
+                                              '${record.packsSinceLastRevision ?? 0} pack(s)',
+                                            ),
+                                          ),
+                                          Chip(
+                                            avatar: const Icon(
+                                              Icons.timer_outlined,
+                                              size: 18,
+                                            ),
+                                            label: Text(
+                                              _durationLabel(
+                                                record
+                                                    .runtimeMinutesSinceLastRevision,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              PopupMenuButton<String>(
+                                tooltip: 'Options',
+                                onSelected: (value) {
+                                  if (value == 'details') {
+                                    _showDetails(record);
+                                  } else if (value == 'edit') {
+                                    _openEditDialog(record);
+                                  } else if (value == 'delete') {
+                                    _deleteRecord(record);
+                                  }
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'details',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.visibility_outlined),
+                                        SizedBox(width: 10),
+                                        Text('Voir'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'edit',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.edit_outlined),
+                                        SizedBox(width: 10),
+                                        Text('Modifier'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'delete',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.delete_outline),
+                                        SizedBox(width: 10),
+                                        Text('Supprimer'),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+class _EmptyMaintenanceState extends StatelessWidget {
+  const _EmptyMaintenanceState();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(24),
+      children: const [
+        SizedBox(height: 120),
+        Icon(Icons.build_circle_outlined, size: 74),
+        SizedBox(height: 18),
+        Center(
+          child: Text(
+            'Aucune maintenance enregistrée',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+        ),
+        SizedBox(height: 8),
+        Center(
+          child: Text(
+            'Ajoute une révision, une réparation ou une modification.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MaintenanceDialog extends StatefulWidget {
+  const _MaintenanceDialog({
+    required this.models,
+    this.record,
+    this.initialModelId,
+  });
+
+  final List<RcModel> models;
+  final _MaintenanceRecord? record;
+  final String? initialModelId;
+
+  @override
+  State<_MaintenanceDialog> createState() => _MaintenanceDialogState();
+}
+
+class _MaintenanceDialogState extends State<_MaintenanceDialog> {
+  RcModel? _selectedModel;
+  _MaintenanceType _selectedType = _MaintenanceType.revision;
+  DateTime _selectedDate = DateTime.now();
+
+  final _titleController = TextEditingController();
+  final _notesController = TextEditingController();
+
+  final Map<String, TextEditingController> _fluidControllers = {
+    'diffFront': TextEditingController(),
+    'diffCenter': TextEditingController(),
+    'diffRear': TextEditingController(),
+    'shockFront': TextEditingController(),
+    'shockRear': TextEditingController(),
+  };
+
+  final List<_SetupChangeEditor> _setupChanges = [];
+
+  String? _errorMessage;
+
+  static const _setupFieldChoices = <String>[
+    'Carrossage avant',
+    'Carrossage arrière',
+    'Pincement avant',
+    'Pincement arrière',
+    'Garde au sol avant',
+    'Garde au sol arrière',
+    'Position amortisseurs avant',
+    'Position amortisseurs arrière',
+    'Ressorts avant',
+    'Ressorts arrière',
+    'Pignon moteur',
+    'Couronne',
+    'Punch ESC',
+    'Frein moteur',
+    'EPA direction',
+    'Dual Rate',
+    'Expo direction',
+    'Pneus',
+    'Inserts',
+    'Autre réglage',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    final record = widget.record;
+
+    if (record == null) {
+      final initialModelId = widget.initialModelId;
+
+      if (initialModelId != null && initialModelId.isNotEmpty) {
+        for (final model in widget.models) {
+          if (model.id == initialModelId) {
+            _selectedModel = model;
+            break;
+          }
+        }
+      }
+
+      return;
+    }
+
+    _selectedModel = widget.models.cast<RcModel?>().firstWhere(
+      (model) => model?.id == record.modelId,
+      orElse: () => null,
+    );
+    _selectedType = record.type;
+    _selectedDate = record.date;
+    _titleController.text = record.title;
+    _notesController.text = record.notes;
+
+    for (final entry in record.fluids.entries) {
+      _fluidControllers[entry.key]?.text = entry.value;
+    }
+
+    for (final change in record.setupChanges) {
+      final editor = _SetupChangeEditor();
+      editor.field = change['field'];
+      editor.valueController.text = change['newValue'] ?? '';
+      _setupChanges.add(editor);
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _notesController.dispose();
+
+    for (final controller in _fluidControllers.values) {
+      controller.dispose();
+    }
+
+    for (final change in _setupChanges) {
+      change.dispose();
+    }
+
+    super.dispose();
+  }
+
+  DateTime get _firstAllowedDate {
+    final acquisition = _selectedModel?.acquisitionDate;
+
+    if (acquisition == null) {
+      return DateTime(1900);
+    }
+
+    return DateTime(acquisition.year, acquisition.month, acquisition.day);
+  }
+
+  Future<void> _selectDate() async {
+    final now = DateTime.now();
+    final firstDate = _firstAllowedDate;
+    var initialDate = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+    );
+
+    if (initialDate.isBefore(firstDate)) {
+      initialDate = firstDate;
+    }
+
+    if (initialDate.isAfter(now)) {
+      initialDate = now;
+    }
+
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: now,
+      helpText: 'Date de la maintenance',
+      cancelText: 'Annuler',
+      confirmText: 'Valider',
+    );
+
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedDate = DateTime(selected.year, selected.month, selected.day, 12);
+    });
+  }
+
+  void _addSetupChange() {
+    setState(() {
+      _setupChanges.add(_SetupChangeEditor());
+    });
+  }
+
+  void _removeSetupChange(int index) {
+    setState(() {
+      final removed = _setupChanges.removeAt(index);
+      removed.dispose();
+    });
+  }
+
+  void _save() {
+    final model = _selectedModel;
+
+    if (model == null) {
+      setState(() {
+        _errorMessage = 'Sélectionne un modèle.';
+      });
+      return;
+    }
+
+    var title = _titleController.text.trim();
+
+    if (_selectedType == _MaintenanceType.revision && title.isEmpty) {
+      title = 'Révision';
+    }
+
+    if (_selectedType != _MaintenanceType.revision && title.isEmpty) {
+      setState(() {
+        _errorMessage = 'Renseigne un titre.';
+      });
+      return;
+    }
+
+    final fluids = <String, String>{};
+
+    for (final entry in _fluidControllers.entries) {
+      final value = entry.value.text.trim();
+      if (value.isNotEmpty) {
+        fluids[entry.key] = value;
+      }
+    }
+
+    final setupChanges = <Map<String, String>>[];
+
+    for (final change in _setupChanges) {
+      final field = change.field;
+      final value = change.valueController.text.trim();
+
+      if (field != null && value.isNotEmpty) {
+        setupChanges.add({'field': field, 'newValue': value});
+      }
+    }
+
+    Navigator.of(context).pop(
+      _MaintenanceDraft(
+        model: model,
+        date: _selectedDate,
+        type: _selectedType,
+        title: title,
+        notes: _notesController.text.trim(),
+        data: <String, dynamic>{
+          if (fluids.isNotEmpty) 'fluids': fluids,
+          if (setupChanges.isNotEmpty) 'setupChanges': setupChanges,
+        },
+      ),
+    );
+  }
+
+  String _formatDate(DateTime value) {
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    return '$day/$month/${value.year}';
+  }
+
+  InputDecoration _decoration(String label, {String? hint, String? suffix}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      suffixText: suffix,
+      border: const OutlineInputBorder(),
+      alignLabelWithHint: true,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      title: Text(
+        widget.record == null
+            ? 'Nouvelle maintenance'
+            : 'Modifier la maintenance',
+      ),
+      content: SizedBox(
+        width: 760,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<RcModel>(
+                initialValue: _selectedModel,
+                isExpanded: true,
+                decoration: _decoration('Modèle'),
+                items: widget.models
+                    .map(
+                      (model) => DropdownMenuItem(
+                        value: model,
+                        child: Text(
+                          '${model.name} — ${model.brand}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedModel = value;
+
+                    if (_selectedDate.isBefore(_firstAllowedDate)) {
+                      _selectedDate = _firstAllowedDate;
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<_MaintenanceType>(
+                initialValue: _selectedType,
+                decoration: _decoration('Type'),
+                items: _MaintenanceType.values
+                    .map(
+                      (type) => DropdownMenuItem(
+                        value: type,
+                        child: Text(type.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) {
+                    return;
+                  }
+
+                  setState(() {
+                    _selectedType = value;
+                    _errorMessage = null;
+                  });
+                },
+              ),
+              const SizedBox(height: 14),
+              InkWell(
+                onTap: _selectedModel == null ? null : _selectDate,
+                borderRadius: BorderRadius.circular(12),
+                child: InputDecorator(
+                  decoration: _decoration('Date'),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_month_outlined),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(_formatDate(_selectedDate))),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              if (_selectedType == _MaintenanceType.revision)
+                _buildRevisionFields()
+              else
+                _buildSimpleFields(),
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _errorMessage!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Annuler la maintenance'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: Text(
+            widget.record == null
+                ? 'Enregistrer'
+                : 'Enregistrer les modifications',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openExpandedTextEditor({
+    required TextEditingController controller,
+    required String title,
+    required String hint,
+  }) async {
+    final editorController = TextEditingController(text: controller.text);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 680,
+          child: TextField(
+            controller: editorController,
+            autofocus: true,
+            minLines: 10,
+            maxLines: 18,
+            decoration: InputDecoration(
+              hintText: hint,
+              border: const OutlineInputBorder(),
+              alignLabelWithHint: true,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(editorController.text),
+            child: const Text('Valider le texte'),
+          ),
+        ],
+      ),
+    );
+
+    editorController.dispose();
+
+    if (result == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      controller.text = result;
+    });
+  }
+
+  Widget _expandableTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+  }) {
+    return InkWell(
+      onTap: () => _openExpandedTextEditor(
+        controller: controller,
+        title: label,
+        hint: hint,
+      ),
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: _decoration(
+          label,
+          hint: hint,
+        ).copyWith(suffixIcon: const Icon(Icons.open_in_full)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 72),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Text(
+              controller.text.trim().isEmpty ? hint : controller.text.trim(),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: controller.text.trim().isEmpty
+                  ? TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    )
+                  : null,
+            ),
+          ),
         ),
       ),
     );
   }
+
+  Widget _buildRevisionFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Card(
+          child: ListTile(
+            leading: Icon(Icons.auto_graph_outlined),
+            title: Text('Compteurs calculés automatiquement'),
+            subtitle: Text(
+              'Chaque roulage compte pour un pack consommé. '
+              'Le temps correspond à la somme des durées renseignées. '
+              'Une révision rétroactive recalcule la chronologie.',
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Fluides remplacés (optionnel)',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 10),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth >= 620
+                ? (constraints.maxWidth - 12) / 2
+                : constraints.maxWidth;
+
+            Widget field(String key, String label) {
+              return SizedBox(
+                width: width,
+                child: TextField(
+                  controller: _fluidControllers[key],
+                  decoration: _decoration(
+                    label,
+                    hint: 'Ex. 500 000',
+                    suffix: 'cSt',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+              );
+            }
+
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                field('diffFront', 'Différentiel avant'),
+                field('diffCenter', 'Différentiel central'),
+                field('diffRear', 'Différentiel arrière'),
+                field('shockFront', 'Amortisseurs avant'),
+                field('shockRear', 'Amortisseurs arrière'),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Réglages modifiés (optionnel)',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: _addSetupChange,
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter un réglage'),
+            ),
+          ],
+        ),
+        if (_setupChanges.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          for (var index = 0; index < _setupChanges.length; index++) ...[
+            _SetupChangeRow(
+              editor: _setupChanges[index],
+              choices: _setupFieldChoices,
+              onRemove: () => _removeSetupChange(index),
+            ),
+            if (index != _setupChanges.length - 1) const SizedBox(height: 10),
+          ],
+        ],
+        const SizedBox(height: 18),
+        _expandableTextField(
+          controller: _notesController,
+          label: 'Texte libre',
+          hint: 'Travaux effectués, éléments contrôlés, remarques…',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSimpleFields() {
+    final isRepair = _selectedType == _MaintenanceType.reparation;
+
+    return Column(
+      children: [
+        TextField(
+          controller: _titleController,
+          decoration: _decoration(
+            isRepair ? 'Réparation effectuée' : 'Modification réalisée',
+            hint: isRepair
+                ? 'Ex. Remplacement du servo de direction'
+                : 'Ex. Montage d’un nouveau moteur',
+          ),
+        ),
+        const SizedBox(height: 14),
+        _expandableTextField(
+          controller: _notesController,
+          label: 'Description',
+          hint: isRepair
+              ? 'Décris simplement la panne et ce qui a été fait.'
+              : 'Décris simplement les éléments ajoutés, retirés ou modifiés.',
+        ),
+      ],
+    );
+  }
+}
+
+class _SetupChangeRow extends StatefulWidget {
+  const _SetupChangeRow({
+    required this.editor,
+    required this.choices,
+    required this.onRemove,
+  });
+
+  final _SetupChangeEditor editor;
+  final List<String> choices;
+  final VoidCallback onRemove;
+
+  @override
+  State<_SetupChangeRow> createState() => _SetupChangeRowState();
+}
+
+class _SetupChangeRowState extends State<_SetupChangeRow> {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final dropdown = DropdownButtonFormField<String>(
+              initialValue: widget.editor.field,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Élément du setup',
+                border: OutlineInputBorder(),
+              ),
+              items: widget.choices
+                  .map(
+                    (choice) => DropdownMenuItem(
+                      value: choice,
+                      child: Text(choice, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  widget.editor.field = value;
+                });
+              },
+            );
+
+            final valueField = TextField(
+              controller: widget.editor.valueController,
+              decoration: const InputDecoration(
+                labelText: 'Nouvelle valeur',
+                border: OutlineInputBorder(),
+              ),
+            );
+
+            if (constraints.maxWidth < 560) {
+              return Column(
+                children: [
+                  dropdown,
+                  const SizedBox(height: 10),
+                  valueField,
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      tooltip: 'Retirer ce réglage',
+                      onPressed: widget.onRemove,
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(flex: 2, child: dropdown),
+                const SizedBox(width: 10),
+                Expanded(child: valueField),
+                IconButton(
+                  tooltip: 'Retirer ce réglage',
+                  onPressed: widget.onRemove,
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _MaintenanceDetailsDialog extends StatelessWidget {
+  const _MaintenanceDetailsDialog({required this.record});
+
+  final _MaintenanceRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final fluids = record.fluids;
+    final setupChanges = record.setupChanges;
+
+    return AlertDialog(
+      title: Text('${record.type.label} — ${record.modelName}'),
+      content: SizedBox(
+        width: 620,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _detailLine('Date', _formatDate(record.date)),
+              if (record.title.isNotEmpty) _detailLine('Titre', record.title),
+              if (record.type == _MaintenanceType.revision) ...[
+                _detailLine(
+                  'Packs consommés',
+                  '${record.packsSinceLastRevision ?? 0}',
+                ),
+                _detailLine(
+                  'Temps d’utilisation',
+                  _durationLabel(record.runtimeMinutesSinceLastRevision),
+                ),
+              ],
+              if (fluids.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                Text(
+                  'Fluides remplacés',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                for (final entry in fluids.entries)
+                  _detailLine(_fluidLabel(entry.key), '${entry.value} cSt'),
+              ],
+              if (setupChanges.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                Text(
+                  'Réglages modifiés',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                for (final change in setupChanges)
+                  _detailLine(
+                    change['field'] ?? 'Réglage',
+                    change['newValue'] ?? '',
+                  ),
+              ],
+              if (record.notes.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                Text(
+                  record.type == _MaintenanceType.revision
+                      ? 'Texte libre'
+                      : 'Description',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                SelectableText(record.notes),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Fermer'),
+        ),
+      ],
+    );
+  }
+
+  static Widget _detailLine(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$label : ',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            TextSpan(text: value),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _fluidLabel(String key) {
+    switch (key) {
+      case 'diffFront':
+        return 'Différentiel avant';
+      case 'diffCenter':
+        return 'Différentiel central';
+      case 'diffRear':
+        return 'Différentiel arrière';
+      case 'shockFront':
+        return 'Amortisseurs avant';
+      case 'shockRear':
+        return 'Amortisseurs arrière';
+      default:
+        return key;
+    }
+  }
+
+  static String _formatDate(DateTime value) {
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    return '$day/$month/${value.year}';
+  }
+
+  static String _durationLabel(int? minutes) {
+    if (minutes == null) {
+      return 'Non calculé';
+    }
+
+    final hours = minutes ~/ 60;
+    final remaining = minutes % 60;
+
+    if (hours == 0) {
+      return '$remaining min';
+    }
+
+    if (remaining == 0) {
+      return '${hours}h';
+    }
+
+    return '${hours}h ${remaining}min';
+  }
+}
+
+enum _MaintenanceType {
+  revision,
+  reparation,
+  modification;
+
+  String get label {
+    switch (this) {
+      case _MaintenanceType.revision:
+        return 'Révision';
+      case _MaintenanceType.reparation:
+        return 'Réparation';
+      case _MaintenanceType.modification:
+        return 'Modification';
+    }
+  }
+
+  String get databaseValue {
+    switch (this) {
+      case _MaintenanceType.revision:
+        return 'REVISION';
+      case _MaintenanceType.reparation:
+        return 'REPARATION';
+      case _MaintenanceType.modification:
+        return 'MODIFICATION';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case _MaintenanceType.revision:
+        return Icons.tune;
+      case _MaintenanceType.reparation:
+        return Icons.handyman_outlined;
+      case _MaintenanceType.modification:
+        return Icons.construction_outlined;
+    }
+  }
+
+  static _MaintenanceType fromDatabase(String value) {
+    switch (value) {
+      case 'REPARATION':
+        return _MaintenanceType.reparation;
+      case 'MODIFICATION':
+        return _MaintenanceType.modification;
+      case 'REVISION':
+      default:
+        return _MaintenanceType.revision;
+    }
+  }
+}
+
+class _MaintenanceDraft {
+  const _MaintenanceDraft({
+    required this.model,
+    required this.date,
+    required this.type,
+    required this.title,
+    required this.notes,
+    required this.data,
+  });
+
+  final RcModel model;
+  final DateTime date;
+  final _MaintenanceType type;
+  final String title;
+  final String notes;
+  final Map<String, dynamic> data;
+}
+
+class _MaintenanceRecord {
+  const _MaintenanceRecord({
+    required this.id,
+    required this.modelId,
+    required this.modelName,
+    required this.date,
+    required this.type,
+    required this.title,
+    required this.notes,
+    required this.data,
+    this.packsSinceLastRevision,
+    this.runtimeMinutesSinceLastRevision,
+  });
+
+  final String id;
+  final String modelId;
+  final String modelName;
+  final DateTime date;
+  final _MaintenanceType type;
+  final String title;
+  final String notes;
+  final Map<String, dynamic> data;
+  final int? packsSinceLastRevision;
+  final int? runtimeMinutesSinceLastRevision;
+
+  Map<String, String> get fluids {
+    final raw = data['fluids'];
+
+    if (raw is! Map) {
+      return const {};
+    }
+
+    return raw.map((key, value) => MapEntry(key.toString(), value.toString()));
+  }
+
+  List<Map<String, String>> get setupChanges {
+    final raw = data['setupChanges'];
+
+    if (raw is! List) {
+      return const [];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          return item.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          );
+        })
+        .toList(growable: false);
+  }
+
+  factory _MaintenanceRecord.fromMap(
+    Map<String, dynamic> row,
+    Map<String, RcModel> modelById,
+  ) {
+    final modelId = row['model_id'] as String;
+    final model = modelById[modelId];
+    final rawData = row['data'];
+
+    return _MaintenanceRecord(
+      id: row['id'] as String,
+      modelId: modelId,
+      modelName: model?.name ?? 'Modèle supprimé',
+      date: DateTime.parse(row['maintenance_date'].toString()).toLocal(),
+      type: _MaintenanceType.fromDatabase(
+        row['record_type'] as String? ?? 'REVISION',
+      ),
+      title: row['title'] as String? ?? '',
+      notes: row['notes'] as String? ?? '',
+      data: rawData is Map
+          ? Map<String, dynamic>.from(rawData)
+          : const <String, dynamic>{},
+      packsSinceLastRevision: (row['packs_since_last_revision'] as num?)
+          ?.toInt(),
+      runtimeMinutesSinceLastRevision:
+          (row['runtime_minutes_since_last_revision'] as num?)?.toInt(),
+    );
+  }
+}
+
+class _SetupChangeEditor {
+  String? field;
+  final TextEditingController valueController = TextEditingController();
+
+  void dispose() {
+    valueController.dispose();
+  }
+}
+
+class _RunStat {
+  const _RunStat({required this.startedAt, required this.durationMinutes});
+
+  final DateTime startedAt;
+  final int? durationMinutes;
 }

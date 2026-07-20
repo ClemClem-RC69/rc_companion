@@ -12,10 +12,7 @@ class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
 
   void open(BuildContext context, Widget page) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => page),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
   }
 
   Future<void> logout(BuildContext context) async {
@@ -59,9 +56,7 @@ class DashboardPage extends StatelessWidget {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur lors de la déconnexion : $error'),
-        ),
+        SnackBar(content: Text('Erreur lors de la déconnexion : $error')),
       );
     }
   }
@@ -87,10 +82,7 @@ class DashboardPage extends StatelessWidget {
         children: [
           const Text(
             'Mon garage RC',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
           ),
           if (userEmail != null) ...[
             const SizedBox(height: 6),
@@ -128,8 +120,8 @@ class DashboardPage extends StatelessWidget {
           ),
           HomeCard(
             icon: Icons.build,
-            title: 'Entretiens',
-            subtitle: 'Réparations, réglages et modifications',
+            title: 'Maintenance',
+            subtitle: 'Révisions, réparations et modifications',
             onTap: () => open(context, const MaintenancePage()),
           ),
           const SizedBox(height: 8),
@@ -167,10 +159,7 @@ class HomeCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 14),
       child: ListTile(
         leading: Icon(icon, size: 34),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,

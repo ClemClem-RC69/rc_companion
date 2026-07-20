@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/battery.dart';
-import '../../../models/model_history_event.dart';
 import '../../../models/rc_model.dart';
 import '../../../models/rc_session.dart';
 import '../../../services/battery_service.dart';
-import '../../../services/model_history_event_service.dart';
 import '../../../services/session_service.dart';
-import 'model_history_event_form_page.dart';
+import '../../../services/supabase_service.dart';
 
 class ModelHistoryTab extends StatefulWidget {
   const ModelHistoryTab({
@@ -25,7 +23,8 @@ class ModelHistoryTab extends StatefulWidget {
 
 class _ModelHistoryTabState extends State<ModelHistoryTab> {
   List<RcSession> _sessions = [];
-  List<ModelHistoryEvent> _events = [];
+  List<_ModelMaintenanceRecord> _maintenances = [];
+
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -42,25 +41,42 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     });
 
     try {
-      final batteries = await BatteryService.getBatteries();
+      final user = SupabaseService.client.auth.currentUser;
 
-      final results = await Future.wait([
-        SessionService.getSessions(
-          models: [widget.model],
-          batteries: batteries,
-        ),
-        ModelHistoryEventService.getEvents(widget.modelId),
-      ]);
+      if (user == null) {
+        throw StateError('Aucun utilisateur connecté.');
+      }
+
+      // Le recalcul à l’ouverture de l’historique garantit qu’une session
+      // ajoutée ou modifiée rétroactivement est bien prise en compte.
+      await _recalculateRevisionCounters(user.id);
+
+      final batteriesFuture = BatteryService.getBatteries();
+      final maintenanceFuture = SupabaseService.client
+          .from('maintenance_records')
+          .select()
+          .eq('user_id', user.id)
+          .eq('model_id', widget.modelId)
+          .order('maintenance_date', ascending: false);
+
+      final batteries = await batteriesFuture;
 
       final sessions =
-          (results[0] as List<RcSession>)
-              .where((session) => session.isClosed)
-              .toList(growable: false)
-            ..sort(
-              (first, second) => second.startedAt.compareTo(first.startedAt),
-            );
+          (await SessionService.getSessions(
+            models: [widget.model],
+            batteries: batteries,
+          )).where((session) => session.isClosed).toList(growable: false)..sort(
+            (first, second) => second.startedAt.compareTo(first.startedAt),
+          );
 
-      final events = results[1] as List<ModelHistoryEvent>;
+      final rawMaintenances = await maintenanceFuture;
+      final maintenances = rawMaintenances
+          .map(
+            (raw) => _ModelMaintenanceRecord.fromMap(
+              Map<String, dynamic>.from(raw as Map),
+            ),
+          )
+          .toList(growable: false);
 
       if (!mounted) {
         return;
@@ -68,7 +84,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
 
       setState(() {
         _sessions = sessions;
-        _events = events;
+        _maintenances = maintenances;
       });
     } catch (error) {
       if (!mounted) {
@@ -87,6 +103,107 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     }
   }
 
+  Future<void> _recalculateRevisionCounters(String userId) async {
+    final revisionRows = await SupabaseService.client
+        .from('maintenance_records')
+        .select('id, maintenance_date')
+        .eq('user_id', userId)
+        .eq('model_id', widget.modelId)
+        .eq('record_type', 'REVISION')
+        .order('maintenance_date');
+
+    if (revisionRows.isEmpty) {
+      return;
+    }
+
+    final sessionRows = await SupabaseService.client
+        .from('rc_sessions')
+        .select('''
+          id,
+          started_at,
+          session_runs (
+            started_at,
+            ended_at,
+            duration_minutes
+          )
+        ''')
+        .eq('user_id', userId)
+        .eq('model_id', widget.modelId)
+        .order('started_at');
+
+    final runs = <_HistoryRunStat>[];
+
+    for (final rawSession in sessionRows) {
+      final session = Map<String, dynamic>.from(rawSession as Map);
+      final rawRuns = session['session_runs'] as List<dynamic>? ?? const [];
+
+      for (final rawRun in rawRuns) {
+        final run = Map<String, dynamic>.from(rawRun as Map);
+        final startedAt = DateTime.tryParse(
+          run['started_at']?.toString() ?? '',
+        )?.toLocal();
+
+        if (startedAt == null) {
+          continue;
+        }
+
+        int? durationMinutes = (run['duration_minutes'] as num?)?.toInt();
+
+        if (durationMinutes == null) {
+          final endedAt = DateTime.tryParse(
+            run['ended_at']?.toString() ?? '',
+          )?.toLocal();
+
+          if (endedAt != null) {
+            durationMinutes = endedAt.difference(startedAt).inMinutes;
+          }
+        }
+
+        runs.add(
+          _HistoryRunStat(
+            startedAt: startedAt,
+            durationMinutes: durationMinutes,
+          ),
+        );
+      }
+    }
+
+    DateTime? previousRevisionDate;
+
+    for (final rawRevision in revisionRows) {
+      final revision = Map<String, dynamic>.from(rawRevision as Map);
+      final revisionDate = DateTime.parse(
+        revision['maintenance_date'].toString(),
+      ).toLocal();
+
+      final eligibleRuns = runs
+          .where((run) {
+            final afterPrevious =
+                previousRevisionDate == null ||
+                run.startedAt.isAfter(previousRevisionDate);
+            final beforeOrAtRevision = !run.startedAt.isAfter(revisionDate);
+            return afterPrevious && beforeOrAtRevision;
+          })
+          .toList(growable: false);
+
+      final packs = eligibleRuns.length;
+      final knownMinutes = eligibleRuns
+          .where((run) => run.durationMinutes != null)
+          .fold<int>(0, (total, run) => total + run.durationMinutes!);
+
+      await SupabaseService.client
+          .from('maintenance_records')
+          .update({
+            'packs_since_last_revision': packs,
+            'runtime_minutes_since_last_revision': knownMinutes,
+          })
+          .eq('id', revision['id'])
+          .eq('user_id', userId);
+
+      previousRevisionDate = revisionDate;
+    }
+  }
+
   int get _totalRuns {
     return _sessions.fold<int>(
       0,
@@ -94,27 +211,28 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     );
   }
 
+  int get _totalPacks {
+    // Règle RC Companion : un roulage enregistré correspond à un pack consommé,
+    // qu'il utilise une ou deux batteries physiques.
+    return _totalRuns;
+  }
+
   int get _totalDurationMinutes {
-    final sessionDuration = _sessions.fold<int>(
+    return _sessions.fold<int>(
       0,
       (total, session) => total + session.totalDurationMinutes,
     );
-
-    final manualDuration = _events.fold<int>(
-      0,
-      (total, event) => total + (event.durationMinutes ?? 0),
-    );
-
-    return sessionDuration + manualDuration;
   }
 
   List<_TimelineItem> get _timelineItems {
     final items = <_TimelineItem>[
       for (final session in _sessions) _TimelineItem.session(session),
-      for (final event in _events) _TimelineItem.event(event),
+      for (final maintenance in _maintenances)
+        _TimelineItem.maintenance(maintenance),
     ];
 
     final acquisitionDate = widget.model.acquisitionDate;
+
     if (acquisitionDate != null) {
       items.add(
         _TimelineItem.acquisition(
@@ -128,145 +246,17 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     }
 
     items.sort((first, second) => second.date.compareTo(first.date));
-
     return items;
-  }
-
-  Future<void> _addEvent() async {
-    final event = await Navigator.push<ModelHistoryEvent>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ModelHistoryEventFormPage(
-          modelId: widget.modelId,
-          model: widget.model,
-        ),
-      ),
-    );
-
-    if (event == null || !mounted) {
-      return;
-    }
-
-    try {
-      await ModelHistoryEventService.createEvent(event);
-      await _loadHistory();
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Événement ajouté à l’historique')),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Impossible d’ajouter l’événement : $error')),
-      );
-    }
-  }
-
-  Future<void> _editEvent(ModelHistoryEvent event) async {
-    final edited = await Navigator.push<ModelHistoryEvent>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ModelHistoryEventFormPage(
-          modelId: widget.modelId,
-          model: widget.model,
-          existingEvent: event,
-        ),
-      ),
-    );
-
-    if (edited == null || !mounted) {
-      return;
-    }
-
-    try {
-      await ModelHistoryEventService.updateEvent(edited);
-      await _loadHistory();
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Événement modifié')));
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Impossible de modifier l’événement : $error')),
-      );
-    }
-  }
-
-  Future<void> _deleteEvent(ModelHistoryEvent event) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Supprimer l’événement'),
-          content: Text('Veux-tu vraiment supprimer « ${event.title} » ?'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, false);
-              },
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, true);
-              },
-              child: const Text('Supprimer'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    try {
-      await ModelHistoryEventService.deleteEvent(event.id);
-      await _loadHistory();
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Événement supprimé')));
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Impossible de supprimer l’événement : $error')),
-      );
-    }
   }
 
   String _formatDateTime(DateTime value) {
     final local = value.toLocal();
     final day = local.day.toString().padLeft(2, '0');
     final month = local.month.toString().padLeft(2, '0');
-    final year = local.year.toString();
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
 
-    return '$day/$month/$year à $hour:$minute';
+    return '$day/$month/${local.year} à $hour:$minute';
   }
 
   String _formatDate(DateTime value) {
@@ -276,19 +266,23 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     return '$day/$month/${local.year}';
   }
 
-  String _durationLabel(int minutes) {
+  String _durationLabel(int? minutes) {
+    if (minutes == null) {
+      return 'Non calculé';
+    }
+
     if (minutes < 60) {
       return '$minutes min';
     }
 
     final hours = minutes ~/ 60;
-    final remainingMinutes = minutes % 60;
+    final remaining = minutes % 60;
 
-    if (remainingMinutes == 0) {
+    if (remaining == 0) {
       return '${hours}h';
     }
 
-    return '${hours}h ${remainingMinutes}min';
+    return '${hours}h ${remaining}min';
   }
 
   String _batteryType(Battery battery) {
@@ -296,48 +290,41 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         '${battery.capacity} mAh ${battery.cRate}C';
   }
 
-  IconData _eventIcon(String type) {
-    return switch (type) {
-      'Session' => Icons.sports_motorsports_outlined,
-      'Entretien' => Icons.handyman_outlined,
-      'Réparation' => Icons.build_outlined,
-      'Modification' => Icons.tune,
-      _ => Icons.event_note_outlined,
-    };
-  }
-
   Widget _summaryCard() {
+    final items = [
+      _SummaryValue(
+        icon: Icons.calendar_month_outlined,
+        label: 'Sessions',
+        value: _sessions.length.toString(),
+      ),
+      _SummaryValue(
+        icon: Icons.sports_motorsports_outlined,
+        label: 'Roulages',
+        value: _totalRuns.toString(),
+      ),
+      _SummaryValue(
+        icon: Icons.battery_charging_full,
+        label: 'Packs',
+        value: _totalPacks.toString(),
+      ),
+      _SummaryValue(
+        icon: Icons.timer_outlined,
+        label: 'Temps',
+        value: _durationLabel(_totalDurationMinutes),
+      ),
+      _SummaryValue(
+        icon: Icons.handyman_outlined,
+        label: 'Maintenance',
+        value: _maintenances.length.toString(),
+      ),
+    ];
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final compact = constraints.maxWidth < 680;
-
-            final items = [
-              _SummaryValue(
-                icon: Icons.calendar_month_outlined,
-                label: 'Sessions',
-                value: _sessions.length.toString(),
-              ),
-              _SummaryValue(
-                icon: Icons.handyman_outlined,
-                label: 'Maintenance',
-                value: _events.length.toString(),
-              ),
-              _SummaryValue(
-                icon: Icons.sports_motorsports_outlined,
-                label: 'Nombre de roulages',
-                value: _totalRuns.toString(),
-              ),
-              _SummaryValue(
-                icon: Icons.timer_outlined,
-                label: 'Temps total',
-                value: _durationLabel(_totalDurationMinutes),
-              ),
-            ];
-
-            if (compact) {
+            if (constraints.maxWidth < 680) {
               return Column(
                 children: [
                   for (var index = 0; index < items.length; index++) ...[
@@ -419,7 +406,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 5),
-                  Text(value.trim()),
+                  SelectableText(value.trim()),
                 ],
               ),
             ),
@@ -590,97 +577,118 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     );
   }
 
-  Widget _manualEventCard(ModelHistoryEvent event) {
-    final details = <String>[
-      event.eventType,
-      if (event.location.trim().isNotEmpty) event.location.trim(),
-      if (event.durationMinutes != null) _durationLabel(event.durationMinutes!),
-      if (event.cost != null)
-        '${event.cost!.toStringAsFixed(2).replaceAll('.', ',')} €',
-    ];
-
+  Widget _maintenanceCard(_ModelMaintenanceRecord record) {
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
       child: ExpansionTile(
-        leading: Icon(_eventIcon(event.eventType)),
+        leading: Icon(record.icon),
         title: Text(
-          event.title,
+          record.title.isEmpty ? record.typeLabel : record.title,
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          '${_formatDateTime(event.eventDate)} • ${details.join(' • ')}',
-        ),
-        trailing: PopupMenuButton<String>(
-          tooltip: 'Options',
-          onSelected: (value) {
-            if (value == 'edit') {
-              _editEvent(event);
-            } else if (value == 'delete') {
-              _deleteEvent(event);
-            }
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(
-              value: 'edit',
-              child: Row(
-                children: [
-                  Icon(Icons.edit_outlined),
-                  SizedBox(width: 10),
-                  Text('Modifier'),
-                ],
-              ),
-            ),
-            PopupMenuItem(
-              value: 'delete',
-              child: Row(
-                children: [
-                  Icon(Icons.delete_outline),
-                  SizedBox(width: 10),
-                  Text('Supprimer'),
-                ],
-              ),
-            ),
-          ],
+          '${record.typeLabel} • ${_formatDate(record.date)}'
+          '${record.isRevision ? ' • ${record.packsSinceLastRevision ?? 0} pack(s)' : ''}',
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           const SizedBox(height: 8),
           _automaticLine(
             label: 'Type',
-            value: event.eventType,
-            icon: _eventIcon(event.eventType),
+            value: record.typeLabel,
+            icon: record.icon,
           ),
           _automaticLine(
             label: 'Date',
-            value: _formatDateTime(event.eventDate),
+            value: _formatDate(record.date),
             icon: Icons.calendar_month_outlined,
           ),
-          if (event.location.trim().isNotEmpty)
-            _automaticLine(
-              label: 'Lieu',
-              value: event.location.trim(),
-              icon: Icons.location_on_outlined,
+          if (record.isRevision) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Depuis la révision précédente',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 8),
+                  _automaticLine(
+                    label: 'Packs consommés',
+                    value: '${record.packsSinceLastRevision ?? 0}',
+                    icon: Icons.battery_charging_full,
+                  ),
+                  _automaticLine(
+                    label: 'Temps d’utilisation',
+                    value: _durationLabel(
+                      record.runtimeMinutesSinceLastRevision,
+                    ),
+                    icon: Icons.timer_outlined,
+                  ),
+                ],
+              ),
             ),
-          if (event.durationMinutes != null)
-            _automaticLine(
-              label: 'Durée',
-              value: _durationLabel(event.durationMinutes!),
-              icon: Icons.timer_outlined,
+          ],
+          if (record.fluids.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Fluides remplacés',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-          if (event.cost != null)
-            _automaticLine(
-              label: 'Coût',
-              value: '${event.cost!.toStringAsFixed(2).replaceAll('.', ',')} €',
-              icon: Icons.euro,
+            const SizedBox(height: 6),
+            for (final entry in record.fluids.entries)
+              _automaticLine(
+                label: _fluidLabel(entry.key),
+                value: '${entry.value} cSt',
+                icon: Icons.opacity_outlined,
+              ),
+          ],
+          if (record.setupChanges.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Réglages modifiés',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
+            const SizedBox(height: 6),
+            for (final change in record.setupChanges)
+              _automaticLine(
+                label: change['field'] ?? 'Réglage',
+                value: change['newValue'] ?? '',
+                icon: Icons.tune,
+              ),
+          ],
           _optionalSection(
-            title: 'Description',
-            value: event.description,
+            title: record.isRevision ? 'Texte libre' : 'Description',
+            value: record.notes,
             icon: Icons.notes_outlined,
           ),
         ],
       ),
     );
+  }
+
+  String _fluidLabel(String key) {
+    switch (key) {
+      case 'diffFront':
+        return 'Différentiel avant';
+      case 'diffCenter':
+        return 'Différentiel central';
+      case 'diffRear':
+        return 'Différentiel arrière';
+      case 'shockFront':
+        return 'Amortisseurs avant';
+      case 'shockRear':
+        return 'Amortisseurs arrière';
+      default:
+        return key;
+    }
   }
 
   Widget _acquisitionCard(DateTime date) {
@@ -704,8 +712,8 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       return _sessionCard(item.session!);
     }
 
-    if (item.event != null) {
-      return _manualEventCard(item.event!);
+    if (item.maintenance != null) {
+      return _maintenanceCard(item.maintenance!);
     }
 
     return _acquisitionCard(item.date);
@@ -781,14 +789,14 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
 }
 
 class _TimelineItem {
-  const _TimelineItem._({required this.date, this.session, this.event});
+  const _TimelineItem._({required this.date, this.session, this.maintenance});
 
   factory _TimelineItem.session(RcSession session) {
     return _TimelineItem._(date: session.startedAt, session: session);
   }
 
-  factory _TimelineItem.event(ModelHistoryEvent event) {
-    return _TimelineItem._(date: event.eventDate, event: event);
+  factory _TimelineItem.maintenance(_ModelMaintenanceRecord maintenance) {
+    return _TimelineItem._(date: maintenance.date, maintenance: maintenance);
   }
 
   factory _TimelineItem.acquisition(DateTime date) {
@@ -797,7 +805,111 @@ class _TimelineItem {
 
   final DateTime date;
   final RcSession? session;
-  final ModelHistoryEvent? event;
+  final _ModelMaintenanceRecord? maintenance;
+}
+
+class _ModelMaintenanceRecord {
+  const _ModelMaintenanceRecord({
+    required this.id,
+    required this.date,
+    required this.recordType,
+    required this.title,
+    required this.notes,
+    required this.data,
+    this.packsSinceLastRevision,
+    this.runtimeMinutesSinceLastRevision,
+  });
+
+  final String id;
+  final DateTime date;
+  final String recordType;
+  final String title;
+  final String notes;
+  final Map<String, dynamic> data;
+  final int? packsSinceLastRevision;
+  final int? runtimeMinutesSinceLastRevision;
+
+  bool get isRevision => recordType == 'REVISION';
+
+  String get typeLabel {
+    switch (recordType) {
+      case 'REPARATION':
+        return 'Réparation';
+      case 'MODIFICATION':
+        return 'Modification';
+      case 'REVISION':
+      default:
+        return 'Révision';
+    }
+  }
+
+  IconData get icon {
+    switch (recordType) {
+      case 'REPARATION':
+        return Icons.handyman_outlined;
+      case 'MODIFICATION':
+        return Icons.construction_outlined;
+      case 'REVISION':
+      default:
+        return Icons.tune;
+    }
+  }
+
+  Map<String, String> get fluids {
+    final raw = data['fluids'];
+
+    if (raw is! Map) {
+      return const {};
+    }
+
+    return raw.map((key, value) => MapEntry(key.toString(), value.toString()));
+  }
+
+  List<Map<String, String>> get setupChanges {
+    final raw = data['setupChanges'];
+
+    if (raw is! List) {
+      return const [];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          return item.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          );
+        })
+        .toList(growable: false);
+  }
+
+  factory _ModelMaintenanceRecord.fromMap(Map<String, dynamic> row) {
+    final rawData = row['data'];
+
+    return _ModelMaintenanceRecord(
+      id: row['id'] as String,
+      date: DateTime.parse(row['maintenance_date'].toString()).toLocal(),
+      recordType: row['record_type'] as String? ?? 'REVISION',
+      title: row['title'] as String? ?? '',
+      notes: row['notes'] as String? ?? '',
+      data: rawData is Map
+          ? Map<String, dynamic>.from(rawData)
+          : const <String, dynamic>{},
+      packsSinceLastRevision: (row['packs_since_last_revision'] as num?)
+          ?.toInt(),
+      runtimeMinutesSinceLastRevision:
+          (row['runtime_minutes_since_last_revision'] as num?)?.toInt(),
+    );
+  }
+}
+
+class _HistoryRunStat {
+  const _HistoryRunStat({
+    required this.startedAt,
+    required this.durationMinutes,
+  });
+
+  final DateTime startedAt;
+  final int? durationMinutes;
 }
 
 class _SummaryValue extends StatelessWidget {
