@@ -39,10 +39,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
   void initState() {
     super.initState();
 
-    tabController = TabController(
-      length: 6,
-      vsync: this,
-    );
+    tabController = TabController(length: 6, vsync: this);
 
     loadDocuments();
   }
@@ -60,9 +57,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
     });
 
     try {
-      final result = await ModelDocumentService.getDocuments(
-        widget.modelId,
-      );
+      final result = await ModelDocumentService.getDocuments(widget.modelId);
 
       if (!mounted) {
         return;
@@ -79,8 +74,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
 
       setState(() {
         isLoadingDocuments = false;
-        documentsError =
-            'Impossible de charger les documents.\n$error';
+        documentsError = 'Impossible de charger les documents.\n$error';
       });
     }
   }
@@ -165,9 +159,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
             return;
           }
 
-          final index = documents.indexWhere(
-            (item) => item.id == document.id,
-          );
+          final index = documents.indexWhere((item) => item.id == document.id);
 
           if (index != -1) {
             setState(() {
@@ -196,11 +188,9 @@ class _ModelDetailPageState extends State<ModelDetailPage>
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Document ajouté'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Document ajouté')));
     } catch (error) {
       if (!mounted) {
         return;
@@ -217,11 +207,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible d’ajouter le document : $error',
-          ),
-        ),
+        SnackBar(content: Text('Impossible d’ajouter le document : $error')),
       );
     }
   }
@@ -236,11 +222,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
         Navigator.pop(dialogContext, value);
       },
       child: Row(
-        children: [
-          Icon(icon),
-          const SizedBox(width: 12),
-          Text(value),
-        ],
+        children: [Icon(icon), const SizedBox(width: 12), Text(value)],
       ),
     );
   }
@@ -250,9 +232,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
     String title = 'Renommer le document',
     String? helperText,
   }) async {
-    final controller = TextEditingController(
-      text: document.documentName,
-    );
+    final controller = TextEditingController(text: document.documentName);
 
     final result = await showDialog<String>(
       context: context,
@@ -300,13 +280,10 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       },
     );
 
-
     return result;
   }
 
-  Future<void> renameDocument(
-    ModelDocument document,
-  ) async {
+  Future<void> renameDocument(ModelDocument document) async {
     final newName = await _showRenameDialog(document);
 
     if (newName == null) {
@@ -315,14 +292,12 @@ class _ModelDetailPageState extends State<ModelDetailPage>
 
     final cleanName = newName.trim();
 
-    if (cleanName.isEmpty ||
-        cleanName == document.documentName) {
+    if (cleanName.isEmpty || cleanName == document.documentName) {
       return;
     }
 
     try {
-      final renamedDocument =
-          await ModelDocumentService.renameDocument(
+      final renamedDocument = await ModelDocumentService.renameDocument(
         document: document,
         newName: cleanName,
       );
@@ -331,9 +306,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
         return;
       }
 
-      final index = documents.indexWhere(
-        (item) => item.id == document.id,
-      );
+      final index = documents.indexWhere((item) => item.id == document.id);
 
       if (index == -1) {
         await loadDocuments();
@@ -344,32 +317,23 @@ class _ModelDetailPageState extends State<ModelDetailPage>
         documents[index] = renamedDocument;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Document renommé'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Document renommé')));
     } catch (error) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible de renommer le document : $error',
-          ),
-        ),
+        SnackBar(content: Text('Impossible de renommer le document : $error')),
       );
     }
   }
 
-  Future<void> openDocument(
-    ModelDocument document,
-  ) async {
+  Future<void> openDocument(ModelDocument document) async {
     try {
-      final signedUrl =
-          await ModelDocumentService.openDocument(document);
+      final signedUrl = await ModelDocumentService.openDocument(document);
 
       if (!mounted) {
         return;
@@ -403,27 +367,19 @@ class _ModelDetailPageState extends State<ModelDetailPage>
         return;
       }
 
-      throw Exception(
-        'Ce format de document n’est pas pris en charge.',
-      );
+      throw Exception('Ce format de document n’est pas pris en charge.');
     } catch (error) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible d’ouvrir le document : $error',
-          ),
-        ),
+        SnackBar(content: Text('Impossible d’ouvrir le document : $error')),
       );
     }
   }
 
-  Future<void> confirmDeleteDocument(
-    ModelDocument document,
-  ) async {
+  Future<void> confirmDeleteDocument(ModelDocument document) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -463,37 +419,25 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       }
 
       setState(() {
-        documents.removeWhere(
-          (item) => item.id == document.id,
-        );
+        documents.removeWhere((item) => item.id == document.id);
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Document supprimé'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Document supprimé')));
     } catch (error) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible de supprimer le document : $error',
-          ),
-        ),
+        SnackBar(content: Text('Impossible de supprimer le document : $error')),
       );
     }
   }
 
   String _documentExtension(ModelDocument document) {
-    final path = document.storagePath
-        .toLowerCase()
-        .split('?')
-        .first
-        .trim();
+    final path = document.storagePath.toLowerCase().split('?').first.trim();
 
     final dotIndex = path.lastIndexOf('.');
 
@@ -517,9 +461,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
         extension == 'webp';
   }
 
-  IconData _iconForDocument(
-    ModelDocument document,
-  ) {
+  IconData _iconForDocument(ModelDocument document) {
     if (_isImageDocument(document)) {
       return Icons.image_outlined;
     }
@@ -536,30 +478,15 @@ class _ModelDetailPageState extends State<ModelDetailPage>
           controller: tabController,
           isScrollable: true,
           tabs: const [
-            Tab(
-              icon: Icon(Icons.info_outline),
-              text: 'Informations',
-            ),
-            Tab(
-              icon: Icon(Icons.folder_outlined),
-              text: 'Documents',
-            ),
-            Tab(
-              icon: Icon(Icons.tune),
-              text: 'Setup',
-            ),
+            Tab(icon: Icon(Icons.info_outline), text: 'Informations'),
+            Tab(icon: Icon(Icons.folder_outlined), text: 'Documents'),
+            Tab(icon: Icon(Icons.tune), text: 'Setup'),
             Tab(
               icon: Icon(Icons.settings_remote_outlined),
               text: 'Réglages radio',
             ),
-            Tab(
-              icon: Icon(Icons.gamepad_outlined),
-              text: 'Commandes radio',
-            ),
-            Tab(
-              icon: Icon(Icons.history),
-              text: 'Historique',
-            ),
+            Tab(icon: Icon(Icons.gamepad_outlined), text: 'Commandes radio'),
+            Tab(icon: Icon(Icons.history), text: 'Historique'),
           ],
         ),
       ),
@@ -568,20 +495,10 @@ class _ModelDetailPageState extends State<ModelDetailPage>
         children: [
           _InformationTab(model: widget.model),
           buildDocumentsTab(),
-          ModelSetupTab(
-            modelId: widget.modelId,
-          ),
-          ModelRadioSetupTab(
-            modelId: widget.modelId,
-            model: widget.model,
-          ),
-          ModelRadioControlsTab(
-            modelId: widget.modelId,
-            model: widget.model,
-          ),
-          ModelHistoryTab(
-            model: widget.model,
-          ),
+          ModelSetupTab(modelId: widget.modelId),
+          ModelRadioSetupTab(modelId: widget.modelId, model: widget.model),
+          ModelRadioControlsTab(modelId: widget.modelId, model: widget.model),
+          ModelHistoryTab(model: widget.model),
         ],
       ),
     );
@@ -589,9 +506,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
 
   Widget buildDocumentsTab() {
     if (isLoadingDocuments) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (documentsError != null) {
@@ -601,15 +516,9 @@ class _ModelDetailPageState extends State<ModelDetailPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.error_outline,
-                size: 54,
-              ),
+              const Icon(Icons.error_outline, size: 54),
               const SizedBox(height: 16),
-              Text(
-                documentsError!,
-                textAlign: TextAlign.center,
-              ),
+              Text(documentsError!, textAlign: TextAlign.center),
               const SizedBox(height: 18),
               FilledButton.icon(
                 onPressed: loadDocuments,
@@ -628,15 +537,11 @@ class _ModelDetailPageState extends State<ModelDetailPage>
           onRefresh: loadDocuments,
           child: documents.isEmpty
               ? ListView(
-                  physics:
-                      const AlwaysScrollableScrollPhysics(),
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(24),
                   children: const [
                     SizedBox(height: 120),
-                    Icon(
-                      Icons.folder_open_outlined,
-                      size: 72,
-                    ),
+                    Icon(Icons.folder_open_outlined, size: 72),
                     SizedBox(height: 16),
                     Center(
                       child: Text(
@@ -658,12 +563,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
                   ],
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(
-                    16,
-                    16,
-                    16,
-                    100,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                   itemCount: documents.length,
                   itemBuilder: (context, index) {
                     final document = documents[index];
@@ -671,18 +571,13 @@ class _ModelDetailPageState extends State<ModelDetailPage>
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: ListTile(
-                        leading: Icon(
-                          _iconForDocument(document),
-                          size: 34,
-                        ),
+                        leading: Icon(_iconForDocument(document), size: 34),
                         title: Text(
                           document.documentName,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        subtitle: Text(
-                          document.documentType,
-                        ),
+                        subtitle: Text(document.documentType),
                         onTap: () => openDocument(document),
                         trailing: PopupMenuButton<String>(
                           tooltip: 'Options',
@@ -738,22 +633,15 @@ class _ModelDetailPageState extends State<ModelDetailPage>
           bottom: 16,
           child: FloatingActionButton.extended(
             heroTag: 'add-model-document',
-            onPressed:
-                isAddingDocument ? null : addDocument,
+            onPressed: isAddingDocument ? null : addDocument,
             icon: isAddingDocument
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.add),
-            label: Text(
-              isAddingDocument
-                  ? 'Ajout...'
-                  : 'Ajouter un document',
-            ),
+            label: Text(isAddingDocument ? 'Ajout...' : 'Ajouter un document'),
           ),
         ),
       ],
@@ -778,9 +666,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
 }
 
 class _InformationTab extends StatelessWidget {
-  const _InformationTab({
-    required this.model,
-  });
+  const _InformationTab({required this.model});
 
   final RcModel model;
 
@@ -813,15 +699,10 @@ class _InformationTab extends StatelessWidget {
         const SizedBox(height: 16),
         Card(
           child: ListTile(
-            leading: Icon(
-              _iconForCategory(model.category),
-              size: 36,
-            ),
+            leading: Icon(_iconForCategory(model.category), size: 36),
             title: Text(
               model.name,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             subtitle: Text(
               '${model.brand} • '
@@ -832,10 +713,7 @@ class _InformationTab extends StatelessWidget {
         const SizedBox(height: 20),
         const Text(
           'Informations',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
         _infoCard(
@@ -854,10 +732,11 @@ class _InformationTab extends StatelessWidget {
           title: 'Motorisation',
           value: model.motorization,
         ),
+        _infoCard(icon: Icons.straighten, title: 'Échelle', value: model.scale),
         _infoCard(
-          icon: Icons.straighten,
-          title: 'Échelle',
-          value: model.scale,
+          icon: Icons.shopping_bag_outlined,
+          title: 'Acquisition',
+          value: model.formattedAcquisition,
         ),
         if (model.weightKg != null)
           _infoCard(
@@ -875,9 +754,7 @@ class _InformationTab extends StatelessWidget {
                   title: Text('Radio utilisée'),
                   trailing: SizedBox.square(
                     dimension: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
               );
@@ -904,10 +781,7 @@ class _InformationTab extends StatelessWidget {
           const SizedBox(height: 20),
           const Text(
             'Configuration électrique',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 10),
           _infoCard(
@@ -935,9 +809,7 @@ class _InformationTab extends StatelessWidget {
         leading: Icon(icon),
         title: Text(title),
         trailing: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: 260,
-          ),
+          constraints: const BoxConstraints(maxWidth: 260),
           child: Text(
             value,
             textAlign: TextAlign.end,
@@ -962,11 +834,7 @@ class _InformationTab extends StatelessWidget {
 }
 
 class ModelPdfPage extends StatelessWidget {
-  const ModelPdfPage({
-    super.key,
-    required this.title,
-    required this.signedUrl,
-  });
+  const ModelPdfPage({super.key, required this.title, required this.signedUrl});
 
   final String title;
   final String signedUrl;
@@ -975,15 +843,9 @@ class ModelPdfPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
-      body: PdfViewer.uri(
-        Uri.parse(signedUrl),
-      ),
+      body: PdfViewer.uri(Uri.parse(signedUrl)),
     );
   }
 }
@@ -1002,11 +864,7 @@ class ModelImagePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
       body: Container(
         width: double.infinity,
@@ -1019,18 +877,12 @@ class ModelImagePage extends StatelessWidget {
           child: Image.network(
             signedUrl,
             fit: BoxFit.contain,
-            loadingBuilder: (
-              context,
-              child,
-              loadingProgress,
-            ) {
+            loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) {
                 return child;
               }
 
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+              return const Center(child: CircularProgressIndicator());
             },
             errorBuilder: (_, __, ___) {
               return const Center(
@@ -1048,9 +900,7 @@ class ModelImagePage extends StatelessWidget {
 }
 
 class _ModelPhotoHeader extends StatelessWidget {
-  const _ModelPhotoHeader({
-    required this.model,
-  });
+  const _ModelPhotoHeader({required this.model});
 
   final RcModel model;
 
@@ -1063,50 +913,35 @@ class _ModelPhotoHeader extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         height: 280,
-        child: photoUrl != null &&
-                photoUrl.trim().isNotEmpty
+        child: photoUrl != null && photoUrl.trim().isNotEmpty
             ? Container(
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 alignment: Alignment.center,
                 child: Image.network(
                   photoUrl,
                   width: double.infinity,
                   height: double.infinity,
                   fit: BoxFit.contain,
-                  loadingBuilder: (
-                    context,
-                    child,
-                    loadingProgress,
-                  ) {
+                  loadingBuilder: (context, child, loadingProgress) {
                     if (loadingProgress == null) {
                       return child;
                     }
 
-                    return const Center(
-                      child: CircularProgressIndicator(),
-                    );
+                    return const Center(child: CircularProgressIndicator());
                   },
                   errorBuilder: (_, __, ___) {
-                    return _EmptyModelPhoto(
-                      category: model.category,
-                    );
+                    return _EmptyModelPhoto(category: model.category);
                   },
                 ),
               )
-            : _EmptyModelPhoto(
-                category: model.category,
-              ),
+            : _EmptyModelPhoto(category: model.category),
       ),
     );
   }
 }
 
 class _EmptyModelPhoto extends StatelessWidget {
-  const _EmptyModelPhoto({
-    required this.category,
-  });
+  const _EmptyModelPhoto({required this.category});
 
   final String category;
 
@@ -1125,17 +960,12 @@ class _EmptyModelPhoto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Theme.of(context)
-          .colorScheme
-          .surfaceContainerHighest,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       alignment: Alignment.center,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 72,
-          ),
+          Icon(icon, size: 72),
           const SizedBox(height: 12),
           const Text('Aucune photo'),
         ],

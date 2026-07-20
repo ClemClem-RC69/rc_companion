@@ -53,26 +53,26 @@ class _ModelsPageState extends State<ModelsPage> {
       final loadedModels = response.map<_StoredModel>((row) {
         final data = Map<String, dynamic>.from(row);
 
-        final motorization =
-            data['motorization'] as String? ?? 'Électrique';
+        final motorization = data['motorization'] as String? ?? 'Électrique';
 
-        final maxCellsValue =
-            (data['max_cells'] as num?)?.toInt() ?? 0;
+        final maxCellsValue = (data['max_cells'] as num?)?.toInt() ?? 0;
 
         return _StoredModel(
           id: data['id'] as String,
           model: RcModel(
             name: data['name'] as String? ?? '',
-            brand:
-                data['brand'] as String? ?? 'Marque non renseignée',
+            brand: data['brand'] as String? ?? 'Marque non renseignée',
             category: data['category'] as String? ?? 'Voiture',
             discipline: data['discipline'] as String? ?? '',
             motorization: motorization,
             scale: data['scale'] as String? ?? 'Autre',
-            weightKg:
-                (data['weight_kg'] as num?)?.toDouble(),
-            batteryCount:
-                (data['battery_count'] as num?)?.toInt() ?? 0,
+            weightKg: (data['weight_kg'] as num?)?.toDouble(),
+            acquisitionDate: data['acquisition_date'] == null
+                ? null
+                : DateTime.tryParse(data['acquisition_date'].toString()),
+            purchaseType: data['purchase_type'] as String?,
+            purchaseLocation: data['purchase_location'] as String?,
+            batteryCount: (data['battery_count'] as num?)?.toInt() ?? 0,
             maxCells: motorization == 'Électrique'
                 ? '${maxCellsValue}S'
                 : 'Aucune',
@@ -97,8 +97,7 @@ class _ModelsPageState extends State<ModelsPage> {
 
       setState(() {
         isLoading = false;
-        errorMessage =
-            'Impossible de charger les modèles.\n$error';
+        errorMessage = 'Impossible de charger les modèles.\n$error';
       });
     }
   }
@@ -106,9 +105,7 @@ class _ModelsPageState extends State<ModelsPage> {
   Future<void> addModel() async {
     final result = await Navigator.push<ModelFormResult>(
       context,
-      MaterialPageRoute(
-        builder: (_) => const ModelFormPage(),
-      ),
+      MaterialPageRoute(builder: (_) => const ModelFormPage()),
     );
 
     if (result == null || !mounted) {
@@ -116,20 +113,12 @@ class _ModelsPageState extends State<ModelsPage> {
     }
 
     setState(() {
-      models.insert(
-        0,
-        _StoredModel(
-          id: result.id,
-          model: result.model,
-        ),
-      );
+      models.insert(0, _StoredModel(id: result.id, model: result.model));
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Modèle enregistré'),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Modèle enregistré')));
   }
 
   Future<void> editModel(_StoredModel storedModel) async {
@@ -147,9 +136,7 @@ class _ModelsPageState extends State<ModelsPage> {
       return;
     }
 
-    final index = models.indexWhere(
-      (item) => item.id == result.id,
-    );
+    final index = models.indexWhere((item) => item.id == result.id);
 
     if (index == -1) {
       await loadModels();
@@ -157,22 +144,15 @@ class _ModelsPageState extends State<ModelsPage> {
     }
 
     setState(() {
-      models[index] = _StoredModel(
-        id: result.id,
-        model: result.model,
-      );
+      models[index] = _StoredModel(id: result.id, model: result.model);
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Modèle modifié'),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Modèle modifié')));
   }
 
-  Future<void> confirmDelete(
-    _StoredModel storedModel,
-  ) async {
+  Future<void> confirmDelete(_StoredModel storedModel) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -207,19 +187,12 @@ class _ModelsPageState extends State<ModelsPage> {
     await deleteModel(storedModel);
   }
 
-  Future<void> deleteModel(
-    _StoredModel storedModel,
-  ) async {
+  Future<void> deleteModel(_StoredModel storedModel) async {
     try {
-      await supabase
-          .from('rc_models')
-          .delete()
-          .eq('id', storedModel.id);
+      await supabase.from('rc_models').delete().eq('id', storedModel.id);
 
       try {
-        await StorageService.deleteModelPhoto(
-          storedModel.model.photoUrl,
-        );
+        await StorageService.deleteModelPhoto(storedModel.model.photoUrl);
       } catch (_) {
         // La suppression du modèle reste validée même si
         // un ancien fichier ne peut pas être effacé du Storage.
@@ -230,41 +203,29 @@ class _ModelsPageState extends State<ModelsPage> {
       }
 
       setState(() {
-        models.removeWhere(
-          (item) => item.id == storedModel.id,
-        );
+        models.removeWhere((item) => item.id == storedModel.id);
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Modèle supprimé'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Modèle supprimé')));
     } catch (error) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Erreur pendant la suppression : $error',
-          ),
-        ),
+        SnackBar(content: Text('Erreur pendant la suppression : $error')),
       );
     }
   }
 
-  Future<void> openModelDetail(
-    _StoredModel storedModel,
-  ) async {
+  Future<void> openModelDetail(_StoredModel storedModel) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ModelDetailPage(
-  modelId: storedModel.id,
-  model: storedModel.model,
-),
+        builder: (_) =>
+            ModelDetailPage(modelId: storedModel.id, model: storedModel.model),
       ),
     );
   }
@@ -293,9 +254,7 @@ class _ModelsPageState extends State<ModelsPage> {
 
   Widget buildBody() {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (errorMessage != null) {
@@ -305,15 +264,9 @@ class _ModelsPageState extends State<ModelsPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.error_outline,
-                size: 54,
-              ),
+              const Icon(Icons.error_outline, size: 54),
               const SizedBox(height: 16),
-              Text(
-                errorMessage!,
-                textAlign: TextAlign.center,
-              ),
+              Text(errorMessage!, textAlign: TextAlign.center),
               const SizedBox(height: 20),
               FilledButton.icon(
                 onPressed: loadModels,
@@ -334,18 +287,12 @@ class _ModelsPageState extends State<ModelsPage> {
           padding: const EdgeInsets.all(24),
           children: const [
             SizedBox(height: 150),
-            Icon(
-              Icons.directions_car_outlined,
-              size: 72,
-            ),
+            Icon(Icons.directions_car_outlined, size: 72),
             SizedBox(height: 18),
             Center(
               child: Text(
                 'Aucun modèle pour le moment',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
             ),
             SizedBox(height: 8),
@@ -364,12 +311,7 @@ class _ModelsPageState extends State<ModelsPage> {
     return RefreshIndicator(
       onRefresh: loadModels,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          100,
-        ),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
         itemCount: models.length,
         itemBuilder: (context, index) {
           final storedModel = models[index];
@@ -425,19 +367,15 @@ class _ModelCard extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       model.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -509,9 +447,7 @@ class _ModelCard extends StatelessWidget {
 }
 
 class _ModelThumbnail extends StatelessWidget {
-  const _ModelThumbnail({
-    required this.model,
-  });
+  const _ModelThumbnail({required this.model});
 
   final RcModel model;
 
@@ -528,47 +464,35 @@ class _ModelThumbnail extends StatelessWidget {
             ? Image.network(
                 photoUrl,
                 fit: BoxFit.contain,
-                loadingBuilder: (
-                  context,
-                  child,
-                  loadingProgress,
-                ) {
+                loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) {
                     return child;
                   }
 
                   return Container(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     alignment: Alignment.center,
                     child: const SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                      ),
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   );
                 },
                 errorBuilder: (_, __, ___) {
-                  return _CategoryIcon(
-                    category: model.category,
-                  );
+                  return _CategoryIcon(category: model.category);
                 },
               )
-            : _CategoryIcon(
-                category: model.category,
-              ),
+            : _CategoryIcon(category: model.category),
       ),
     );
   }
 }
 
 class _CategoryIcon extends StatelessWidget {
-  const _CategoryIcon({
-    required this.category,
-  });
+  const _CategoryIcon({required this.category});
 
   final String category;
 
@@ -587,23 +511,15 @@ class _CategoryIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Theme.of(context)
-          .colorScheme
-          .surfaceContainerHighest,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       alignment: Alignment.center,
-      child: Icon(
-        icon,
-        size: 42,
-      ),
+      child: Icon(icon, size: 42),
     );
   }
 }
 
 class _StoredModel {
-  const _StoredModel({
-    required this.id,
-    required this.model,
-  });
+  const _StoredModel({required this.id, required this.model});
 
   final String id;
   final RcModel model;

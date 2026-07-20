@@ -10,21 +10,14 @@ import '../../services/radio_service.dart';
 import '../../services/storage_service.dart';
 
 class ModelFormResult {
-  const ModelFormResult({
-    required this.id,
-    required this.model,
-  });
+  const ModelFormResult({required this.id, required this.model});
 
   final String id;
   final RcModel model;
 }
 
 class ModelFormPage extends StatefulWidget {
-  const ModelFormPage({
-    super.key,
-    this.modelId,
-    this.existingModel,
-  });
+  const ModelFormPage({super.key, this.modelId, this.existingModel});
 
   final String? modelId;
   final RcModel? existingModel;
@@ -42,6 +35,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
   late final TextEditingController nameController;
   late final TextEditingController brandController;
   late final TextEditingController weightController;
+  late final TextEditingController purchaseLocationController;
 
   String category = 'Voiture';
   String discipline = 'Monster Truck';
@@ -49,6 +43,8 @@ class _ModelFormPageState extends State<ModelFormPage> {
   String scale = '1/10';
   int batteryCount = 1;
   String maxCells = '4S';
+  DateTime? acquisitionDate;
+  String? purchaseType;
 
   List<RcRadio> radios = [];
   String? selectedRadioId;
@@ -63,11 +59,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
   bool isPickingPhoto = false;
   bool isSaving = false;
 
-  final categories = const [
-    'Voiture',
-    'Moto',
-    'Bateau',
-  ];
+  final categories = const ['Voiture', 'Moto', 'Bateau'];
 
   final carDisciplines = const [
     'Monster Truck',
@@ -109,10 +101,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
     'Autre',
   ];
 
-  final motorisations = const [
-    'Électrique',
-    'Thermique',
-  ];
+  final motorisations = const ['Électrique', 'Thermique'];
 
   final scales = const [
     '1/24',
@@ -147,27 +136,28 @@ class _ModelFormPageState extends State<ModelFormPage> {
 
     final model = widget.existingModel;
 
-    nameController = TextEditingController(
-      text: model?.name ?? '',
-    );
+    nameController = TextEditingController(text: model?.name ?? '');
 
     brandController = TextEditingController(
-      text: model?.brand == 'Marque non renseignée'
-          ? ''
-          : model?.brand ?? '',
+      text: model?.brand == 'Marque non renseignée' ? '' : model?.brand ?? '',
+    );
+
+    purchaseLocationController = TextEditingController(
+      text: model?.purchaseLocation ?? '',
     );
 
     weightController = TextEditingController(
       text: model?.weightKg == null
           ? ''
           : model!.weightKg!
-              .toStringAsFixed(3)
-              .replaceFirst(RegExp(r'0+$'), '')
-              .replaceFirst(RegExp(r'\.$'), '')
-              .replaceAll('.', ','),
+                .toStringAsFixed(3)
+                .replaceFirst(RegExp(r'0+$'), '')
+                .replaceFirst(RegExp(r'\.$'), '')
+                .replaceAll('.', ','),
     );
 
     selectedRadioId = model?.radioId;
+    acquisitionDate = model?.acquisitionDate;
 
     if (model != null) {
       category = categories.contains(model.category)
@@ -203,6 +193,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
     nameController.dispose();
     brandController.dispose();
     weightController.dispose();
+    purchaseLocationController.dispose();
     super.dispose();
   }
 
@@ -224,9 +215,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
         isLoadingRadios = false;
 
         if (selectedRadioId != null &&
-            !radios.any(
-              (radio) => radio.id == selectedRadioId,
-            )) {
+            !radios.any((radio) => radio.id == selectedRadioId)) {
           selectedRadioId = null;
         }
       });
@@ -237,8 +226,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
 
       setState(() {
         isLoadingRadios = false;
-        radiosError =
-            'Impossible de charger les radios : $error';
+        radiosError = 'Impossible de charger les radios : $error';
       });
     }
   }
@@ -272,11 +260,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible de sélectionner la photo : $error',
-          ),
-        ),
+        SnackBar(content: Text('Impossible de sélectionner la photo : $error')),
       );
     } finally {
       if (mounted) {
@@ -292,10 +276,48 @@ class _ModelFormPageState extends State<ModelFormPage> {
       selectedPhoto = null;
       selectedPhotoBytes = null;
 
-      if (existingPhotoUrl != null &&
-          existingPhotoUrl!.trim().isNotEmpty) {
+      if (existingPhotoUrl != null && existingPhotoUrl!.trim().isNotEmpty) {
         removeExistingPhoto = true;
       }
+    });
+  }
+
+  String _formatDate(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    return '$day/$month/${date.year}';
+  }
+
+  Future<void> selectPurchaseDate() async {
+    final now = DateTime.now();
+    final initialDate = acquisitionDate ?? now;
+
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate.isAfter(now) ? now : initialDate,
+      firstDate: DateTime(1900),
+      lastDate: now,
+      helpText: 'Date d’achat',
+      cancelText: 'Annuler',
+      confirmText: 'Valider',
+    );
+
+    if (selectedDate == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      acquisitionDate = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+      );
+    });
+  }
+
+  void clearPurchaseDate() {
+    setState(() {
+      acquisitionDate = null;
     });
   }
 
@@ -303,18 +325,15 @@ class _ModelFormPageState extends State<ModelFormPage> {
     final name = nameController.text.trim();
     final brand = brandController.text.trim();
     final weightText = weightController.text.trim();
+    final purchaseLocation = purchaseLocationController.text.trim();
     final user = supabase.auth.currentUser;
 
     double? weightKg;
 
     if (weightText.isNotEmpty) {
-      weightKg = double.tryParse(
-        weightText.replaceAll(',', '.'),
-      );
+      weightKg = double.tryParse(weightText.replaceAll(',', '.'));
 
-      if (weightKg == null ||
-          weightKg <= 0 ||
-          weightKg > 999.999) {
+      if (weightKg == null || weightKg <= 0 || weightKg > 999.999) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -328,19 +347,15 @@ class _ModelFormPageState extends State<ModelFormPage> {
     }
 
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Indique un nom de modèle'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Indique un nom de modèle')));
       return;
     }
 
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Aucun utilisateur connecté'),
-        ),
+        const SnackBar(content: Text('Aucun utilisateur connecté')),
       );
       return;
     }
@@ -349,13 +364,11 @@ class _ModelFormPageState extends State<ModelFormPage> {
       isSaving = true;
     });
 
-    final savedBrand =
-        brand.isEmpty ? 'Marque non renseignée' : brand;
+    final savedBrand = brand.isEmpty ? 'Marque non renseignée' : brand;
 
     final savedDiscipline = discipline;
 
-    final savedBatteryCount =
-        motorization == 'Électrique' ? batteryCount : 0;
+    final savedBatteryCount = motorization == 'Électrique' ? batteryCount : 0;
 
     final savedMaxCells = motorization == 'Électrique'
         ? int.parse(maxCells.replaceAll('S', ''))
@@ -374,6 +387,9 @@ class _ModelFormPageState extends State<ModelFormPage> {
       'motorization': motorization,
       'scale': scale,
       'weight_kg': weightKg,
+      'acquisition_date': acquisitionDate?.toIso8601String().split('T').first,
+      'purchase_type': purchaseType,
+      'purchase_location': purchaseLocation.isEmpty ? null : purchaseLocation,
       'battery_count': savedBatteryCount,
       'max_cells': savedMaxCells,
       'radio_id': selectedRadioId,
@@ -381,10 +397,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
 
     try {
       if (widget.isEditing) {
-        await supabase
-            .from('rc_models')
-            .update(data)
-            .eq('id', modelId!);
+        await supabase.from('rc_models').update(data).eq('id', modelId!);
       } else {
         final response = await supabase
             .from('rc_models')
@@ -397,8 +410,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
       }
 
       if (selectedPhoto != null) {
-        final newPhotoUrl =
-            await StorageService.uploadModelPhoto(
+        final newPhotoUrl = await StorageService.uploadModelPhoto(
           photo: selectedPhoto!,
           modelId: modelId!,
         );
@@ -430,8 +442,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
         final oldPhotoUrl = existingPhotoUrl;
         finalPhotoUrl = null;
 
-        if (oldPhotoUrl != null &&
-            oldPhotoUrl.trim().isNotEmpty) {
+        if (oldPhotoUrl != null && oldPhotoUrl.trim().isNotEmpty) {
           try {
             await StorageService.deleteModelPhoto(oldPhotoUrl);
           } catch (_) {
@@ -449,10 +460,11 @@ class _ModelFormPageState extends State<ModelFormPage> {
         motorization: motorization,
         scale: scale,
         weightKg: weightKg,
+        acquisitionDate: acquisitionDate,
+        purchaseType: purchaseType,
+        purchaseLocation: purchaseLocation.isEmpty ? null : purchaseLocation,
         batteryCount: savedBatteryCount,
-        maxCells: motorization == 'Électrique'
-            ? '${savedMaxCells}S'
-            : 'Aucune',
+        maxCells: motorization == 'Électrique' ? '${savedMaxCells}S' : 'Aucune',
         photoUrl: finalPhotoUrl,
         radioId: selectedRadioId,
       );
@@ -461,20 +473,11 @@ class _ModelFormPageState extends State<ModelFormPage> {
         return;
       }
 
-      Navigator.pop(
-        context,
-        ModelFormResult(
-          id: modelId!,
-          model: model,
-        ),
-      );
+      Navigator.pop(context, ModelFormResult(id: modelId!, model: model));
     } catch (error) {
       if (createdNewModel && modelId != null) {
         try {
-          await supabase
-              .from('rc_models')
-              .delete()
-              .eq('id', modelId);
+          await supabase.from('rc_models').delete().eq('id', modelId);
         } catch (_) {
           // On conserve l’erreur principale affichée à l’utilisateur.
         }
@@ -562,9 +565,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
             SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-              ),
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
             SizedBox(width: 12),
             Text('Chargement des radios...'),
@@ -577,9 +578,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
       return Card(
         child: ListTile(
           leading: const Icon(Icons.error_outline),
-          title: const Text(
-            'Impossible de charger les radios',
-          ),
+          title: const Text('Impossible de charger les radios'),
           subtitle: Text(radiosError!),
           trailing: IconButton(
             tooltip: 'Réessayer',
@@ -597,17 +596,14 @@ class _ModelFormPageState extends State<ModelFormPage> {
         border: const OutlineInputBorder(),
         helperText: selectedRadio == null
             ? radios.isEmpty
-                ? 'Ajoute d’abord une radio dans l’onglet Radios.'
-                : 'Aucune radio associée à ce modèle.'
+                  ? 'Ajoute d’abord une radio dans l’onglet Radios.'
+                  : 'Aucune radio associée à ce modèle.'
             : selectedRadio!.protocols.isEmpty
-                ? 'Aucun protocole renseigné'
-                : 'Protocole : ${selectedRadio!.protocols.join(' • ')}',
+            ? 'Aucun protocole renseigné'
+            : 'Protocole : ${selectedRadio!.protocols.join(' • ')}',
       ),
       items: [
-        const DropdownMenuItem<String>(
-          value: '',
-          child: Text('Aucune radio'),
-        ),
+        const DropdownMenuItem<String>(value: '', child: Text('Aucune radio')),
         ...radios.map(
           (radio) => DropdownMenuItem<String>(
             value: radio.id,
@@ -619,10 +615,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
           ? null
           : (value) {
               setState(() {
-                selectedRadioId =
-                    value == null || value.isEmpty
-                        ? null
-                        : value;
+                selectedRadioId = value == null || value.isEmpty ? null : value;
               });
             },
     );
@@ -639,11 +632,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.isEditing
-              ? 'Modifier le modèle'
-              : 'Nouveau modèle',
-        ),
+        title: Text(widget.isEditing ? 'Modifier le modèle' : 'Nouveau modèle'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -657,15 +646,12 @@ class _ModelFormPageState extends State<ModelFormPage> {
             children: [
               Expanded(
                 child: FilledButton.tonalIcon(
-                  onPressed:
-                      isSaving || isPickingPhoto ? null : pickPhoto,
+                  onPressed: isSaving || isPickingPhoto ? null : pickPhoto,
                   icon: isPickingPhoto
                       ? const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.add_photo_alternate_outlined),
                   label: Text(
@@ -711,12 +697,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
               border: OutlineInputBorder(),
             ),
             items: categories
-                .map(
-                  (item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item),
-                  ),
-                )
+                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
                 .toList(),
             onChanged: isSaving
                 ? null
@@ -748,12 +729,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
               border: OutlineInputBorder(),
             ),
             items: availableDisciplines
-                .map(
-                  (item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item),
-                  ),
-                )
+                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
                 .toList(),
             onChanged: isSaving
                 ? null
@@ -775,12 +751,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
               border: OutlineInputBorder(),
             ),
             items: motorisations
-                .map(
-                  (item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item),
-                  ),
-                )
+                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
                 .toList(),
             onChanged: isSaving
                 ? null
@@ -802,12 +773,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
               border: OutlineInputBorder(),
             ),
             items: scales
-                .map(
-                  (item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item),
-                  ),
-                )
+                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
                 .toList(),
             onChanged: isSaving
                 ? null
@@ -822,12 +788,121 @@ class _ModelFormPageState extends State<ModelFormPage> {
                   },
           ),
           const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final acquisitionFields = <Widget>[
+                SizedBox(
+                  width: 230,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Date d’achat',
+                      helperText: 'Facultative',
+                      border: OutlineInputBorder(),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_month_outlined),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            acquisitionDate == null
+                                ? 'Non renseignée'
+                                : _formatDate(acquisitionDate!),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (acquisitionDate != null)
+                          IconButton(
+                            tooltip: 'Effacer la date',
+                            onPressed: isSaving ? null : clearPurchaseDate,
+                            icon: const Icon(Icons.clear),
+                          ),
+                        IconButton(
+                          tooltip: 'Choisir une date',
+                          onPressed: isSaving ? null : selectPurchaseDate,
+                          icon: const Icon(Icons.edit_calendar_outlined),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 190,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: purchaseType ?? '',
+                    decoration: const InputDecoration(
+                      labelText: 'Type d’achat',
+                      helperText: 'Facultatif',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: '', child: Text('Non renseigné')),
+                      DropdownMenuItem(value: 'Neuf', child: Text('Neuf')),
+                      DropdownMenuItem(
+                        value: 'Occasion',
+                        child: Text('Occasion'),
+                      ),
+                    ],
+                    onChanged: isSaving
+                        ? null
+                        : (value) {
+                            setState(() {
+                              purchaseType = value == null || value.isEmpty
+                                  ? null
+                                  : value;
+                            });
+                          },
+                  ),
+                ),
+                SizedBox(
+                  width: 310,
+                  child: TextField(
+                    controller: purchaseLocationController,
+                    enabled: !isSaving,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Lieu d’achat',
+                      hintText: 'Magasin, site, particulier…',
+                      helperText: 'Facultatif',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ];
+
+              if (constraints.maxWidth >= 770) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 23, child: acquisitionFields[0]),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 19, child: acquisitionFields[1]),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 31, child: acquisitionFields[2]),
+                  ],
+                );
+              }
+
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    acquisitionFields[0],
+                    const SizedBox(width: 12),
+                    acquisitionFields[1],
+                    const SizedBox(width: 12),
+                    acquisitionFields[2],
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
           TextField(
             controller: weightController,
             enabled: !isSaving,
-            keyboardType: const TextInputType.numberWithOptions(
-              decimal: true,
-            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'Poids',
               hintText: 'Ex. 8,7',
@@ -869,16 +944,12 @@ class _ModelFormPageState extends State<ModelFormPage> {
             DropdownButtonFormField<String>(
               value: maxCells,
               decoration: const InputDecoration(
-                labelText:
-                    'Configuration maximale par batterie',
+                labelText: 'Configuration maximale par batterie',
                 border: OutlineInputBorder(),
               ),
               items: cellOptions
                   .map(
-                    (item) => DropdownMenuItem(
-                      value: item,
-                      child: Text(item),
-                    ),
+                    (item) => DropdownMenuItem(value: item, child: Text(item)),
                   )
                   .toList(),
               onChanged: isSaving
@@ -901,17 +972,15 @@ class _ModelFormPageState extends State<ModelFormPage> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.save),
             label: Text(
               isSaving
                   ? 'Enregistrement...'
                   : widget.isEditing
-                      ? 'Enregistrer les modifications'
-                      : 'Enregistrer',
+                  ? 'Enregistrer les modifications'
+                  : 'Enregistrer',
             ),
           ),
         ],
@@ -933,10 +1002,7 @@ class _EmptyPhotoPreview extends StatelessWidget {
       child: const Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.photo_camera_back_outlined,
-            size: 56,
-          ),
+          Icon(Icons.photo_camera_back_outlined, size: 56),
           SizedBox(height: 10),
           Text('Aucune photo'),
         ],

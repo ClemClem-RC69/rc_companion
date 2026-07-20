@@ -11,6 +11,9 @@ class RcModel {
     this.id,
     this.photoUrl,
     this.weightKg,
+    this.acquisitionDate,
+    this.purchaseType,
+    this.purchaseLocation,
 
     // Radio associée au modèle
     this.radioId,
@@ -37,6 +40,15 @@ class RcModel {
   /// Poids du modèle en kilogrammes.
   final double? weightKg;
 
+  /// Date d’achat ou d’acquisition du modèle.
+  final DateTime? acquisitionDate;
+
+  /// Type d’achat : « Neuf » ou « Occasion ».
+  final String? purchaseType;
+
+  /// Magasin, site, particulier ou autre lieu d’achat.
+  final String? purchaseLocation;
+
   /// Radio associée au modèle.
   /// Null = aucune radio affectée.
   final String? radioId;
@@ -53,9 +65,15 @@ class RcModel {
     String? maxCells,
     String? photoUrl,
     double? weightKg,
+    DateTime? acquisitionDate,
+    String? purchaseType,
+    String? purchaseLocation,
     String? radioId,
     bool clearId = false,
     bool clearPhoto = false,
+    bool clearAcquisitionDate = false,
+    bool clearPurchaseType = false,
+    bool clearPurchaseLocation = false,
     bool clearRadio = false,
   }) {
     return RcModel(
@@ -70,17 +88,49 @@ class RcModel {
       maxCells: maxCells ?? this.maxCells,
       photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
       weightKg: weightKg ?? this.weightKg,
+      acquisitionDate: clearAcquisitionDate
+          ? null
+          : (acquisitionDate ?? this.acquisitionDate),
+      purchaseType: clearPurchaseType
+          ? null
+          : (purchaseType ?? this.purchaseType),
+      purchaseLocation: clearPurchaseLocation
+          ? null
+          : (purchaseLocation ?? this.purchaseLocation),
       radioId: clearRadio ? null : (radioId ?? this.radioId),
     );
   }
 
   bool get hasId => id != null && id!.trim().isNotEmpty;
 
-  bool get hasPhoto =>
-      photoUrl != null && photoUrl!.trim().isNotEmpty;
+  bool get hasPhoto => photoUrl != null && photoUrl!.trim().isNotEmpty;
 
-  bool get hasRadio =>
-      radioId != null && radioId!.trim().isNotEmpty;
+  bool get hasRadio => radioId != null && radioId!.trim().isNotEmpty;
+
+  bool get hasAcquisitionDate => acquisitionDate != null;
+
+  String get formattedAcquisitionDate {
+    final date = acquisitionDate;
+    if (date == null) {
+      return 'Non renseignée';
+    }
+
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    return '$day/$month/${date.year}';
+  }
+
+  String get formattedAcquisition {
+    final values = <String>[
+      if (acquisitionDate != null) formattedAcquisitionDate,
+      if (purchaseType != null && purchaseType!.trim().isNotEmpty)
+        purchaseType!.trim(),
+      if (purchaseLocation != null && purchaseLocation!.trim().isNotEmpty)
+        purchaseLocation!.trim(),
+    ];
+
+    return values.isEmpty ? 'Non renseignée' : values.join(' • ');
+  }
 
   String get formattedWeight {
     if (weightKg == null) {
