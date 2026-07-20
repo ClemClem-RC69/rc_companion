@@ -6,8 +6,15 @@ class MaintenancePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Entretiens')),
-      body: const Center(child: Text('Les entretiens arriveront ici.', style: TextStyle(fontSize: 22))),
+      appBar: AppBar(
+        title: const Text('Maintenance'),
+      ),
+      body: const Center(
+        child: Text(
+          'Les maintenances arriveront ici.',
+          style: TextStyle(fontSize: 22),
+        ),
+      ),
     );
   }
 }

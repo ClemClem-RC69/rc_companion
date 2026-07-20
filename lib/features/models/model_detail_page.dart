@@ -498,7 +498,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
           ModelSetupTab(modelId: widget.modelId),
           ModelRadioSetupTab(modelId: widget.modelId, model: widget.model),
           ModelRadioControlsTab(modelId: widget.modelId, model: widget.model),
-          ModelHistoryTab(model: widget.model),
+          ModelHistoryTab(modelId: widget.modelId, model: widget.model),
         ],
       ),
     );

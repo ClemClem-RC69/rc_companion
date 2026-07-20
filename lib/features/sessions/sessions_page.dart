@@ -76,6 +76,11 @@ class _SessionsPageState extends State<SessionsPage> {
               ? 'Aucune'
               : '${(maxCellsValue as num).toInt()}S',
           photoUrl: json['photo_url'] as String?,
+          acquisitionDate: json['acquisition_date'] == null
+              ? null
+              : DateTime.tryParse(json['acquisition_date'].toString()),
+          purchaseType: json['purchase_type'] as String?,
+          purchaseLocation: json['purchase_location'] as String?,
           radioId: json['radio_id'] as String?,
         );
       }).toList();
@@ -118,14 +123,35 @@ class _SessionsPageState extends State<SessionsPage> {
     return null;
   }
 
+  bool _isHistoricalSession(RcSession session) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final sessionDay = DateTime(
+      session.startedAt.year,
+      session.startedAt.month,
+      session.startedAt.day,
+    );
+
+    return sessionDay.isBefore(today);
+  }
+
+  DateTime _historicalRunStart(RcSession session) {
+    if (session.runs.isEmpty) {
+      return session.startedAt;
+    }
+
+    final previous = session.runs.last;
+    return previous.endedAt ??
+        previous.startedAt.add(
+          Duration(minutes: previous.effectiveDurationMinutes),
+        );
+  }
+
   int _sessionIndex(RcSession session) {
     return sessions.indexWhere((item) => identical(item, session));
   }
 
-  Future<bool> _replaceSession(
-    RcSession current,
-    RcSession updated,
-  ) async {
+  Future<bool> _replaceSession(RcSession current, RcSession updated) async {
     final index = _sessionIndex(current);
 
     if (index == -1) {
@@ -231,7 +257,7 @@ class _SessionsPageState extends State<SessionsPage> {
       final savedSession = await SessionService.saveSession(
         RcSession(
           model: result.model,
-          startedAt: DateTime.now(),
+          startedAt: result.startedAt,
           location: result.location,
         ),
       );
@@ -250,9 +276,7 @@ class _SessionsPageState extends State<SessionsPage> {
     }
   }
 
-  Future<void> _scanBattery({
-    required int position,
-  }) async {
+  Future<void> _scanBattery({required int position}) async {
     final scannedValue = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => BatteryScannerPage(
@@ -270,9 +294,7 @@ class _SessionsPageState extends State<SessionsPage> {
     final battery = _findBatteryFromQr(scannedValue);
 
     if (battery == null) {
-      _showMessage(
-        'Aucune batterie enregistrée ne correspond à ce QR Code.',
-      );
+      _showMessage('Aucune batterie enregistrée ne correspond à ce QR Code.');
       return;
     }
 
@@ -317,9 +339,7 @@ class _SessionsPageState extends State<SessionsPage> {
     }
 
     final containedMatches = _availableBatteries.where(
-      (battery) => normalized.toLowerCase().contains(
-            battery.id.toLowerCase(),
-          ),
+      (battery) => normalized.toLowerCase().contains(battery.id.toLowerCase()),
     );
 
     if (containedMatches.length == 1) {
@@ -362,10 +382,12 @@ class _SessionsPageState extends State<SessionsPage> {
     }).toList();
 
     compatible.sort((a, b) {
-      final aIsTwin = first.pairId != null &&
+      final aIsTwin =
+          first.pairId != null &&
           first.pairId!.isNotEmpty &&
           a.pairId == first.pairId;
-      final bIsTwin = first.pairId != null &&
+      final bIsTwin =
+          first.pairId != null &&
           first.pairId!.isNotEmpty &&
           b.pairId == first.pairId;
 
@@ -419,6 +441,14 @@ class _SessionsPageState extends State<SessionsPage> {
     final first = _battery1;
 
     if (first == null) {
+      if (_isHistoricalSession(session)) {
+        return const _CompatibilityResult(
+          isValid: true,
+          message:
+              'Session rétroactive : les batteries utilisées peuvent rester non renseignées.',
+        );
+      }
+
       return const _CompatibilityResult(
         isValid: false,
         message: 'Scanne ou sélectionne la première batterie.',
@@ -451,9 +481,7 @@ class _SessionsPageState extends State<SessionsPage> {
         final warnings = <String>[];
 
         if (first.isPaired) {
-          warnings.add(
-            'Cette batterie appartient à une paire enregistrée.',
-          );
+          warnings.add('Cette batterie appartient à une paire enregistrée.');
         }
 
         return _CompatibilityResult(
@@ -516,8 +544,7 @@ class _SessionsPageState extends State<SessionsPage> {
     if (first.cells != second.cells) {
       return const _CompatibilityResult(
         isValid: false,
-        message:
-            'Les deux batteries doivent avoir le même nombre de cellules.',
+        message: 'Les deux batteries doivent avoir le même nombre de cellules.',
       );
     }
 
@@ -537,7 +564,8 @@ class _SessionsPageState extends State<SessionsPage> {
 
     final warnings = <String>[];
 
-    final sameRegisteredPair = first.pairId != null &&
+    final sameRegisteredPair =
+        first.pairId != null &&
         first.pairId!.isNotEmpty &&
         first.pairId == second.pairId;
 
@@ -617,7 +645,9 @@ class _SessionsPageState extends State<SessionsPage> {
     final updatedRuns = List<RcRun>.from(session.runs)
       ..add(
         RcRun(
-          startedAt: DateTime.now(),
+          startedAt: _isHistoricalSession(session)
+              ? _historicalRunStart(session)
+              : DateTime.now(),
           batteries: List<Battery>.unmodifiable(selectedBatteries),
         ),
       );
@@ -639,10 +669,7 @@ class _SessionsPageState extends State<SessionsPage> {
     _showMessage('Roulage démarré.');
   }
 
-  Future<void> _editRun(
-    RcSession session,
-    int runIndex,
-  ) async {
+  Future<void> _editRun(RcSession session, int runIndex) async {
     if (runIndex < 0 || runIndex >= session.runs.length) {
       return;
     }
@@ -682,10 +709,7 @@ class _SessionsPageState extends State<SessionsPage> {
     }
   }
 
-  Future<RcRun?> _askMeasurementsAfterRun(
-    RcRun run,
-    int runNumber,
-  ) async {
+  Future<RcRun?> _askMeasurementsAfterRun(RcRun run, int runNumber) async {
     final choice = await showDialog<_MeasurementChoice>(
       context: context,
       builder: (context) => AlertDialog(
@@ -697,15 +721,12 @@ class _SessionsPageState extends State<SessionsPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(
-              _MeasurementChoice.later,
-            ),
+            onPressed: () =>
+                Navigator.of(context).pop(_MeasurementChoice.later),
             child: const Text('Ultérieurement dans Batteries'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(
-              _MeasurementChoice.now,
-            ),
+            onPressed: () => Navigator.of(context).pop(_MeasurementChoice.now),
             child: const Text('Renseigner maintenant'),
           ),
         ],
@@ -739,10 +760,8 @@ class _SessionsPageState extends State<SessionsPage> {
       final reading = await showDialog<BatteryRunReading?>(
         context: context,
         barrierDismissible: false,
-        builder: (context) => _BatteryMeasurementDialog(
-          battery: battery,
-          runNumber: runNumber,
-        ),
+        builder: (context) =>
+            _BatteryMeasurementDialog(battery: battery, runNumber: runNumber),
       );
 
       if (reading == null) {
@@ -766,16 +785,16 @@ class _SessionsPageState extends State<SessionsPage> {
       return;
     }
 
-    final elapsedMinutes = DateTime.now()
-        .difference(activeRun.startedAt)
-        .inMinutes
-        .clamp(1, 9999);
+    final elapsedMinutes = _isHistoricalSession(session)
+        ? 1
+        : DateTime.now()
+              .difference(activeRun.startedAt)
+              .inMinutes
+              .clamp(1, 9999);
 
     final result = await showDialog<_EndRunResult>(
       context: context,
-      builder: (context) => _EndRunDialog(
-        suggestedDuration: elapsedMinutes,
-      ),
+      builder: (context) => _EndRunDialog(suggestedDuration: elapsedMinutes),
     );
 
     if (result == null) {
@@ -792,7 +811,9 @@ class _SessionsPageState extends State<SessionsPage> {
     }
 
     final completedRun = activeRun.copyWith(
-      endedAt: DateTime.now(),
+      endedAt: _isHistoricalSession(session)
+          ? activeRun.startedAt.add(Duration(minutes: result.durationMinutes))
+          : DateTime.now(),
       durationMinutes: result.durationMinutes,
       notes: result.notes,
     );
@@ -820,19 +841,15 @@ class _SessionsPageState extends State<SessionsPage> {
     _showMessage('Roulage enregistré.');
   }
 
-  Future<RcSession?> _askForMeasurementsBeforeClosing(
-    RcSession session,
-  ) async {
+  Future<RcSession?> _askForMeasurementsBeforeClosing(RcSession session) async {
     final hasMissingMeasurements = session.runs.any(
-      (run) => run.batteries.any(
-        (battery) {
-          final reading = run.readings.where(
-            (item) => item.batteryId == battery.id,
-          );
+      (run) => run.batteries.any((battery) {
+        final reading = run.readings.where(
+          (item) => item.batteryId == battery.id,
+        );
 
-          return reading.isEmpty || !reading.first.hasMeasurements;
-        },
-      ),
+        return reading.isEmpty || !reading.first.hasMeasurements;
+      }),
     );
 
     if (!hasMissingMeasurements) {
@@ -850,15 +867,12 @@ class _SessionsPageState extends State<SessionsPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(
-              _MeasurementChoice.later,
-            ),
+            onPressed: () =>
+                Navigator.of(context).pop(_MeasurementChoice.later),
             child: const Text('Ultérieurement dans Batteries'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(
-              _MeasurementChoice.now,
-            ),
+            onPressed: () => Navigator.of(context).pop(_MeasurementChoice.now),
             child: const Text('Renseigner maintenant'),
           ),
         ],
@@ -914,9 +928,7 @@ class _SessionsPageState extends State<SessionsPage> {
         }
       }
 
-      updatedRuns[runIndex] = run.copyWith(
-        readings: updatedReadings,
-      );
+      updatedRuns[runIndex] = run.copyWith(readings: updatedReadings);
     }
 
     updatedSession = session.copyWith(runs: updatedRuns);
@@ -926,10 +938,8 @@ class _SessionsPageState extends State<SessionsPage> {
   Future<void> _editSessionGeneral(RcSession session) async {
     final result = await showDialog<_EditSessionGeneralResult>(
       context: context,
-      builder: (context) => _EditSessionGeneralDialog(
-        session: session,
-        models: _availableModels,
-      ),
+      builder: (context) =>
+          _EditSessionGeneralDialog(session: session, models: _availableModels),
     );
 
     if (result == null) {
@@ -938,10 +948,7 @@ class _SessionsPageState extends State<SessionsPage> {
 
     final saved = await _replaceSession(
       session,
-      session.copyWith(
-        model: result.model,
-        location: result.location,
-      ),
+      session.copyWith(model: result.model, location: result.location),
     );
 
     if (saved) {
@@ -955,8 +962,9 @@ class _SessionsPageState extends State<SessionsPage> {
       return;
     }
 
-    final sessionWithMeasurements =
-        await _askForMeasurementsBeforeClosing(session);
+    final sessionWithMeasurements = await _askForMeasurementsBeforeClosing(
+      session,
+    );
 
     if (sessionWithMeasurements == null || !mounted) {
       return;
@@ -974,7 +982,19 @@ class _SessionsPageState extends State<SessionsPage> {
     final saved = await _replaceSession(
       session,
       sessionWithMeasurements.copyWith(
-        endedAt: DateTime.now(),
+        endedAt: _isHistoricalSession(sessionWithMeasurements)
+            ? (sessionWithMeasurements.runs.isEmpty
+                  ? sessionWithMeasurements.startedAt
+                  : sessionWithMeasurements.runs.last.endedAt ??
+                        sessionWithMeasurements.runs.last.startedAt.add(
+                          Duration(
+                            minutes: sessionWithMeasurements
+                                .runs
+                                .last
+                                .effectiveDurationMinutes,
+                          ),
+                        ))
+            : DateTime.now(),
         drivingNotes: result.drivingNotes,
         breakages: result.breakages,
         partsReplacedOnSite: result.partsReplacedOnSite,
@@ -1057,18 +1077,14 @@ class _SessionsPageState extends State<SessionsPage> {
 
   Future<void> _openSessionDetail(RcSession session) async {
     final updatedSession = await Navigator.of(context).push<RcSession>(
-      MaterialPageRoute(
-        builder: (_) => SessionDetailPage(session: session),
-      ),
+      MaterialPageRoute(builder: (_) => SessionDetailPage(session: session)),
     );
 
     if (updatedSession == null || !mounted) {
       return;
     }
 
-    final index = sessions.indexWhere(
-      (item) => item.id == updatedSession.id,
-    );
+    final index = sessions.indexWhere((item) => item.id == updatedSession.id);
 
     if (index == -1) {
       return;
@@ -1139,9 +1155,9 @@ class _SessionsPageState extends State<SessionsPage> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -1150,20 +1166,14 @@ class _SessionsPageState extends State<SessionsPage> {
 
     if (_isLoadingData) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Mes sessions'),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        appBar: AppBar(title: const Text('Mes sessions')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_loadingError != null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Mes sessions'),
-        ),
+        appBar: AppBar(title: const Text('Mes sessions')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -1177,10 +1187,7 @@ class _SessionsPageState extends State<SessionsPage> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  _loadingError!,
-                  textAlign: TextAlign.center,
-                ),
+                Text(_loadingError!, textAlign: TextAlign.center),
                 const SizedBox(height: 18),
                 FilledButton.icon(
                   onPressed: _loadData,
@@ -1219,10 +1226,9 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   Widget _buildSessionHistory() {
-    final closedSessions = sessions
-        .where((session) => session.isClosed)
-        .toList()
-      ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    final closedSessions =
+        sessions.where((session) => session.isClosed).toList()
+          ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
 
     if (closedSessions.isEmpty) {
       return const Center(
@@ -1242,10 +1248,7 @@ class _SessionsPageState extends State<SessionsPage> {
       children: [
         const Text(
           'Historique',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
         for (final session in closedSessions)
@@ -1266,12 +1269,8 @@ class _SessionsPageState extends State<SessionsPage> {
                         children: [
                           Text(
                             session.model.name,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 6),
                           Wrap(
@@ -1284,9 +1283,7 @@ class _SessionsPageState extends State<SessionsPage> {
                               Text('${session.runs.length} roulage(s)'),
                               const Text('•'),
                               Text(
-                                _durationLabel(
-                                  session.totalDurationMinutes,
-                                ),
+                                _durationLabel(session.totalDurationMinutes),
                               ),
                               if (session.location.isNotEmpty) ...[
                                 const Text('•'),
@@ -1314,8 +1311,9 @@ class _SessionsPageState extends State<SessionsPage> {
                         TextButton.icon(
                           onPressed: () => _deleteClosedSession(session),
                           style: TextButton.styleFrom(
-                            foregroundColor:
-                                Theme.of(context).colorScheme.error,
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.error,
                           ),
                           icon: const Icon(Icons.delete_outline),
                           label: const Text('Supprimer'),
@@ -1395,9 +1393,7 @@ class _SessionsPageState extends State<SessionsPage> {
           _buildActiveRunCard(session, activeRun)
         else ...[
           Text(
-            session.runs.isEmpty
-                ? 'Premier roulage'
-                : 'Nouveau roulage',
+            session.runs.isEmpty ? 'Premier roulage' : 'Nouveau roulage',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 12),
@@ -1477,9 +1473,7 @@ class _SessionsPageState extends State<SessionsPage> {
         ],
         const SizedBox(height: 24),
         OutlinedButton.icon(
-          onPressed: session.hasActiveRun
-              ? null
-              : () => _closeSession(session),
+          onPressed: session.hasActiveRun ? null : () => _closeSession(session),
           icon: const Icon(Icons.stop_circle_outlined),
           label: const Text('Clôturer la session'),
         ),
@@ -1488,10 +1482,7 @@ class _SessionsPageState extends State<SessionsPage> {
     );
   }
 
-  Widget _buildActiveRunCard(
-    RcSession session,
-    RcRun activeRun,
-  ) {
+  Widget _buildActiveRunCard(RcSession session, RcRun activeRun) {
     return Card(
       color: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
@@ -1586,9 +1577,7 @@ class _BatterySelector extends StatelessWidget {
                       if (battery!.isPaired)
                         TextSpan(
                           text: '  [P-${battery!.pairId!.split('-').last}]',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                     ],
                   ),
@@ -1606,7 +1595,6 @@ class _BatterySelector extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _BatteryChoiceDialog extends StatelessWidget {
@@ -1685,9 +1673,7 @@ class _BatteryChoiceDialog extends StatelessWidget {
 }
 
 class _CompatibilityCard extends StatelessWidget {
-  const _CompatibilityCard({
-    required this.result,
-  });
+  const _CompatibilityCard({required this.result});
 
   final _CompatibilityResult result;
 
@@ -1695,14 +1681,14 @@ class _CompatibilityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = result.isValid
         ? result.hasWarning
-            ? Icons.warning_amber_rounded
-            : Icons.check_circle
+              ? Icons.warning_amber_rounded
+              : Icons.check_circle
         : Icons.error;
 
     final accentColor = result.isValid
         ? result.hasWarning
-            ? Colors.orange.shade700
-            : Colors.green.shade700
+              ? Colors.orange.shade700
+              : Colors.green.shade700
         : Colors.red.shade700;
 
     final backgroundColor = result.isValid
@@ -1713,26 +1699,19 @@ class _CompatibilityCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: accentColor,
-          width: 2,
-        ),
+        border: Border.all(color: accentColor, width: 2),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 18,
           vertical: 10,
         ),
-        leading: Icon(
-          icon,
-          color: accentColor,
-          size: 36,
-        ),
+        leading: Icon(icon, color: accentColor, size: 36),
         title: Text(
           result.isValid
               ? result.hasWarning
-                  ? 'ATTENTION'
-                  : 'CONFIGURATION VALIDÉE'
+                    ? 'ATTENTION'
+                    : 'CONFIGURATION VALIDÉE'
               : 'VÉRIFICATION REQUISE',
           style: TextStyle(
             color: accentColor,
@@ -1744,9 +1723,7 @@ class _CompatibilityCard extends StatelessWidget {
           padding: const EdgeInsets.only(top: 6),
           child: Text(
             result.message,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -1800,10 +1777,7 @@ class _RunCard extends StatelessWidget {
 }
 
 class _HistoryLine extends StatelessWidget {
-  const _HistoryLine({
-    required this.label,
-    required this.value,
-  });
+  const _HistoryLine({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -1821,9 +1795,7 @@ class _HistoryLine extends StatelessWidget {
 }
 
 class _OpenSessionDialog extends StatefulWidget {
-  const _OpenSessionDialog({
-    required this.models,
-  });
+  const _OpenSessionDialog({required this.models});
 
   final List<RcModel> models;
 
@@ -1834,6 +1806,7 @@ class _OpenSessionDialog extends StatefulWidget {
 class _OpenSessionDialogState extends State<_OpenSessionDialog> {
   RcModel? _selectedModel;
   final _locationController = TextEditingController();
+  DateTime _startedAt = DateTime.now();
 
   @override
   void dispose() {
@@ -1841,16 +1814,125 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
     super.dispose();
   }
 
+  bool get _isHistorical {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final selectedDay = DateTime(
+      _startedAt.year,
+      _startedAt.month,
+      _startedAt.day,
+    );
+    return selectedDay.isBefore(today);
+  }
+
+  DateTime get _firstAllowedDate {
+    final acquisitionDate = _selectedModel?.acquisitionDate;
+    if (acquisitionDate == null) {
+      return DateTime(1900);
+    }
+
+    return DateTime(
+      acquisitionDate.year,
+      acquisitionDate.month,
+      acquisitionDate.day,
+    );
+  }
+
+  Future<void> _selectDate() async {
+    final now = DateTime.now();
+    final firstDate = _firstAllowedDate;
+    var initialDate = DateTime(
+      _startedAt.year,
+      _startedAt.month,
+      _startedAt.day,
+    );
+
+    if (initialDate.isBefore(firstDate)) {
+      initialDate = firstDate;
+    }
+    if (initialDate.isAfter(now)) {
+      initialDate = now;
+    }
+
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: now,
+      helpText: 'Date de la session',
+      cancelText: 'Annuler',
+      confirmText: 'Valider',
+    );
+
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _startedAt = DateTime(
+        selected.year,
+        selected.month,
+        selected.day,
+        _startedAt.hour,
+        _startedAt.minute,
+      );
+    });
+  }
+
+  Future<void> _selectTime() async {
+    final selected = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_startedAt),
+      helpText: 'Heure de début de la session',
+      cancelText: 'Annuler',
+      confirmText: 'Valider',
+    );
+
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    final candidate = DateTime(
+      _startedAt.year,
+      _startedAt.month,
+      _startedAt.day,
+      selected.hour,
+      selected.minute,
+    );
+
+    if (candidate.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('La date et l’heure ne peuvent pas être futures.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _startedAt = candidate;
+    });
+  }
+
+  String _formatDate(DateTime value) {
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    return '$day/$month/${value.year}';
+  }
+
+  String _formatTime(DateTime value) {
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Ouvrir une session'),
-      insetPadding: const EdgeInsets.symmetric(
-        horizontal: 24,
-        vertical: 24,
-      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       content: SizedBox(
-        width: 480,
+        width: 560,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1876,9 +1958,90 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
                 onChanged: (value) {
                   setState(() {
                     _selectedModel = value;
+                    final firstDate = _firstAllowedDate;
+                    if (_startedAt.isBefore(firstDate)) {
+                      _startedAt = DateTime(
+                        firstDate.year,
+                        firstDate.month,
+                        firstDate.day,
+                        _startedAt.hour,
+                        _startedAt.minute,
+                      );
+                    }
                   });
                 },
               ),
+              const SizedBox(height: 14),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final dateField = InkWell(
+                    onTap: _selectedModel == null ? null : _selectDate,
+                    borderRadius: BorderRadius.circular(12),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Date',
+                        border: OutlineInputBorder(),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_month_outlined),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(_formatDate(_startedAt))),
+                        ],
+                      ),
+                    ),
+                  );
+
+                  final timeField = InkWell(
+                    onTap: _selectTime,
+                    borderRadius: BorderRadius.circular(12),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Heure',
+                        border: OutlineInputBorder(),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.schedule),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(_formatTime(_startedAt))),
+                        ],
+                      ),
+                    ),
+                  );
+
+                  if (constraints.maxWidth >= 430) {
+                    return Row(
+                      children: [
+                        Expanded(child: dateField),
+                        const SizedBox(width: 12),
+                        Expanded(child: timeField),
+                      ],
+                    );
+                  }
+
+                  return Column(
+                    children: [
+                      dateField,
+                      const SizedBox(height: 12),
+                      timeField,
+                    ],
+                  );
+                },
+              ),
+              if (_isHistorical) ...[
+                const SizedBox(height: 12),
+                const Card(
+                  child: ListTile(
+                    leading: Icon(Icons.history),
+                    title: Text('Session rétroactive'),
+                    subtitle: Text(
+                      'Les batteries et leurs relevés sont facultatifs. '
+                      'Les roulages seront enregistrés à cette date.',
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               TextField(
                 controller: _locationController,
@@ -1900,14 +2063,26 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
           onPressed: _selectedModel == null
               ? null
               : () {
+                  if (_startedAt.isAfter(DateTime.now())) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'La date et l’heure ne peuvent pas être futures.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
                   Navigator.of(context).pop(
                     _OpenSessionResult(
                       model: _selectedModel!,
                       location: _locationController.text.trim(),
+                      startedAt: _startedAt,
                     ),
                   );
                 },
-          child: const Text('Ouvrir'),
+          child: Text(_isHistorical ? 'Créer' : 'Ouvrir'),
         ),
       ],
     );
@@ -1938,8 +2113,7 @@ class _EditSessionGeneralDialog extends StatefulWidget {
       _EditSessionGeneralDialogState();
 }
 
-class _EditSessionGeneralDialogState
-    extends State<_EditSessionGeneralDialog> {
+class _EditSessionGeneralDialogState extends State<_EditSessionGeneralDialog> {
   late RcModel _selectedModel;
   late final TextEditingController _locationController;
 
@@ -1950,9 +2124,7 @@ class _EditSessionGeneralDialogState
       (model) => model.id == widget.session.model.id,
       orElse: () => widget.session.model,
     );
-    _locationController = TextEditingController(
-      text: widget.session.location,
-    );
+    _locationController = TextEditingController(text: widget.session.location);
   }
 
   @override
@@ -2030,9 +2202,7 @@ class _EditSessionGeneralDialogState
 }
 
 class _EndRunDialog extends StatefulWidget {
-  const _EndRunDialog({
-    required this.suggestedDuration,
-  });
+  const _EndRunDialog({required this.suggestedDuration});
 
   final int suggestedDuration;
 
@@ -2080,10 +2250,7 @@ class _EndRunDialogState extends State<_EndRunDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Terminer le roulage'),
-      insetPadding: const EdgeInsets.symmetric(
-        horizontal: 24,
-        vertical: 24,
-      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
@@ -2123,20 +2290,14 @@ class _EndRunDialogState extends State<_EndRunDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Annuler'),
         ),
-        FilledButton(
-          onPressed: _validate,
-          child: const Text('Enregistrer'),
-        ),
+        FilledButton(onPressed: _validate, child: const Text('Enregistrer')),
       ],
     );
   }
 }
 
 class _EditRunDialog extends StatefulWidget {
-  const _EditRunDialog({
-    required this.durationMinutes,
-    required this.notes,
-  });
+  const _EditRunDialog({required this.durationMinutes, required this.notes});
 
   final int durationMinutes;
   final String notes;
@@ -2221,10 +2382,7 @@ class _EditRunDialogState extends State<_EditRunDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Annuler'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Enregistrer'),
-        ),
+        FilledButton(onPressed: _save, child: const Text('Enregistrer')),
       ],
     );
   }
@@ -2279,10 +2437,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
                 ? (constraints.maxWidth - 10) / 2
                 : (constraints.maxWidth - 20) / 3;
 
-            Widget field(
-              TextEditingController controller,
-              String label,
-            ) {
+            Widget field(TextEditingController controller, String label) {
               return SizedBox(
                 width: fieldWidth,
                 child: TextField(
@@ -2304,15 +2459,9 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
               spacing: 10,
               runSpacing: 10,
               children: [
-                field(
-                  _drivingNotesController,
-                  'Comportement et réglages',
-                ),
+                field(_drivingNotesController, 'Comportement et réglages'),
                 field(_breakagesController, 'Casses'),
-                field(
-                  _partsReplacedController,
-                  'Pièces remplacées sur place',
-                ),
+                field(_partsReplacedController, 'Pièces remplacées sur place'),
                 field(_maintenanceController, 'Entretien à effectuer'),
                 field(_partsToOrderController, 'Pièces à commander'),
                 field(
@@ -2336,8 +2485,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
               _CloseSessionResult(
                 drivingNotes: _drivingNotesController.text.trim(),
                 breakages: _breakagesController.text.trim(),
-                partsReplacedOnSite:
-                    _partsReplacedController.text.trim(),
+                partsReplacedOnSite: _partsReplacedController.text.trim(),
                 maintenanceToDo: _maintenanceController.text.trim(),
                 partsToOrder: _partsToOrderController.text.trim(),
                 changesBeforeNextSession: _changesController.text.trim(),
@@ -2352,10 +2500,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
   }
 }
 
-enum _MeasurementChoice {
-  now,
-  later,
-}
+enum _MeasurementChoice { now, later }
 
 class _BatteryMeasurementDialog extends StatefulWidget {
   const _BatteryMeasurementDialog({
@@ -2371,8 +2516,7 @@ class _BatteryMeasurementDialog extends StatefulWidget {
       _BatteryMeasurementDialogState();
 }
 
-class _BatteryMeasurementDialogState
-    extends State<_BatteryMeasurementDialog> {
+class _BatteryMeasurementDialogState extends State<_BatteryMeasurementDialog> {
   final _capacityController = TextEditingController();
   final _temperatureController = TextEditingController();
   late final List<TextEditingController> _cellVoltageControllers;
@@ -2452,10 +2596,7 @@ class _BatteryMeasurementDialogState
     );
   }
 
-  InputDecoration _decoration(
-    String label, {
-    String? suffix,
-  }) {
+  InputDecoration _decoration(String label, {String? suffix}) {
     return InputDecoration(
       labelText: label,
       suffixText: suffix,
@@ -2466,8 +2607,7 @@ class _BatteryMeasurementDialogState
   double get _totalVoltage {
     return _cellVoltageControllers.fold<double>(
       0,
-      (total, controller) =>
-          total + (_parseDouble(controller.text) ?? 0),
+      (total, controller) => total + (_parseDouble(controller.text) ?? 0),
     );
   }
 
@@ -2484,8 +2624,7 @@ class _BatteryMeasurementDialogState
             ),
             if (widget.battery.isPaired)
               TextSpan(
-                text:
-                    '  [P-${widget.battery.pairId!.split('-').last}]',
+                text: '  [P-${widget.battery.pairId!.split('-').last}]',
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
           ],
@@ -2498,8 +2637,8 @@ class _BatteryMeasurementDialogState
             final columns = constraints.maxWidth < 430
                 ? 3
                 : constraints.maxWidth < 680
-                    ? 4
-                    : 6;
+                ? 4
+                : 6;
             final itemWidth =
                 (constraints.maxWidth - ((columns - 1) * 8)) / columns;
 
@@ -2512,8 +2651,9 @@ class _BatteryMeasurementDialogState
                     Expanded(
                       child: TextField(
                         controller: _capacityController,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         decoration: _decoration(
                           'Capacité restante',
                           suffix: '%',
@@ -2524,8 +2664,9 @@ class _BatteryMeasurementDialogState
                     Expanded(
                       child: TextField(
                         controller: _temperatureController,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         decoration: _decoration(
                           'Température (facultative)',
                           suffix: '°C',
@@ -2539,9 +2680,9 @@ class _BatteryMeasurementDialogState
                         alignment: Alignment.center,
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -2557,16 +2698,17 @@ class _BatteryMeasurementDialogState
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    for (var index = 0;
-                        index < _cellVoltageControllers.length;
-                        index++)
+                    for (
+                      var index = 0;
+                      index < _cellVoltageControllers.length;
+                      index++
+                    )
                       SizedBox(
                         width: itemWidth,
                         child: TextField(
                           controller: _cellVoltageControllers[index],
                           onChanged: (_) => setState(() {}),
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
+                          keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
                           decoration: InputDecoration(
@@ -2617,17 +2759,16 @@ class _OpenSessionResult {
   const _OpenSessionResult({
     required this.model,
     required this.location,
+    required this.startedAt,
   });
 
   final RcModel model;
   final String location;
+  final DateTime startedAt;
 }
 
 class _EndRunResult {
-  const _EndRunResult({
-    required this.durationMinutes,
-    required this.notes,
-  });
+  const _EndRunResult({required this.durationMinutes, required this.notes});
 
   final int durationMinutes;
   final String notes;

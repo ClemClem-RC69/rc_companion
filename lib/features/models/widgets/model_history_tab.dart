@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/battery.dart';
+import '../../../models/model_history_event.dart';
 import '../../../models/rc_model.dart';
 import '../../../models/rc_session.dart';
 import '../../../services/battery_service.dart';
+import '../../../services/model_history_event_service.dart';
 import '../../../services/session_service.dart';
+import 'model_history_event_form_page.dart';
 
 class ModelHistoryTab extends StatefulWidget {
   const ModelHistoryTab({
     super.key,
+    required this.modelId,
     required this.model,
   });
 
+  final String modelId;
   final RcModel model;
 
   @override
@@ -20,6 +25,7 @@ class ModelHistoryTab extends StatefulWidget {
 
 class _ModelHistoryTabState extends State<ModelHistoryTab> {
   List<RcSession> _sessions = [];
+  List<ModelHistoryEvent> _events = [];
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -37,25 +43,32 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
 
     try {
       final batteries = await BatteryService.getBatteries();
-      final sessions = await SessionService.getSessions(
-        models: [widget.model],
-        batteries: batteries,
-      );
 
-      final closedSessions = sessions
-          .where((session) => session.isClosed)
-          .toList(growable: false)
-        ..sort(
-          (first, second) =>
-              second.startedAt.compareTo(first.startedAt),
-        );
+      final results = await Future.wait([
+        SessionService.getSessions(
+          models: [widget.model],
+          batteries: batteries,
+        ),
+        ModelHistoryEventService.getEvents(widget.modelId),
+      ]);
+
+      final sessions =
+          (results[0] as List<RcSession>)
+              .where((session) => session.isClosed)
+              .toList(growable: false)
+            ..sort(
+              (first, second) => second.startedAt.compareTo(first.startedAt),
+            );
+
+      final events = results[1] as List<ModelHistoryEvent>;
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _sessions = closedSessions;
+        _sessions = sessions;
+        _events = events;
       });
     } catch (error) {
       if (!mounted) {
@@ -63,8 +76,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       }
 
       setState(() {
-        _errorMessage =
-            'Impossible de charger l’historique du modèle.\n$error';
+        _errorMessage = 'Impossible de charger l’historique du modèle.\n$error';
       });
     } finally {
       if (mounted) {
@@ -83,10 +95,167 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
   }
 
   int get _totalDurationMinutes {
-    return _sessions.fold<int>(
+    final sessionDuration = _sessions.fold<int>(
       0,
       (total, session) => total + session.totalDurationMinutes,
     );
+
+    final manualDuration = _events.fold<int>(
+      0,
+      (total, event) => total + (event.durationMinutes ?? 0),
+    );
+
+    return sessionDuration + manualDuration;
+  }
+
+  List<_TimelineItem> get _timelineItems {
+    final items = <_TimelineItem>[
+      for (final session in _sessions) _TimelineItem.session(session),
+      for (final event in _events) _TimelineItem.event(event),
+    ];
+
+    final acquisitionDate = widget.model.acquisitionDate;
+    if (acquisitionDate != null) {
+      items.add(
+        _TimelineItem.acquisition(
+          DateTime(
+            acquisitionDate.year,
+            acquisitionDate.month,
+            acquisitionDate.day,
+          ),
+        ),
+      );
+    }
+
+    items.sort((first, second) => second.date.compareTo(first.date));
+
+    return items;
+  }
+
+  Future<void> _addEvent() async {
+    final event = await Navigator.push<ModelHistoryEvent>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ModelHistoryEventFormPage(
+          modelId: widget.modelId,
+          model: widget.model,
+        ),
+      ),
+    );
+
+    if (event == null || !mounted) {
+      return;
+    }
+
+    try {
+      await ModelHistoryEventService.createEvent(event);
+      await _loadHistory();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Événement ajouté à l’historique')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible d’ajouter l’événement : $error')),
+      );
+    }
+  }
+
+  Future<void> _editEvent(ModelHistoryEvent event) async {
+    final edited = await Navigator.push<ModelHistoryEvent>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ModelHistoryEventFormPage(
+          modelId: widget.modelId,
+          model: widget.model,
+          existingEvent: event,
+        ),
+      ),
+    );
+
+    if (edited == null || !mounted) {
+      return;
+    }
+
+    try {
+      await ModelHistoryEventService.updateEvent(edited);
+      await _loadHistory();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Événement modifié')));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible de modifier l’événement : $error')),
+      );
+    }
+  }
+
+  Future<void> _deleteEvent(ModelHistoryEvent event) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Supprimer l’événement'),
+          content: Text('Veux-tu vraiment supprimer « ${event.title} » ?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Supprimer'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      await ModelHistoryEventService.deleteEvent(event.id);
+      await _loadHistory();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Événement supprimé')));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible de supprimer l’événement : $error')),
+      );
+    }
   }
 
   String _formatDateTime(DateTime value) {
@@ -98,6 +267,13 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     final minute = local.minute.toString().padLeft(2, '0');
 
     return '$day/$month/$year à $hour:$minute';
+  }
+
+  String _formatDate(DateTime value) {
+    final local = value.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    return '$day/$month/${local.year}';
   }
 
   String _durationLabel(int minutes) {
@@ -120,6 +296,16 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         '${battery.capacity} mAh ${battery.cRate}C';
   }
 
+  IconData _eventIcon(String type) {
+    return switch (type) {
+      'Session' => Icons.sports_motorsports_outlined,
+      'Entretien' => Icons.handyman_outlined,
+      'Réparation' => Icons.build_outlined,
+      'Modification' => Icons.tune,
+      _ => Icons.event_note_outlined,
+    };
+  }
+
   Widget _summaryCard() {
     return Card(
       child: Padding(
@@ -131,8 +317,13 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
             final items = [
               _SummaryValue(
                 icon: Icons.calendar_month_outlined,
-                label: 'Sessions clôturées',
+                label: 'Sessions',
                 value: _sessions.length.toString(),
+              ),
+              _SummaryValue(
+                icon: Icons.handyman_outlined,
+                label: 'Maintenance',
+                value: _events.length.toString(),
               ),
               _SummaryValue(
                 icon: Icons.sports_motorsports_outlined,
@@ -141,7 +332,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
               ),
               _SummaryValue(
                 icon: Icons.timer_outlined,
-                label: 'Temps total de roulage',
+                label: 'Temps total',
                 value: _durationLabel(_totalDurationMinutes),
               ),
             ];
@@ -151,8 +342,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
                 children: [
                   for (var index = 0; index < items.length; index++) ...[
                     items[index],
-                    if (index < items.length - 1)
-                      const Divider(height: 24),
+                    if (index < items.length - 1) const Divider(height: 24),
                   ],
                 ],
               );
@@ -183,10 +373,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 19),
-            const SizedBox(width: 8),
-          ],
+          if (icon != null) ...[Icon(icon, size: 19), const SizedBox(width: 8)],
           Expanded(
             child: Text(
               label,
@@ -194,12 +381,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
             ),
           ),
           const SizedBox(width: 12),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-            ),
-          ),
+          Flexible(child: Text(value, textAlign: TextAlign.end)),
         ],
       ),
     );
@@ -252,9 +434,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -262,10 +442,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         children: [
           Text(
             'Roulage ${index + 1}',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            ),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
           _automaticLine(
@@ -280,9 +457,11 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
               icon: Icons.battery_unknown,
             )
           else
-            for (var batteryIndex = 0;
-                batteryIndex < run.batteries.length;
-                batteryIndex++) ...[
+            for (
+              var batteryIndex = 0;
+              batteryIndex < run.batteries.length;
+              batteryIndex++
+            ) ...[
               if (batteryIndex > 0) const Divider(height: 16),
               _automaticLine(
                 label: run.batteries.length == 1
@@ -311,13 +490,13 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       margin: const EdgeInsets.only(bottom: 14),
       child: ExpansionTile(
         initiallyExpanded: false,
-        leading: const Icon(Icons.history),
+        leading: const Icon(Icons.sports_motorsports_outlined),
         title: Text(
-          '${_formatDateTime(session.startedAt)} — $location',
+          'Session — ${_formatDateTime(session.startedAt)}',
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          '${_durationLabel(session.totalDurationMinutes)} • '
+          '$location • ${_durationLabel(session.totalDurationMinutes)} • '
           '${session.runs.length} roulage(s)',
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -391,9 +570,145 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
             value: session.maintenanceToDo,
             icon: Icons.handyman_outlined,
           ),
+          _optionalSection(
+            title: 'Pièces à commander',
+            value: session.partsToOrder,
+            icon: Icons.shopping_cart_outlined,
+          ),
+          _optionalSection(
+            title: 'Modifications avant prochaine session',
+            value: session.changesBeforeNextSession,
+            icon: Icons.tune,
+          ),
+          _optionalSection(
+            title: 'Notes générales',
+            value: session.generalNotes,
+            icon: Icons.notes_outlined,
+          ),
         ],
       ),
     );
+  }
+
+  Widget _manualEventCard(ModelHistoryEvent event) {
+    final details = <String>[
+      event.eventType,
+      if (event.location.trim().isNotEmpty) event.location.trim(),
+      if (event.durationMinutes != null) _durationLabel(event.durationMinutes!),
+      if (event.cost != null)
+        '${event.cost!.toStringAsFixed(2).replaceAll('.', ',')} €',
+    ];
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: ExpansionTile(
+        leading: Icon(_eventIcon(event.eventType)),
+        title: Text(
+          event.title,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          '${_formatDateTime(event.eventDate)} • ${details.join(' • ')}',
+        ),
+        trailing: PopupMenuButton<String>(
+          tooltip: 'Options',
+          onSelected: (value) {
+            if (value == 'edit') {
+              _editEvent(event);
+            } else if (value == 'delete') {
+              _deleteEvent(event);
+            }
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+              value: 'edit',
+              child: Row(
+                children: [
+                  Icon(Icons.edit_outlined),
+                  SizedBox(width: 10),
+                  Text('Modifier'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete_outline),
+                  SizedBox(width: 10),
+                  Text('Supprimer'),
+                ],
+              ),
+            ),
+          ],
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          const SizedBox(height: 8),
+          _automaticLine(
+            label: 'Type',
+            value: event.eventType,
+            icon: _eventIcon(event.eventType),
+          ),
+          _automaticLine(
+            label: 'Date',
+            value: _formatDateTime(event.eventDate),
+            icon: Icons.calendar_month_outlined,
+          ),
+          if (event.location.trim().isNotEmpty)
+            _automaticLine(
+              label: 'Lieu',
+              value: event.location.trim(),
+              icon: Icons.location_on_outlined,
+            ),
+          if (event.durationMinutes != null)
+            _automaticLine(
+              label: 'Durée',
+              value: _durationLabel(event.durationMinutes!),
+              icon: Icons.timer_outlined,
+            ),
+          if (event.cost != null)
+            _automaticLine(
+              label: 'Coût',
+              value: '${event.cost!.toStringAsFixed(2).replaceAll('.', ',')} €',
+              icon: Icons.euro,
+            ),
+          _optionalSection(
+            title: 'Description',
+            value: event.description,
+            icon: Icons.notes_outlined,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _acquisitionCard(DateTime date) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: ListTile(
+        leading: const Icon(Icons.shopping_bag_outlined),
+        title: const Text(
+          'Acquisition du modèle',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          '${_formatDate(date)} • ${widget.model.formattedAcquisition}',
+        ),
+      ),
+    );
+  }
+
+  Widget _timelineCard(_TimelineItem item) {
+    if (item.session != null) {
+      return _sessionCard(item.session!);
+    }
+
+    if (item.event != null) {
+      return _manualEventCard(item.event!);
+    }
+
+    return _acquisitionCard(item.date);
   }
 
   @override
@@ -411,10 +726,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
             children: [
               const Icon(Icons.error_outline, size: 54),
               const SizedBox(height: 14),
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-              ),
+              Text(_errorMessage!, textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: _loadHistory,
@@ -427,6 +739,8 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       );
     }
 
+    final timeline = _timelineItems;
+
     return RefreshIndicator(
       onRefresh: _loadHistory,
       child: ListView(
@@ -434,15 +748,15 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
           _summaryCard(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Text(
-            'Historique des sessions',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            'Historique du modèle',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 10),
-          if (_sessions.isEmpty)
+          if (timeline.isEmpty)
             const Card(
               child: Padding(
                 padding: EdgeInsets.all(22),
@@ -451,7 +765,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
                     Icon(Icons.history_toggle_off, size: 56),
                     SizedBox(height: 12),
                     Text(
-                      'Aucune session clôturée pour ce modèle.',
+                      'Aucun événement enregistré pour ce modèle.',
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -459,11 +773,31 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
               ),
             )
           else
-            ..._sessions.map(_sessionCard),
+            ...timeline.map(_timelineCard),
         ],
       ),
     );
   }
+}
+
+class _TimelineItem {
+  const _TimelineItem._({required this.date, this.session, this.event});
+
+  factory _TimelineItem.session(RcSession session) {
+    return _TimelineItem._(date: session.startedAt, session: session);
+  }
+
+  factory _TimelineItem.event(ModelHistoryEvent event) {
+    return _TimelineItem._(date: event.eventDate, event: event);
+  }
+
+  factory _TimelineItem.acquisition(DateTime date) {
+    return _TimelineItem._(date: date);
+  }
+
+  final DateTime date;
+  final RcSession? session;
+  final ModelHistoryEvent? event;
 }
 
 class _SummaryValue extends StatelessWidget {
@@ -481,20 +815,13 @@ class _SummaryValue extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 30,
-          color: Theme.of(context).colorScheme.primary,
-        ),
+        Icon(icon, size: 30, color: Theme.of(context).colorScheme.primary),
         const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              Text(label, style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 2),
               Text(
                 value,
