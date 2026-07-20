@@ -68,10 +68,7 @@ class BatteryMeasurement {
       usesInternalResistance && cellInternalResistances.isNotEmpty;
 
   double get totalVoltage {
-    return cellVoltages.fold<double>(
-      0,
-      (total, voltage) => total + voltage,
-    );
+    return cellVoltages.fold<double>(0, (total, voltage) => total + voltage);
   }
 
   double get minimumCellVoltage {
@@ -163,12 +160,10 @@ class BatteryMeasurement {
     );
 
     final voltages = _toDoubleList(json['cell_voltages']);
-    final storedResistances = _toDoubleList(
-      json['cell_internal_resistances'],
-    );
+    final storedResistances = _toDoubleList(json['cell_internal_resistances']);
 
-    final keepsResistance = measurementType == referenceType ||
-        measurementType == afterChargeType;
+    final keepsResistance =
+        measurementType == referenceType || measurementType == afterChargeType;
 
     return BatteryMeasurement(
       id: (json['id'] as num?)?.toInt(),
@@ -177,10 +172,8 @@ class BatteryMeasurement {
       measurementType: measurementType,
       chargePercent: (json['charge_percent'] as num?)?.toInt() ?? 0,
       cellVoltages: voltages,
-      cellInternalResistances:
-          keepsResistance ? storedResistances : const [],
-      batteryTemperature:
-          (json['battery_temperature_c'] as num?)?.toDouble(),
+      cellInternalResistances: keepsResistance ? storedResistances : const [],
+      batteryTemperature: (json['battery_temperature_c'] as num?)?.toDouble(),
       notes: json['notes'] as String?,
     );
   }
@@ -195,8 +188,9 @@ class BatteryMeasurement {
       'measurement_type': _databaseMeasurementType(measurementType),
       'charge_percent': chargePercent,
       'cell_voltages': cellVoltages,
-      'cell_internal_resistances':
-          usesInternalResistance ? cellInternalResistances : const <double>[],
+      'cell_internal_resistances': usesInternalResistance
+          ? cellInternalResistances
+          : const <double>[],
       // Température facultative uniquement pour les relevés de fin de roulage.
       'battery_temperature_c': isEndOfRun ? batteryTemperature : null,
       // Les notes ne sont plus saisies manuellement. Le service Session peut
@@ -219,8 +213,8 @@ class BatteryMeasurement {
     bool removeNotes = false,
   }) {
     final nextType = measurementType ?? this.measurementType;
-    final keepsResistance = nextType == referenceType ||
-        nextType == afterChargeType;
+    final keepsResistance =
+        nextType == referenceType || nextType == afterChargeType;
 
     return BatteryMeasurement(
       id: id ?? this.id,

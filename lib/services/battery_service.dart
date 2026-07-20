@@ -32,20 +32,20 @@ class BatteryService {
       );
 
       if (measurement.isReference) {
-  continue;
-}
+        continue;
+      }
 
-final isUsefulChargeMeasurement =
-    measurement.isAfterCharge || measurement.isEndOfRun;
+      final isUsefulChargeMeasurement =
+          measurement.isAfterCharge || measurement.isEndOfRun;
 
-if (!isUsefulChargeMeasurement) {
-  continue;
-}
+      if (!isUsefulChargeMeasurement) {
+        continue;
+      }
 
-latestUsefulMeasurementByBattery.putIfAbsent(
-  measurement.batteryCode,
-  () => measurement,
-);
+      latestUsefulMeasurementByBattery.putIfAbsent(
+        measurement.batteryCode,
+        () => measurement,
+      );
     }
 
     return batteryRows
@@ -813,43 +813,173 @@ latestUsefulMeasurementByBattery.putIfAbsent(
   }
 
   static BatteryChargeState _chargeStateFor({
-  required Battery battery,
-  required BatteryMeasurement? measurement,
-}) {
-  if (measurement == null) {
-    return BatteryChargeState.discharged;
-  }
-
-  if (measurement.isAfterCharge) {
-    final note = measurement.notes ?? '';
-
-    final isStorage = note
-        .split('|')
-        .any((part) => part.trim() == 'charge_state:storage');
-
-    if (isStorage) {
-      return BatteryChargeState.storage;
-    }
-
-    if (measurement.chargePercent <= 20) {
+    required Battery battery,
+    required BatteryMeasurement? measurement,
+  }) {
+    if (measurement == null) {
       return BatteryChargeState.discharged;
     }
 
-    if (measurement.chargePercent >= 95) {
-      return BatteryChargeState.charged;
+    if (measurement.isAfterCharge) {
+      final note = measurement.notes ?? '';
+
+      final isStorage = note
+          .split('|')
+          .any((part) => part.trim() == 'charge_state:storage');
+
+      if (isStorage) {
+        return BatteryChargeState.storage;
+      }
+
+      if (measurement.chargePercent <= 20) {
+        return BatteryChargeState.discharged;
+      }
+
+      if (measurement.chargePercent >= 95) {
+        return BatteryChargeState.charged;
+      }
+
+      return BatteryChargeState.partial;
     }
 
-    return BatteryChargeState.partial;
+    if (measurement.isEndOfRun) {
+      return measurement.chargePercent <= 20
+          ? BatteryChargeState.discharged
+          : BatteryChargeState.partial;
+    }
+
+    return BatteryChargeState.discharged;
   }
 
-  if (measurement.isEndOfRun) {
-    return measurement.chargePercent <= 20
-        ? BatteryChargeState.discharged
-        : BatteryChargeState.partial;
+  static BatteryHealthAnalysis calculateBatteryHealth(
+    List<BatteryMeasurement> measurements,
+  ) {
+    BatteryMeasurement? reference;
+
+    for (final measurement in measurements) {
+      if (measurement.isReference && measurement.hasInternalResistance) {
+        reference = measurement;
+        break;
+      }
+    }
+
+    final afterChargeMeasurements =
+        measurements
+            .where(
+              (measurement) =>
+                  measurement.isAfterCharge &&
+                  measurement.hasInternalResistance,
+            )
+            .toList()
+          ..sort(
+            (first, second) => first.measuredAt.compareTo(second.measuredAt),
+          );
+
+    if (reference == null || afterChargeMeasurements.isEmpty) {
+      return const BatteryHealthAnalysis.notEvaluated();
+    }
+
+    final latest = afterChargeMeasurements.last;
+    final referenceAverage = reference.averageInternalResistance;
+    final latestAverage = latest.averageInternalResistance;
+
+    final evolutionPercent = referenceAverage <= 0
+        ? 0.0
+        : ((latestAverage - referenceAverage) / referenceAverage) * 100;
+
+    bool isSevere(BatteryMeasurement measurement) {
+      final average = measurement.averageInternalResistance;
+
+      final evolution = referenceAverage <= 0
+          ? 0.0
+          : ((average - referenceAverage) / referenceAverage) * 100;
+
+      return measurement.maximumVoltageDifference > 0.100 ||
+          measurement.maximumInternalResistanceDifference > 10.0 ||
+          evolution > 100.0;
+    }
+
+    final recent = afterChargeMeasurements.length <= 3
+        ? afterChargeMeasurements
+        : afterChargeMeasurements.sublist(afterChargeMeasurements.length - 3);
+
+    final severeRecentCount = recent.where(isSevere).length;
+
+    var risingTrend = false;
+
+    if (recent.length >= 3) {
+      final firstAverage = recent.first.averageInternalResistance;
+      final middleAverage = recent[1].averageInternalResistance;
+      final lastAverage = recent.last.averageInternalResistance;
+
+      final increase = firstAverage <= 0
+          ? 0.0
+          : ((lastAverage - firstAverage) / firstAverage) * 100;
+
+      risingTrend =
+          middleAverage >= firstAverage &&
+          lastAverage >= middleAverage &&
+          increase > 15.0;
+    }
+
+    final latestIsSevere = isSevere(latest);
+
+    final latestHasWarning =
+        latest.maximumVoltageDifference > 0.050 ||
+        latest.maximumInternalResistanceDifference > 5.0 ||
+        evolutionPercent > 25.0;
+
+    final reasons = <String>[
+      'Écart de tension actuel : '
+          '${latest.maximumVoltageDifference.toStringAsFixed(3)} V.',
+      'Écart de résistance interne actuel : '
+          '${latest.maximumInternalResistanceDifference.toStringAsFixed(2)} mΩ.',
+      'Évolution de la résistance interne moyenne depuis la référence : '
+          '${evolutionPercent >= 0 ? '+' : ''}'
+          '${evolutionPercent.toStringAsFixed(1)} %.',
+      risingTrend
+          ? 'Tendance : hausse régulière sur les trois derniers relevés après charge.'
+          : 'Tendance : aucune hausse régulière critique sur les trois derniers relevés après charge.',
+    ];
+
+    if (latestIsSevere || severeRecentCount >= 2) {
+      return BatteryHealthAnalysis(
+        level: BatteryHealthLevel.hs,
+        label: 'HS*',
+        reference: reference,
+        latestAfterCharge: latest,
+        afterChargeCount: afterChargeMeasurements.length,
+        resistanceEvolutionPercent: evolutionPercent,
+        risingTrend: risingTrend,
+        reasons: reasons,
+      );
+    }
+
+    if (latestHasWarning || risingTrend) {
+      return BatteryHealthAnalysis(
+        level: BatteryHealthLevel.warning,
+        label: 'À surveiller*',
+        reference: reference,
+        latestAfterCharge: latest,
+        afterChargeCount: afterChargeMeasurements.length,
+        resistanceEvolutionPercent: evolutionPercent,
+        risingTrend: risingTrend,
+        reasons: reasons,
+      );
+    }
+
+    return BatteryHealthAnalysis(
+      level: BatteryHealthLevel.good,
+      label: 'Bonne*',
+      reference: reference,
+      latestAfterCharge: latest,
+      afterChargeCount: afterChargeMeasurements.length,
+      resistanceEvolutionPercent: evolutionPercent,
+      risingTrend: risingTrend,
+      reasons: reasons,
+    );
   }
 
-  return BatteryChargeState.discharged;
-}
   static String _technologyPrefix(String technology) {
     final normalized = technology
         .toLowerCase()
@@ -878,4 +1008,46 @@ latestUsefulMeasurementByBattery.putIfAbsent(
         return cleaned.isEmpty ? 'BAT' : cleaned;
     }
   }
+}
+
+enum BatteryHealthLevel { notEvaluated, good, warning, hs }
+
+class BatteryHealthAnalysis {
+  const BatteryHealthAnalysis({
+    required this.level,
+    required this.label,
+    required this.reference,
+    required this.latestAfterCharge,
+    required this.afterChargeCount,
+    required this.resistanceEvolutionPercent,
+    required this.risingTrend,
+    required this.reasons,
+  });
+
+  const BatteryHealthAnalysis.notEvaluated()
+    : level = BatteryHealthLevel.notEvaluated,
+      label = 'Non évaluée',
+      reference = null,
+      latestAfterCharge = null,
+      afterChargeCount = 0,
+      resistanceEvolutionPercent = null,
+      risingTrend = false,
+      reasons = const [
+        'Une mesure de référence et au moins un relevé après charge sont nécessaires.',
+      ];
+
+  final BatteryHealthLevel level;
+  final String label;
+  final BatteryMeasurement? reference;
+  final BatteryMeasurement? latestAfterCharge;
+  final int afterChargeCount;
+  final double? resistanceEvolutionPercent;
+  final bool risingTrend;
+  final List<String> reasons;
+
+  bool get isEvaluated => level != BatteryHealthLevel.notEvaluated;
+
+  bool get isWarning => level == BatteryHealthLevel.warning;
+
+  bool get isHs => level == BatteryHealthLevel.hs;
 }

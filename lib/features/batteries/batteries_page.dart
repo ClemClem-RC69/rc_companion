@@ -373,73 +373,16 @@ class _BatteriesPageState extends State<BatteriesPage> {
   }
 
   _BatteryHealthStatus _healthStatusFor(List<BatteryMeasurement> measurements) {
-    BatteryMeasurement? reference;
-    BatteryMeasurement? latestAfterCharge;
+    final analysis = BatteryService.calculateBatteryHealth(measurements);
 
-    for (final measurement in measurements) {
-      if (reference == null && measurement.isReference) {
-        reference = measurement;
-      }
-      if (latestAfterCharge == null && measurement.isAfterCharge) {
-        latestAfterCharge = measurement;
-      }
-    }
+    final level = switch (analysis.level) {
+      BatteryHealthLevel.notEvaluated => _BatteryHealthLevel.notEvaluated,
+      BatteryHealthLevel.good => _BatteryHealthLevel.good,
+      BatteryHealthLevel.warning => _BatteryHealthLevel.warning,
+      BatteryHealthLevel.hs => _BatteryHealthLevel.hs,
+    };
 
-    if (reference == null || latestAfterCharge == null) {
-      return const _BatteryHealthStatus(
-        label: 'Non évaluée',
-        level: _BatteryHealthLevel.notEvaluated,
-      );
-    }
-
-    final voltageSpread = latestAfterCharge.maximumVoltageDifference;
-    final resistanceSpread =
-        latestAfterCharge.maximumInternalResistanceDifference;
-    final referenceAverage = reference.averageInternalResistance;
-    final currentAverage = latestAfterCharge.averageInternalResistance;
-    final evolution = referenceAverage <= 0
-        ? 0.0
-        : ((currentAverage - referenceAverage) / referenceAverage) * 100;
-
-    final severe =
-        voltageSpread > 0.100 || resistanceSpread > 10.0 || evolution > 100.0;
-
-    final voltageDegraded = voltageSpread > 0.050;
-    final resistanceDegraded = resistanceSpread > 5.0;
-    final evolutionWarning = evolution > 25.0;
-    final evolutionFatigued = evolution > 50.0;
-
-    if (severe) {
-      return const _BatteryHealthStatus(
-        label: 'À remplacer*',
-        level: _BatteryHealthLevel.replace,
-      );
-    }
-
-    final degradedCount = [
-      voltageDegraded,
-      resistanceDegraded,
-      evolutionWarning,
-    ].where((value) => value).length;
-
-    if (evolutionFatigued || degradedCount >= 2) {
-      return const _BatteryHealthStatus(
-        label: 'Fatiguée*',
-        level: _BatteryHealthLevel.tired,
-      );
-    }
-
-    if (degradedCount == 1) {
-      return const _BatteryHealthStatus(
-        label: 'À surveiller*',
-        level: _BatteryHealthLevel.warning,
-      );
-    }
-
-    return const _BatteryHealthStatus(
-      label: 'Bonne*',
-      level: _BatteryHealthLevel.good,
-    );
+    return _BatteryHealthStatus(label: analysis.label, level: level);
   }
 
   Color _healthColor(BuildContext context, _BatteryHealthLevel level) {
@@ -449,8 +392,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
       _BatteryHealthLevel.notEvaluated => colors.surfaceContainerHighest,
       _BatteryHealthLevel.good => Colors.green.shade700,
       _BatteryHealthLevel.warning => Colors.amber.shade800,
-      _BatteryHealthLevel.tired => Colors.orange.shade800,
-      _BatteryHealthLevel.replace => Colors.red.shade800,
+      _BatteryHealthLevel.hs => Colors.red.shade800,
     };
   }
 
@@ -2265,7 +2207,7 @@ class _CompactCalculatedValue extends StatelessWidget {
   }
 }
 
-enum _BatteryHealthLevel { notEvaluated, good, warning, tired, replace }
+enum _BatteryHealthLevel { notEvaluated, good, warning, hs }
 
 class _BatteryHealthStatus {
   const _BatteryHealthStatus({required this.label, required this.level});

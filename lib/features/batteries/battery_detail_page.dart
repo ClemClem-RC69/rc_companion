@@ -1043,98 +1043,50 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
   }
 
   _MeasurementAnalysis _analyzeMeasurement(BatteryMeasurement measurement) {
-    BatteryMeasurement? reference;
+    final health = BatteryService.calculateBatteryHealth(_measurements);
 
-    for (final item in _measurements) {
-      if (item.isReference) {
-        reference = item;
-        break;
-      }
-    }
+    final latest = health.latestAfterCharge ?? measurement;
 
-    final voltageSpread = measurement.maximumVoltageDifference;
-    final resistanceSpread = measurement.maximumInternalResistanceDifference;
-    final referenceAverage = reference?.averageInternalResistance ?? 0;
-    final currentAverage = measurement.averageInternalResistance;
-    final evolution = referenceAverage <= 0
-        ? 0.0
-        : ((currentAverage - referenceAverage) / referenceAverage) * 100;
+    final voltageSpread = latest.maximumVoltageDifference;
 
-    final voltageLabel = voltageSpread <= 0.020
-        ? 'Excellent'
-        : voltageSpread <= 0.050
-        ? 'Correct'
-        : voltageSpread <= 0.100
-        ? 'À surveiller'
-        : 'Mauvais';
+    final resistanceSpread = latest.maximumInternalResistanceDifference;
 
-    final resistanceLabel = resistanceSpread <= 3.0
-        ? 'Excellent'
-        : resistanceSpread <= 5.0
-        ? 'Correct'
-        : resistanceSpread <= 10.0
-        ? 'À surveiller'
-        : 'Mauvais';
+    final evolution = health.resistanceEvolutionPercent;
 
-    final evolutionLabel = reference == null
-        ? 'Référence absente'
-        : evolution <= 25.0
-        ? 'Normale'
-        : evolution <= 50.0
-        ? 'À surveiller'
-        : evolution <= 100.0
-        ? 'Dégradation importante'
-        : 'Très forte dégradation';
-
-    final reasons = <String>[
-      'Équilibrage : ${_formatDecimal(voltageSpread)} V — $voltageLabel.',
-      'Écart de résistance : '
-          '${_formatDecimal(resistanceSpread, maxDecimals: 2)} mΩ — '
-          '$resistanceLabel.',
-      reference == null
-          ? 'Évolution : mesure de référence absente.'
-          : 'Évolution de la résistance moyenne : '
-                '${evolution >= 0 ? '+' : ''}'
-                '${_formatDecimal(evolution, maxDecimals: 1)} % — '
-                '$evolutionLabel.',
-    ];
-
-    final severe =
-        voltageSpread > 0.100 || resistanceSpread > 10.0 || evolution > 100.0;
-    final voltageDegraded = voltageSpread > 0.050;
-    final resistanceDegraded = resistanceSpread > 5.0;
-    final evolutionWarning = reference != null && evolution > 25.0;
-    final evolutionFatigued = reference != null && evolution > 50.0;
-    final degradedCount = [
-      voltageDegraded,
-      resistanceDegraded,
-      evolutionWarning,
-    ].where((value) => value).length;
-
-    late final _BatteryHealthLevel level;
-
-    if (reference == null) {
-      level = _BatteryHealthLevel.notEvaluated;
-    } else if (severe) {
-      level = _BatteryHealthLevel.replace;
-    } else if (evolutionFatigued || degradedCount >= 2) {
-      level = _BatteryHealthLevel.tired;
-    } else if (degradedCount == 1) {
-      level = _BatteryHealthLevel.warning;
-    } else {
-      level = _BatteryHealthLevel.good;
-    }
+    final level = switch (health.level) {
+      BatteryHealthLevel.notEvaluated => _BatteryHealthLevel.notEvaluated,
+      BatteryHealthLevel.good => _BatteryHealthLevel.good,
+      BatteryHealthLevel.warning => _BatteryHealthLevel.warning,
+      BatteryHealthLevel.hs => _BatteryHealthLevel.hs,
+    };
 
     return _MeasurementAnalysis(
       level: level,
       voltageSpread: voltageSpread,
-      voltageLabel: voltageLabel,
+      voltageLabel: voltageSpread <= 0.050
+          ? 'Correct'
+          : voltageSpread <= 0.100
+          ? 'À surveiller'
+          : 'Critique',
       resistanceSpread: resistanceSpread,
-      resistanceLabel: resistanceLabel,
-      resistanceEvolutionPercent: reference == null ? null : evolution,
-      evolutionLabel: evolutionLabel,
-      cellMessages: reasons,
-      globalMessages: const [],
+      resistanceLabel: resistanceSpread <= 5.0
+          ? 'Correct'
+          : resistanceSpread <= 10.0
+          ? 'À surveiller'
+          : 'Critique',
+      resistanceEvolutionPercent: evolution,
+      evolutionLabel: evolution == null
+          ? 'Référence absente'
+          : evolution <= 25.0
+          ? 'Normale'
+          : evolution <= 100.0
+          ? 'À surveiller'
+          : 'Critique',
+      cellMessages: health.reasons,
+      globalMessages: [
+        'Calcul basé sur ${health.afterChargeCount} relevé(s) après charge.',
+        'Les relevés de fin de roulage ne sont pas utilisés pour déterminer la santé.',
+      ],
     );
   }
 
@@ -1307,8 +1259,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       ).colorScheme.surfaceContainerHighest,
       _BatteryHealthLevel.good => Colors.green.shade700,
       _BatteryHealthLevel.warning => Colors.amber.shade800,
-      _BatteryHealthLevel.tired => Colors.orange.shade800,
-      _BatteryHealthLevel.replace => Colors.red.shade800,
+      _BatteryHealthLevel.hs => Colors.red.shade800,
     };
   }
 
@@ -1631,8 +1582,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
           color: switch (analysis.level) {
             _BatteryHealthLevel.good => Colors.green.shade700,
             _BatteryHealthLevel.warning => Colors.amber.shade800,
-            _BatteryHealthLevel.tired => Colors.orange.shade800,
-            _BatteryHealthLevel.replace => Colors.red.shade800,
+            _BatteryHealthLevel.hs => Colors.red.shade800,
             _BatteryHealthLevel.notEvaluated => Theme.of(
               context,
             ).colorScheme.surfaceContainerHighest,
@@ -1648,8 +1598,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                       switch (analysis.level) {
                         _BatteryHealthLevel.good => Icons.check_circle,
                         _BatteryHealthLevel.warning => Icons.warning_amber,
-                        _BatteryHealthLevel.tired => Icons.battery_alert,
-                        _BatteryHealthLevel.replace => Icons.error,
+                        _BatteryHealthLevel.hs => Icons.error,
                         _BatteryHealthLevel.notEvaluated => Icons.help_outline,
                       },
                       size: 46,
@@ -1705,9 +1654,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
           ),
         ),
         _info(
-          'Nombre de mesures',
+          'Nombre de relevés après charge',
           _measurements
-              .where((item) => item.hasInternalResistance)
+              .where((item) => item.isAfterCharge && item.hasInternalResistance)
               .length
               .toString(),
         ),
@@ -1736,7 +1685,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Analyse actuelle',
+                  'Analyse historique après charge',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
@@ -2005,7 +1954,7 @@ class _VoltageSpreadThresholds {
   final double critical;
 }
 
-enum _BatteryHealthLevel { notEvaluated, good, warning, tired, replace }
+enum _BatteryHealthLevel { notEvaluated, good, warning, hs }
 
 class _MeasurementAnalysis {
   const _MeasurementAnalysis({
@@ -2030,19 +1979,16 @@ class _MeasurementAnalysis {
   final List<String> cellMessages;
   final List<String> globalMessages;
 
-  bool get hasWarning =>
-      level == _BatteryHealthLevel.warning ||
-      level == _BatteryHealthLevel.tired;
+  bool get hasWarning => level == _BatteryHealthLevel.warning;
 
-  bool get hasCritical => level == _BatteryHealthLevel.replace;
+  bool get hasCritical => level == _BatteryHealthLevel.hs;
 
   String get label {
     return switch (level) {
       _BatteryHealthLevel.notEvaluated => 'Non évaluée*',
       _BatteryHealthLevel.good => 'Bonne*',
       _BatteryHealthLevel.warning => 'À surveiller*',
-      _BatteryHealthLevel.tired => 'Fatiguée*',
-      _BatteryHealthLevel.replace => 'À remplacer*',
+      _BatteryHealthLevel.hs => 'HS*',
     };
   }
 }
