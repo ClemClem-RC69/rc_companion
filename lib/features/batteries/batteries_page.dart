@@ -35,17 +35,13 @@ class _BatteriesPageState extends State<BatteriesPage> {
       final batteries = await BatteryService.getBatteries();
 
       final healthEntries = await Future.wait(
-        batteries.map(
-          (battery) async {
-            final measurements =
-                await BatteryService.getBatteryMeasurements(battery.id);
+        batteries.map((battery) async {
+          final measurements = await BatteryService.getBatteryMeasurements(
+            battery.id,
+          );
 
-            return MapEntry(
-              battery.id,
-              _healthStatusFor(measurements),
-            );
-          },
-        ),
+          return MapEntry(battery.id, _healthStatusFor(measurements));
+        }),
       );
 
       if (!mounted) {
@@ -89,9 +85,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
   Future<void> _createPair() async {
     final created = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => const CreatePairPage(),
-      ),
+      MaterialPageRoute(builder: (_) => const CreatePairPage()),
     );
 
     if (created == true) {
@@ -102,9 +96,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
   Future<void> _scanBattery() async {
     final scannedCode = await Navigator.push<String>(
       context,
-      MaterialPageRoute(
-        builder: (_) => const BatteryScannerPage(),
-      ),
+      MaterialPageRoute(builder: (_) => const BatteryScannerPage()),
     );
 
     if (!mounted || scannedCode == null) {
@@ -116,8 +108,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
     Battery? matchingBattery;
 
     for (final battery in _batteries) {
-      if (battery.id.trim().toLowerCase() ==
-          normalizedCode.toLowerCase()) {
+      if (battery.id.trim().toLowerCase() == normalizedCode.toLowerCase()) {
         matchingBattery = battery;
         break;
       }
@@ -180,18 +171,14 @@ class _BatteriesPageState extends State<BatteriesPage> {
             child: const Text('Annuler'),
           ),
           OutlinedButton.icon(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              BatteryChargeState.storage,
-            ),
+            onPressed: () =>
+                Navigator.pop(dialogContext, BatteryChargeState.storage),
             icon: const Icon(Icons.inventory_2_outlined),
             label: const Text('Storage'),
           ),
           FilledButton.icon(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              BatteryChargeState.charged,
-            ),
+            onPressed: () =>
+                Navigator.pop(dialogContext, BatteryChargeState.charged),
             icon: const Icon(Icons.battery_charging_full),
             label: const Text('Chargée'),
           ),
@@ -219,9 +206,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
   Future<void> _openBattery(Battery battery) async {
     await Navigator.push<void>(
       context,
-      MaterialPageRoute(
-        builder: (_) => BatteryDetailPage(battery: battery),
-      ),
+      MaterialPageRoute(builder: (_) => BatteryDetailPage(battery: battery)),
     );
 
     await _loadBatteries();
@@ -265,9 +250,9 @@ class _BatteriesPageState extends State<BatteriesPage> {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Paire $pairId dissoute')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Paire $pairId dissoute')));
 
       await _loadBatteries();
     } catch (error) {
@@ -281,12 +266,9 @@ class _BatteriesPageState extends State<BatteriesPage> {
     }
   }
 
-  Future<void> _editReferenceMeasurement(
-    Battery battery,
-  ) async {
+  Future<void> _editReferenceMeasurement(Battery battery) async {
     try {
-      final existing =
-          await BatteryService.getReferenceMeasurement(battery.id);
+      final existing = await BatteryService.getReferenceMeasurement(battery.id);
 
       if (!mounted) {
         return;
@@ -328,11 +310,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Mesure de référence impossible : $error',
-          ),
-        ),
+        SnackBar(content: Text('Mesure de référence impossible : $error')),
       );
     }
   }
@@ -378,9 +356,9 @@ class _BatteriesPageState extends State<BatteriesPage> {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${battery.id} supprimée')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${battery.id} supprimée')));
 
       await _loadBatteries();
     } catch (error) {
@@ -394,9 +372,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
     }
   }
 
-  _BatteryHealthStatus _healthStatusFor(
-    List<BatteryMeasurement> measurements,
-  ) {
+  _BatteryHealthStatus _healthStatusFor(List<BatteryMeasurement> measurements) {
     BatteryMeasurement? reference;
     BatteryMeasurement? latestAfterCharge;
 
@@ -425,9 +401,8 @@ class _BatteriesPageState extends State<BatteriesPage> {
         ? 0.0
         : ((currentAverage - referenceAverage) / referenceAverage) * 100;
 
-    final severe = voltageSpread > 0.100 ||
-        resistanceSpread > 10.0 ||
-        evolution > 100.0;
+    final severe =
+        voltageSpread > 0.100 || resistanceSpread > 10.0 || evolution > 100.0;
 
     final voltageDegraded = voltageSpread > 0.050;
     final resistanceDegraded = resistanceSpread > 5.0;
@@ -467,15 +442,11 @@ class _BatteriesPageState extends State<BatteriesPage> {
     );
   }
 
-  Color _healthColor(
-    BuildContext context,
-    _BatteryHealthLevel level,
-  ) {
+  Color _healthColor(BuildContext context, _BatteryHealthLevel level) {
     final colors = Theme.of(context).colorScheme;
 
     return switch (level) {
-      _BatteryHealthLevel.notEvaluated =>
-        colors.surfaceContainerHighest,
+      _BatteryHealthLevel.notEvaluated => colors.surfaceContainerHighest,
       _BatteryHealthLevel.good => Colors.green.shade700,
       _BatteryHealthLevel.warning => Colors.amber.shade800,
       _BatteryHealthLevel.tired => Colors.orange.shade800,
@@ -488,27 +459,41 @@ class _BatteriesPageState extends State<BatteriesPage> {
     _BatteryHealthLevel level,
   ) {
     return switch (level) {
-      _BatteryHealthLevel.notEvaluated =>
-        Theme.of(context).colorScheme.onSurfaceVariant,
+      _BatteryHealthLevel.notEvaluated => Theme.of(
+        context,
+      ).colorScheme.onSurfaceVariant,
       _ => Colors.white,
     };
   }
 
-  Color _chargeStateColor(BatteryChargeState state) {
-    return switch (state) {
-      BatteryChargeState.charged => Colors.green.shade700,
-      BatteryChargeState.storage => Colors.blue.shade700,
-      BatteryChargeState.partial => Colors.orange.shade700,
-      BatteryChargeState.discharged => Colors.red.shade700,
-    };
+  Color _chargeStateColor(Battery battery) {
+    if (battery.chargeState == BatteryChargeState.storage) {
+      return Colors.blue.shade700;
+    }
+
+    final percent = battery.chargePercent;
+
+    if (percent == null) {
+      return Colors.red.shade700;
+    }
+
+    if (percent >= 50) {
+      return Colors.green.shade700;
+    }
+
+    if (percent > 20) {
+      return Colors.orange.shade700;
+    }
+
+    return Colors.red.shade700;
   }
 
   Widget _chargeStateChip(Battery battery) {
     return Chip(
       visualDensity: VisualDensity.compact,
-      backgroundColor: _chargeStateColor(battery.chargeState),
+      backgroundColor: _chargeStateColor(battery),
       label: Text(
-        battery.chargeState.label,
+        battery.chargeDisplayLabel,
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w700,
@@ -582,14 +567,9 @@ class _BatteriesPageState extends State<BatteriesPage> {
     );
   }
 
-  Widget _buildBatteryTile(
-    Battery battery, {
-    bool insidePair = false,
-  }) {
+  Widget _buildBatteryTile(Battery battery, {bool insidePair = false}) {
     return Card(
-      margin: EdgeInsets.only(
-        bottom: insidePair ? 6 : 10,
-      ),
+      margin: EdgeInsets.only(bottom: insidePair ? 6 : 10),
       elevation: insidePair ? 0 : null,
       color: insidePair
           ? Theme.of(context).colorScheme.surfaceContainerHighest
@@ -628,15 +608,11 @@ class _BatteriesPageState extends State<BatteriesPage> {
 
                   return Chip(
                     visualDensity: VisualDensity.compact,
-                    backgroundColor:
-                        _healthColor(context, health.level),
+                    backgroundColor: _healthColor(context, health.level),
                     label: Text(
                       health.label,
                       style: TextStyle(
-                        color: _healthForegroundColor(
-                          context,
-                          health.level,
-                        ),
+                        color: _healthForegroundColor(context, health.level),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -691,10 +667,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
     );
   }
 
-  Widget _buildPairCard(
-    String pairId,
-    List<Battery> batteries,
-  ) {
+  Widget _buildPairCard(String pairId, List<Battery> batteries) {
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
       child: Padding(
@@ -704,17 +677,14 @@ class _BatteriesPageState extends State<BatteriesPage> {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.link,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                Icon(Icons.link, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Paire $pairId',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 Text(
@@ -725,10 +695,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
             ),
             const SizedBox(height: 10),
             ...batteries.map(
-              (battery) => _buildBatteryTile(
-                battery,
-                insidePair: true,
-              ),
+              (battery) => _buildBatteryTile(battery, insidePair: true),
             ),
           ],
         ),
@@ -750,10 +717,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
             children: [
               const Icon(Icons.cloud_off, size: 48),
               const SizedBox(height: 16),
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-              ),
+              Text(_errorMessage!, textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: _loadBatteries,
@@ -815,10 +779,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
               ...pairEntries.map(
                 (entry) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _buildPairCard(
-                    entry.key,
-                    entry.value,
-                  ),
+                  child: _buildPairCard(entry.key, entry.value),
                 ),
               ),
             ],
@@ -865,7 +826,6 @@ class _BatteriesPageState extends State<BatteriesPage> {
     );
   }
 }
-
 
 class AddBatteryPage extends StatefulWidget {
   const AddBatteryPage({super.key});
@@ -957,10 +917,7 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
         return;
       }
 
-      await _proposeReferenceMeasurement(
-        context: context,
-        battery: battery,
-      );
+      await _proposeReferenceMeasurement(context: context, battery: battery);
 
       if (mounted) {
         Navigator.pop(context, true);
@@ -994,10 +951,10 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
                 border: OutlineInputBorder(),
               ),
               items: _technologies
-                  .map((value) => DropdownMenuItem(
-                        value: value,
-                        child: Text(value),
-                      ))
+                  .map(
+                    (value) =>
+                        DropdownMenuItem(value: value, child: Text(value)),
+                  )
                   .toList(),
               onChanged: _isSaving
                   ? null
@@ -1036,10 +993,10 @@ class _AddBatteryPageState extends State<AddBatteryPage> {
                 border: OutlineInputBorder(),
               ),
               items: _cellOptions
-                  .map((value) => DropdownMenuItem(
-                        value: value,
-                        child: Text(value),
-                      ))
+                  .map(
+                    (value) =>
+                        DropdownMenuItem(value: value, child: Text(value)),
+                  )
                   .toList(),
               onChanged: _isSaving
                   ? null
@@ -1258,7 +1215,8 @@ class _CreatePairPageState extends State<CreatePairPage>
       _existing2 != null &&
       _existing1!.id == _existing2!.id;
 
-  bool get _complete => _batteryForSlot(1) != null && _batteryForSlot(2) != null;
+  bool get _complete =>
+      _batteryForSlot(1) != null && _batteryForSlot(2) != null;
 
   bool get _compatible {
     final first = _batteryForSlot(1);
@@ -1307,9 +1265,7 @@ class _CreatePairPageState extends State<CreatePairPage>
         slot == 1 ? _capacity1.text.trim() : _capacity2.text.trim(),
       ),
       cells: slot == 1 ? _cells1 : _cells2,
-      cRate: int.parse(
-        slot == 1 ? _cRate1.text.trim() : _cRate2.text.trim(),
-      ),
+      cRate: int.parse(slot == 1 ? _cRate1.text.trim() : _cRate2.text.trim()),
       status: 'Active',
       notes: (slot == 1 ? _notes1.text : _notes2.text).trim().isEmpty
           ? null
@@ -1439,10 +1395,7 @@ class _CreatePairPageState extends State<CreatePairPage>
       }
 
       for (final battery in newBatteries) {
-        await _proposeReferenceMeasurement(
-          context: context,
-          battery: battery,
-        );
+        await _proposeReferenceMeasurement(context: context, battery: battery);
 
         if (!mounted) {
           return;
@@ -1452,9 +1405,9 @@ class _CreatePairPageState extends State<CreatePairPage>
       Navigator.pop(context, true);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Création impossible : $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Création impossible : $error')));
       }
     } finally {
       if (mounted) {
@@ -1520,10 +1473,9 @@ class _CreatePairPageState extends State<CreatePairPage>
               border: OutlineInputBorder(),
             ),
             items: _technologies
-                .map((value) => DropdownMenuItem(
-                      value: value,
-                      child: Text(value),
-                    ))
+                .map(
+                  (value) => DropdownMenuItem(value: value, child: Text(value)),
+                )
                 .toList(),
             onChanged: _isSaving
                 ? null
@@ -1570,10 +1522,9 @@ class _CreatePairPageState extends State<CreatePairPage>
               border: OutlineInputBorder(),
             ),
             items: _cellOptions
-                .map((value) => DropdownMenuItem(
-                      value: value,
-                      child: Text(value),
-                    ))
+                .map(
+                  (value) => DropdownMenuItem(value: value, child: Text(value)),
+                )
                 .toList(),
             onChanged: _isSaving
                 ? null
@@ -1662,9 +1613,7 @@ class _CreatePairPageState extends State<CreatePairPage>
                     '${battery.cRate}C',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
@@ -1693,9 +1642,7 @@ class _CreatePairPageState extends State<CreatePairPage>
                           battery.id,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         Text(
                           '${battery.brand} • ${battery.technology} • '
@@ -1744,8 +1691,7 @@ class _CreatePairPageState extends State<CreatePairPage>
             onPressed: _isSaving
                 ? null
                 : () {
-                    final valid = _source1 ==
-                            PairBatterySource.existingBattery
+                    final valid = _source1 == PairBatterySource.existingBattery
                         ? _existing1 != null
                         : (_formKey1.currentState?.validate() ?? false);
 
@@ -1777,85 +1723,75 @@ class _CreatePairPageState extends State<CreatePairPage>
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!, textAlign: TextAlign.center))
-              : Column(
-                  children: [
-                    if (_complete && !_compatible)
-                      Container(
-                        margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.red.shade700,
-                            width: 2,
+          ? Center(child: Text(_error!, textAlign: TextAlign.center))
+          : Column(
+              children: [
+                if (_complete && !_compatible)
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.red.shade700, width: 2),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error, color: Colors.red.shade700, size: 34),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'BATTERIES INCOMPATIBLES\n'
+                            'Les deux batteries doivent avoir la même '
+                            'technologie, le même nombre de cellules, '
+                            'la même capacité et le même taux C.',
+                            style: TextStyle(fontWeight: FontWeight.w700),
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.error,
-                              color: Colors.red.shade700,
-                              size: 34,
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Text(
-                                'BATTERIES INCOMPATIBLES\n'
-                                'Les deux batteries doivent avoir la même '
-                                'technologie, le même nombre de cellules, '
-                                'la même capacité et le même taux C.',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: () => _tabController.animateTo(1),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.red.shade700,
-                              ),
-                              child: const Text('Modifier'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: [_tab(1), _tab(2)],
-                      ),
-                    ),
-                    SafeArea(
-                      top: false,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _isSaving ? null : _savePair,
-                            icon: _isSaving
-                                ? const SizedBox.square(
-                                    dimension: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.link),
-                            label: Text(
-                              _isSaving ? 'Création...' : 'Créer la paire',
-                            ),
+                        TextButton(
+                          onPressed: () => _tabController.animateTo(1),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red.shade700,
                           ),
+                          child: const Text('Modifier'),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [_tab(1), _tab(2)],
+                  ),
                 ),
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _isSaving ? null : _savePair,
+                        icon: _isSaving
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.link),
+                        label: Text(
+                          _isSaving ? 'Création...' : 'Créer la paire',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
-
 
 Future<void> _proposeReferenceMeasurement({
   required BuildContext context,
@@ -1891,9 +1827,7 @@ Future<void> _proposeReferenceMeasurement({
   final measurement = await showDialog<BatteryMeasurement>(
     context: context,
     barrierDismissible: false,
-    builder: (dialogContext) => _ReferenceMeasurementDialog(
-      battery: battery,
-    ),
+    builder: (dialogContext) => _ReferenceMeasurementDialog(battery: battery),
   );
 
   if (measurement == null) {
@@ -1905,9 +1839,7 @@ Future<void> _proposeReferenceMeasurement({
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          'Mesure de référence enregistrée pour ${battery.id}',
-        ),
+        content: Text('Mesure de référence enregistrée pour ${battery.id}'),
       ),
     );
   }
@@ -1938,10 +1870,7 @@ class _ReferenceMeasurementDialogState
   bool _isSaving = false;
 
   int get _cellCount {
-    return int.tryParse(
-          widget.battery.cells.replaceAll('S', ''),
-        ) ??
-        1;
+    return int.tryParse(widget.battery.cells.replaceAll('S', '')) ?? 1;
   }
 
   @override
@@ -1966,8 +1895,7 @@ class _ReferenceMeasurementDialogState
     _resistanceControllers = List.generate(
       _cellCount,
       (index) => TextEditingController(
-        text: initial != null &&
-                index < initial.cellInternalResistances.length
+        text: initial != null && index < initial.cellInternalResistances.length
             ? initial.cellInternalResistances[index].toStringAsFixed(2)
             : '',
       ),
@@ -2000,9 +1928,7 @@ class _ReferenceMeasurementDialogState
   }
 
   double? _parseDecimal(String value) {
-    return double.tryParse(
-      value.trim().replaceAll(',', '.'),
-    );
+    return double.tryParse(value.trim().replaceAll(',', '.'));
   }
 
   List<double> get _enteredVoltages {
@@ -2013,10 +1939,7 @@ class _ReferenceMeasurementDialogState
   }
 
   double get _totalVoltage {
-    return _enteredVoltages.fold<double>(
-      0,
-      (sum, voltage) => sum + voltage,
-    );
+    return _enteredVoltages.fold<double>(0, (sum, voltage) => sum + voltage);
   }
 
   double get _maximumVoltageDifference {
@@ -2041,10 +1964,7 @@ class _ReferenceMeasurementDialogState
     return maximum - minimum;
   }
 
-  String? _validatePositiveDecimal(
-    String? value,
-    String label,
-  ) {
+  String? _validatePositiveDecimal(String? value, String label) {
     final parsed = _parseDecimal(value ?? '');
 
     if (parsed == null || parsed <= 0) {
@@ -2066,8 +1986,7 @@ class _ReferenceMeasurementDialogState
       BatteryMeasurement(
         id: widget.initialMeasurement?.id,
         batteryCode: widget.battery.id,
-        measuredAt:
-            widget.initialMeasurement?.measuredAt ?? DateTime.now(),
+        measuredAt: widget.initialMeasurement?.measuredAt ?? DateTime.now(),
         measurementType: BatteryMeasurement.referenceType,
         chargePercent: int.parse(_chargeController.text.trim()),
         cellVoltages: _voltageControllers
@@ -2099,8 +2018,7 @@ class _ReferenceMeasurementDialogState
           Expanded(
             child: _CompactCalculatedValue(
               label: 'Écart maximal',
-              value:
-                  '${_maximumVoltageDifference.toStringAsFixed(3)} V',
+              value: '${_maximumVoltageDifference.toStringAsFixed(3)} V',
             ),
           ),
         ],
@@ -2114,9 +2032,7 @@ class _ReferenceMeasurementDialogState
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2124,10 +2040,7 @@ class _ReferenceMeasurementDialogState
         children: [
           Text(
             'Cellule ${index + 1}',
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           ),
           const SizedBox(height: 6),
           Row(
@@ -2136,8 +2049,9 @@ class _ReferenceMeasurementDialogState
                 child: TextFormField(
                   controller: _voltageControllers[index],
                   enabled: !_isSaving,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   textInputAction: TextInputAction.next,
                   style: const TextStyle(fontSize: 14),
                   decoration: const InputDecoration(
@@ -2159,8 +2073,9 @@ class _ReferenceMeasurementDialogState
                 child: TextFormField(
                   controller: _resistanceControllers[index],
                   enabled: !_isSaving,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   textInputAction: index == _cellCount - 1
                       ? TextInputAction.done
                       : TextInputAction.next,
@@ -2190,7 +2105,8 @@ class _ReferenceMeasurementDialogState
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final availableWidth = mediaQuery.size.width - 16;
-    final availableHeight = mediaQuery.size.height -
+    final availableHeight =
+        mediaQuery.size.height -
         mediaQuery.padding.vertical -
         mediaQuery.viewInsets.bottom -
         16;
@@ -2198,10 +2114,7 @@ class _ReferenceMeasurementDialogState
     return Dialog(
       insetPadding: const EdgeInsets.all(8),
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 980,
-          maxHeight: availableHeight,
-        ),
+        constraints: BoxConstraints(maxWidth: 980, maxHeight: availableHeight),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
           child: Form(
@@ -2212,11 +2125,10 @@ class _ReferenceMeasurementDialogState
                 final columns = width >= 760
                     ? 3
                     : width >= 430
-                        ? 2
-                        : 2;
+                    ? 2
+                    : 2;
                 final spacing = 8.0;
-                final itemWidth =
-                    (width - spacing * (columns - 1)) / columns;
+                final itemWidth = (width - spacing * (columns - 1)) / columns;
 
                 return Column(
                   mainAxisSize: MainAxisSize.min,
@@ -2230,9 +2142,7 @@ class _ReferenceMeasurementDialogState
                                 : 'Modifier les valeurs de référence — ${widget.battery.id}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
+                            style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                         ),
@@ -2266,9 +2176,7 @@ class _ReferenceMeasurementDialogState
                               ),
                             ),
                             validator: (value) {
-                              final percent = int.tryParse(
-                                value?.trim() ?? '',
-                              );
+                              final percent = int.tryParse(value?.trim() ?? '');
 
                               if (percent == null ||
                                   percent < 0 ||
@@ -2291,9 +2199,7 @@ class _ReferenceMeasurementDialogState
                         spacing: spacing,
                         runSpacing: spacing,
                         children: [
-                          for (var index = 0;
-                              index < _cellCount;
-                              index++)
+                          for (var index = 0; index < _cellCount; index++)
                             SizedBox(
                               width: itemWidth,
                               child: _cellEditor(index),
@@ -2331,10 +2237,7 @@ class _ReferenceMeasurementDialogState
 }
 
 class _CompactCalculatedValue extends StatelessWidget {
-  const _CompactCalculatedValue({
-    required this.label,
-    required this.value,
-  });
+  const _CompactCalculatedValue({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -2362,19 +2265,10 @@ class _CompactCalculatedValue extends StatelessWidget {
   }
 }
 
-enum _BatteryHealthLevel {
-  notEvaluated,
-  good,
-  warning,
-  tired,
-  replace,
-}
+enum _BatteryHealthLevel { notEvaluated, good, warning, tired, replace }
 
 class _BatteryHealthStatus {
-  const _BatteryHealthStatus({
-    required this.label,
-    required this.level,
-  });
+  const _BatteryHealthStatus({required this.label, required this.level});
 
   final String label;
   final _BatteryHealthLevel level;

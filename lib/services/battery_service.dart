@@ -24,8 +24,7 @@ class BatteryService {
         .eq('user_id', user.id)
         .order('measured_at', ascending: false);
 
-    final latestUsefulMeasurementByBattery =
-        <String, BatteryMeasurement>{};
+    final latestUsefulMeasurementByBattery = <String, BatteryMeasurement>{};
 
     for (final rawRow in measurementRows) {
       final measurement = BatteryMeasurement.fromJson(
@@ -33,28 +32,33 @@ class BatteryService {
       );
 
       if (measurement.isReference) {
-        continue;
-      }
+  continue;
+}
 
-      latestUsefulMeasurementByBattery.putIfAbsent(
-        measurement.batteryCode,
-        () => measurement,
-      );
+final isUsefulChargeMeasurement =
+    measurement.isAfterCharge || measurement.isEndOfRun;
+
+if (!isUsefulChargeMeasurement) {
+  continue;
+}
+
+latestUsefulMeasurementByBattery.putIfAbsent(
+  measurement.batteryCode,
+  () => measurement,
+);
     }
 
-    return batteryRows.map<Battery>((json) {
-      final battery = Battery.fromJson(
-        Map<String, dynamic>.from(json),
-      );
-      final latest = latestUsefulMeasurementByBattery[battery.id];
+    return batteryRows
+        .map<Battery>((json) {
+          final battery = Battery.fromJson(Map<String, dynamic>.from(json));
+          final latest = latestUsefulMeasurementByBattery[battery.id];
 
-      return battery.copyWith(
-        chargeState: _chargeStateFor(
-          battery: battery,
-          measurement: latest,
-        ),
-      );
-    }).toList(growable: false);
+          return battery.copyWith(
+            chargeState: _chargeStateFor(battery: battery, measurement: latest),
+            chargePercent: latest?.chargePercent,
+          );
+        })
+        .toList(growable: false);
   }
 
   static Future<List<Battery>> getAvailablePairCandidates({
@@ -90,9 +94,7 @@ class BatteryService {
 
     return response
         .map<Battery>(
-          (json) => Battery.fromJson(
-            Map<String, dynamic>.from(json),
-          ),
+          (json) => Battery.fromJson(Map<String, dynamic>.from(json)),
         )
         .toList();
   }
@@ -117,14 +119,11 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    await _client.from('batteries').insert(
+    await _client
+        .from('batteries')
+        .insert(
           batteries
-              .map(
-                (battery) => {
-                  'user_id': user.id,
-                  ...battery.toJson(),
-                },
-              )
+              .map((battery) => {'user_id': user.id, ...battery.toJson()})
               .toList(),
         );
   }
@@ -159,10 +158,7 @@ class BatteryService {
 
     final now = DateTime.now();
     final pairNumber = await getNextPairNumber(now);
-    final pairId = buildPairId(
-      date: now,
-      number: pairNumber,
-    );
+    final pairId = buildPairId(date: now, number: pairNumber);
 
     final pairedNewBattery = newBattery.copyWith(pairId: pairId);
 
@@ -242,10 +238,7 @@ class BatteryService {
 
     final now = DateTime.now();
     final pairNumber = await getNextPairNumber(now);
-    final pairId = buildPairId(
-      date: now,
-      number: pairNumber,
-    );
+    final pairId = buildPairId(date: now, number: pairNumber);
 
     final firstUpdatedRows = await _client
         .from('batteries')
@@ -360,7 +353,6 @@ class BatteryService {
         .eq('battery_code', battery.id);
   }
 
-
   static Future<List<BatteryMeasurement>> getBatteryMeasurements(
     String batteryCode,
   ) async {
@@ -379,9 +371,8 @@ class BatteryService {
 
     return response
         .map<BatteryMeasurement>(
-          (json) => BatteryMeasurement.fromJson(
-            Map<String, dynamic>.from(json),
-          ),
+          (json) =>
+              BatteryMeasurement.fromJson(Map<String, dynamic>.from(json)),
         )
         .toList();
   }
@@ -400,13 +391,10 @@ class BatteryService {
         .select()
         .eq('user_id', user.id)
         .eq('battery_code', batteryCode)
-        .inFilter(
-          'measurement_type',
-          const [
-            BatteryMeasurement.referenceType,
-            'Mesure de référence',
-          ],
-        )
+        .inFilter('measurement_type', const [
+          BatteryMeasurement.referenceType,
+          'Mesure de référence',
+        ])
         .order('measured_at', ascending: false)
         .limit(1)
         .maybeSingle();
@@ -415,9 +403,7 @@ class BatteryService {
       return null;
     }
 
-    return BatteryMeasurement.fromJson(
-      Map<String, dynamic>.from(response),
-    );
+    return BatteryMeasurement.fromJson(Map<String, dynamic>.from(response));
   }
 
   static Future<BatteryMeasurement> saveReferenceMeasurement(
@@ -442,19 +428,13 @@ class BatteryService {
         .select('id')
         .eq('user_id', user.id)
         .eq('battery_code', measurement.batteryCode)
-        .inFilter(
-          'measurement_type',
-          const [
-            BatteryMeasurement.referenceType,
-            'Mesure de référence',
-          ],
-        )
+        .inFilter('measurement_type', const [
+          BatteryMeasurement.referenceType,
+          'Mesure de référence',
+        ])
         .order('measured_at');
 
-    final data = {
-      'user_id': user.id,
-      ...referenceMeasurement.toJson(),
-    };
+    final data = {'user_id': user.id, ...referenceMeasurement.toJson()};
 
     if (existingRows.isEmpty) {
       final insertedRow = await _client
@@ -491,9 +471,7 @@ class BatteryService {
           .inFilter('id', duplicateIds);
     }
 
-    return BatteryMeasurement.fromJson(
-      Map<String, dynamic>.from(updatedRow),
-    );
+    return BatteryMeasurement.fromJson(Map<String, dynamic>.from(updatedRow));
   }
 
   static Future<BatteryMeasurement?> getLatestBatteryMeasurement(
@@ -518,9 +496,7 @@ class BatteryService {
       return null;
     }
 
-    return BatteryMeasurement.fromJson(
-      Map<String, dynamic>.from(response),
-    );
+    return BatteryMeasurement.fromJson(Map<String, dynamic>.from(response));
   }
 
   static Future<BatteryMeasurement> createBatteryMeasurement(
@@ -536,16 +512,11 @@ class BatteryService {
 
     final insertedRow = await _client
         .from('battery_measurements')
-        .insert({
-          'user_id': user.id,
-          ...measurement.toJson(),
-        })
+        .insert({'user_id': user.id, ...measurement.toJson()})
         .select()
         .single();
 
-    return BatteryMeasurement.fromJson(
-      Map<String, dynamic>.from(insertedRow),
-    );
+    return BatteryMeasurement.fromJson(Map<String, dynamic>.from(insertedRow));
   }
 
   static Future<BatteryMeasurement> updateBatteryMeasurement(
@@ -670,20 +641,15 @@ class BatteryService {
         .eq('id', measurement.id!);
   }
 
-  static void _validateMeasurement(
-    BatteryMeasurement measurement,
-  ) {
+  static void _validateMeasurement(BatteryMeasurement measurement) {
     if (!BatteryMeasurement.measurementTypes.contains(
       measurement.measurementType,
     )) {
       throw StateError('Type de relevé invalide');
     }
 
-    if (measurement.chargePercent < 0 ||
-        measurement.chargePercent > 100) {
-      throw StateError(
-        'Le pourcentage doit être compris entre 0 et 100',
-      );
+    if (measurement.chargePercent < 0 || measurement.chargePercent > 100) {
+      throw StateError('Le pourcentage doit être compris entre 0 et 100');
     }
 
     if (measurement.cellVoltages.isEmpty) {
@@ -699,9 +665,7 @@ class BatteryService {
     }
 
     if (measurement.cellInternalResistances.isEmpty) {
-      throw StateError(
-        'Aucune résistance interne de cellule renseignée',
-      );
+      throw StateError('Aucune résistance interne de cellule renseignée');
     }
 
     if (measurement.cellVoltages.length !=
@@ -714,9 +678,7 @@ class BatteryService {
     if (measurement.cellInternalResistances.any(
       (resistance) => resistance <= 0,
     )) {
-      throw StateError(
-        'Les résistances internes doivent être positives',
-      );
+      throw StateError('Les résistances internes doivent être positives');
     }
   }
 
@@ -805,10 +767,7 @@ class BatteryService {
         '${number.toString().padLeft(3, '0')}';
   }
 
-  static String buildPairId({
-    required DateTime date,
-    required int number,
-  }) {
+  static String buildPairId({required DateTime date, required int number}) {
     return 'P-${number.toString().padLeft(3, '0')}';
   }
 
@@ -830,11 +789,8 @@ class BatteryService {
       return null;
     }
 
-    return Battery.fromJson(
-      Map<String, dynamic>.from(response),
-    );
+    return Battery.fromJson(Map<String, dynamic>.from(response));
   }
-
 
   static String withAfterChargeStateNote(
     String? existingNotes,
@@ -857,49 +813,43 @@ class BatteryService {
   }
 
   static BatteryChargeState _chargeStateFor({
-    required Battery battery,
-    required BatteryMeasurement? measurement,
-  }) {
-    if (measurement == null) {
+  required Battery battery,
+  required BatteryMeasurement? measurement,
+}) {
+  if (measurement == null) {
+    return BatteryChargeState.discharged;
+  }
+
+  if (measurement.isAfterCharge) {
+    final note = measurement.notes ?? '';
+
+    final isStorage = note
+        .split('|')
+        .any((part) => part.trim() == 'charge_state:storage');
+
+    if (isStorage) {
+      return BatteryChargeState.storage;
+    }
+
+    if (measurement.chargePercent <= 20) {
       return BatteryChargeState.discharged;
     }
 
-    if (measurement.isAfterCharge) {
-      final note = measurement.notes ?? '';
-
-      if (note.split('|').any(
-            (part) => part.trim() == 'charge_state:storage',
-          )) {
-        return BatteryChargeState.storage;
-      }
-
+    if (measurement.chargePercent >= 95) {
       return BatteryChargeState.charged;
     }
 
-    if (!measurement.isEndOfRun) {
-      return BatteryChargeState.discharged;
-    }
+    return BatteryChargeState.partial;
+  }
 
-    final capacityIsLow = measurement.chargePercent <= 15;
-    final minimumCellVoltage = measurement.minimumCellVoltage;
-    final technology = battery.technology
-        .toLowerCase()
-        .replaceAll('-', '')
-        .replaceAll(' ', '');
-
-    final voltageIsLow = switch (technology) {
-      'lipo' || 'lihv' => minimumCellVoltage <= 3.50,
-      'liion' => minimumCellVoltage <= 3.20,
-      'life' => minimumCellVoltage <= 2.90,
-      'nimh' || 'nicd' => false,
-      _ => minimumCellVoltage <= 3.50,
-    };
-
-    return capacityIsLow || voltageIsLow
+  if (measurement.isEndOfRun) {
+    return measurement.chargePercent <= 20
         ? BatteryChargeState.discharged
         : BatteryChargeState.partial;
   }
 
+  return BatteryChargeState.discharged;
+}
   static String _technologyPrefix(String technology) {
     final normalized = technology
         .toLowerCase()

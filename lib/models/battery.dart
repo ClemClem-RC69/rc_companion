@@ -1,23 +1,17 @@
-enum BatteryChargeState {
-  charged,
-  storage,
-  partial,
-  discharged,
-}
+enum BatteryChargeState { charged, storage, partial, discharged }
 
 extension BatteryChargeStateLabel on BatteryChargeState {
   String get label {
     return switch (this) {
-      BatteryChargeState.charged => 'Chargée',
-      BatteryChargeState.storage => 'Storage',
-      BatteryChargeState.partial => 'Partiellement chargée',
-      BatteryChargeState.discharged => 'Déchargée',
+      BatteryChargeState.charged => 'CHARGE',
+      BatteryChargeState.storage => 'STORAGE',
+      BatteryChargeState.partial => 'CHARGE',
+      BatteryChargeState.discharged => 'CHARGE',
     };
   }
 
   bool get isSelectableForRun {
-    return this == BatteryChargeState.charged ||
-        this == BatteryChargeState.partial;
+    return this != BatteryChargeState.discharged;
   }
 }
 
@@ -31,6 +25,7 @@ class Battery {
     required this.cRate,
     required this.status,
     this.chargeState = BatteryChargeState.discharged,
+    this.chargePercent,
     this.pairId,
     this.notes,
   });
@@ -48,13 +43,33 @@ class Battery {
   /// État énergétique calculé à partir du dernier relevé utile.
   final BatteryChargeState chargeState;
 
+  /// Pourcentage provenant du dernier relevé utile.
+  final int? chargePercent;
+
   final String? pairId;
   final String? notes;
 
-  bool get isUsable =>
-      status == 'Active' && chargeState.isSelectableForRun;
+  bool get isUsable {
+  if (status != 'Active') {
+    return false;
+  }
+
+  if (chargeState == BatteryChargeState.storage) {
+    return true;
+  }
+
+  return (chargePercent ?? 0) > 20;
+}
 
   bool get isPaired => pairId != null && pairId!.isNotEmpty;
+
+  String get chargeDisplayLabel {
+  if (chargeState == BatteryChargeState.storage) {
+    return 'STORAGE';
+  }
+
+  return 'CHARGE ${chargePercent ?? 0}%';
+}
 
   factory Battery.fromJson(Map<String, dynamic> json) {
     return Battery(
@@ -93,6 +108,7 @@ class Battery {
     int? cRate,
     String? status,
     BatteryChargeState? chargeState,
+    int? chargePercent,
     String? pairId,
     String? notes,
     bool removePair = false,
@@ -107,6 +123,7 @@ class Battery {
       pairId: removePair ? null : pairId ?? this.pairId,
       status: status ?? this.status,
       chargeState: chargeState ?? this.chargeState,
+      chargePercent: chargePercent ?? this.chargePercent,
       notes: notes ?? this.notes,
     );
   }

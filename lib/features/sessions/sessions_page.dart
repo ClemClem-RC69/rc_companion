@@ -230,7 +230,7 @@ class _SessionsPageState extends State<SessionsPage> {
   String _batteryLabel(Battery battery) {
     return '${battery.brand} — ${battery.technology} — '
         '${battery.cells} — ${battery.capacity} mAh — ${battery.cRate}C — '
-        '${battery.chargeState.label}';
+        '${battery.chargeDisplayLabel}';
   }
 
   Future<void> _openSession() async {
@@ -300,7 +300,7 @@ class _SessionsPageState extends State<SessionsPage> {
 
     if (!battery.isUsable) {
       _showMessage(
-        '${battery.id} est « ${battery.chargeState.label} » et ne peut pas être utilisée pour un roulage.',
+        '${battery.id} est « ${battery.chargeDisplayLabel} » et ne peut pas être utilisée pour un roulage.',
       );
       return;
     }
@@ -459,7 +459,7 @@ class _SessionsPageState extends State<SessionsPage> {
       return _CompatibilityResult(
         isValid: false,
         message:
-            '${first.id} ne peut pas être utilisée : état de charge « ${first.chargeState.label} ».',
+            '${first.id} ne peut pas être utilisée : état de charge « ${first.chargeDisplayLabel} ».',
       );
     }
 
@@ -520,7 +520,7 @@ class _SessionsPageState extends State<SessionsPage> {
       return _CompatibilityResult(
         isValid: false,
         message:
-            '${second.id} ne peut pas être utilisée : état de charge « ${second.chargeState.label} ».',
+            '${second.id} ne peut pas être utilisée : état de charge « ${second.chargeDisplayLabel} ».',
       );
     }
 
@@ -1649,7 +1649,7 @@ class _BatteryChoiceDialog extends StatelessWidget {
                     trailing: battery.isUsable
                         ? null
                         : Text(
-                            battery.chargeState.label,
+                            battery.chargeDisplayLabel,
                             style: TextStyle(
                               color: Colors.red.shade700,
                               fontWeight: FontWeight.w700,

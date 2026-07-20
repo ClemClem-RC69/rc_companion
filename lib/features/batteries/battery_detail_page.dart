@@ -81,8 +81,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     });
 
     try {
-      final measurements =
-          await BatteryService.getBatteryMeasurements(battery.id);
+      final measurements = await BatteryService.getBatteryMeasurements(
+        battery.id,
+      );
 
       if (!mounted) {
         return;
@@ -97,8 +98,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       }
 
       setState(() {
-        _measurementsError =
-            'Impossible de charger les mesures : $error';
+        _measurementsError = 'Impossible de charger les mesures : $error';
       });
     } finally {
       if (mounted) {
@@ -118,9 +118,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     final cRateController = TextEditingController(
       text: battery.cRate.toString(),
     );
-    final notesController = TextEditingController(
-      text: battery.notes ?? '',
-    );
+    final notesController = TextEditingController(text: battery.notes ?? '');
 
     var cells = battery.cells;
     var status = battery.status;
@@ -143,12 +141,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 
               try {
                 final newBrand = brandController.text.trim();
-                final newCapacity = int.parse(
-                  capacityController.text.trim(),
-                );
-                final newCRate = int.parse(
-                  cRateController.text.trim(),
-                );
+                final newCapacity = int.parse(capacityController.text.trim());
+                final newCRate = int.parse(cRateController.text.trim());
 
                 final pairMustBeDissolved =
                     battery.isPaired &&
@@ -158,9 +152,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                         newCRate != battery.cRate);
 
                 if (pairMustBeDissolved && battery.pairId != null) {
-                  await BatteryService.dissolvePair(
-                    battery.pairId!,
-                  );
+                  await BatteryService.dissolvePair(battery.pairId!);
                 }
 
                 final editedBattery = battery.copyWith(
@@ -181,13 +173,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   return;
                 }
 
-                Navigator.pop(
-                  dialogContext,
-                  (
-                    editedBattery,
-                    pairMustBeDissolved,
-                  ),
-                );
+                Navigator.pop(dialogContext, (
+                  editedBattery,
+                  pairMustBeDissolved,
+                ));
               } catch (error) {
                 if (!dialogContext.mounted) {
                   return;
@@ -198,11 +187,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 });
 
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Modification impossible : $error',
-                    ),
-                  ),
+                  SnackBar(content: Text('Modification impossible : $error')),
                 );
               }
             }
@@ -261,9 +246,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                             border: OutlineInputBorder(),
                           ),
                           validator: (value) {
-                            final number = int.tryParse(
-                              value?.trim() ?? '',
-                            );
+                            final number = int.tryParse(value?.trim() ?? '');
 
                             if (number == null || number <= 0) {
                               return 'Renseigne une capacité valide';
@@ -279,14 +262,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                             labelText: 'Nombre de cellules',
                             border: OutlineInputBorder(),
                           ),
-                          items: const [
-                            '1S',
-                            '2S',
-                            '3S',
-                            '4S',
-                            '5S',
-                            '6S',
-                          ]
+                          items: const ['1S', '2S', '3S', '4S', '5S', '6S']
                               .map(
                                 (value) => DropdownMenuItem<String>(
                                   value: value,
@@ -314,9 +290,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                             border: OutlineInputBorder(),
                           ),
                           validator: (value) {
-                            final number = int.tryParse(
-                              value?.trim() ?? '',
-                            );
+                            final number = int.tryParse(value?.trim() ?? '');
 
                             if (number == null || number <= 0) {
                               return 'Renseigne un taux C valide';
@@ -332,20 +306,21 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                             labelText: 'Statut',
                             border: OutlineInputBorder(),
                           ),
-                          items: const [
-                            'Active',
-                            'Stockage',
-                            'À surveiller',
-                            'HS',
-                            'Retirée',
-                          ]
-                              .map(
-                                (value) => DropdownMenuItem<String>(
-                                  value: value,
-                                  child: Text(value),
-                                ),
-                              )
-                              .toList(),
+                          items:
+                              const [
+                                    'Active',
+                                    'Stockage',
+                                    'À surveiller',
+                                    'HS',
+                                    'Retirée',
+                                  ]
+                                  .map(
+                                    (value) => DropdownMenuItem<String>(
+                                      value: value,
+                                      child: Text(value),
+                                    ),
+                                  )
+                                  .toList(),
                           onChanged: isSaving
                               ? null
                               : (value) {
@@ -374,14 +349,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   icon: isSaving
                       ? const SizedBox.square(
                           dimension: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.save),
-                  label: Text(
-                    isSaving ? 'Enregistrement...' : 'Enregistrer',
-                  ),
+                  label: Text(isSaving ? 'Enregistrement...' : 'Enregistrer'),
                 ),
               ],
             );
@@ -422,11 +393,13 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
   ) {
     final notes = measurement.notes ?? '';
 
-    return notes.split('|').any(
-          (part) => part.trim() == 'charge_state:storage',
-        )
-        ? BatteryChargeState.storage
-        : BatteryChargeState.charged;
+    if (notes.split('|').any((part) => part.trim() == 'charge_state:storage')) {
+      return BatteryChargeState.storage;
+    }
+
+    return measurement.chargePercent >= 95
+        ? BatteryChargeState.charged
+        : BatteryChargeState.partial;
   }
 
   Future<BatteryChargeState?> _chooseAfterChargeState() {
@@ -443,18 +416,14 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             child: const Text('Annuler'),
           ),
           OutlinedButton.icon(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              BatteryChargeState.storage,
-            ),
+            onPressed: () =>
+                Navigator.pop(dialogContext, BatteryChargeState.storage),
             icon: const Icon(Icons.inventory_2_outlined),
             label: const Text('Storage'),
           ),
           FilledButton.icon(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              BatteryChargeState.charged,
-            ),
+            onPressed: () =>
+                Navigator.pop(dialogContext, BatteryChargeState.charged),
             icon: const Icon(Icons.battery_charging_full),
             label: const Text('Chargée'),
           ),
@@ -485,7 +454,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     final usesResistance = measurementType != BatteryMeasurement.endOfRunType;
 
     final chargeController = TextEditingController(
-      text: initialMeasurement?.chargePercent.toString() ??
+      text:
+          initialMeasurement?.chargePercent.toString() ??
           (usesResistance ? '100' : ''),
     );
     final temperatureController = TextEditingController(
@@ -496,7 +466,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     final voltageControllers = List.generate(
       _cellCount,
       (index) => TextEditingController(
-        text: initialMeasurement != null &&
+        text:
+            initialMeasurement != null &&
                 index < initialMeasurement.cellVoltages.length
             ? _formatDecimal(initialMeasurement.cellVoltages[index])
             : '',
@@ -506,13 +477,13 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         ? List.generate(
             _cellCount,
             (index) => TextEditingController(
-              text: initialMeasurement != null &&
-                      index <
-                          initialMeasurement.cellInternalResistances.length
+              text:
+                  initialMeasurement != null &&
+                      index < initialMeasurement.cellInternalResistances.length
                   ? _formatDecimal(
-                    initialMeasurement.cellInternalResistances[index],
-                    maxDecimals: 2,
-                  )
+                      initialMeasurement.cellInternalResistances[index],
+                      maxDecimals: 2,
+                    )
                   : '',
             ),
           )
@@ -527,9 +498,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
             double? parseDecimal(String value) {
-              return double.tryParse(
-                value.trim().replaceAll(',', '.'),
-              );
+              return double.tryParse(value.trim().replaceAll(',', '.'));
             }
 
             List<double> enteredVoltages() {
@@ -563,10 +532,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               return maximum - minimum;
             }
 
-            String? validatePositiveDecimal(
-              String? value,
-              String label,
-            ) {
+            String? validatePositiveDecimal(String? value, String label) {
               final parsed = parseDecimal(value ?? '');
 
               if (parsed == null || parsed <= 0) {
@@ -576,10 +542,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               return null;
             }
 
-            String? validateNonNegativeDecimal(
-              String? value,
-              String label,
-            ) {
+            String? validateNonNegativeDecimal(String? value, String label) {
               final parsed = parseDecimal(value ?? '');
 
               if (parsed == null || parsed < 0) {
@@ -600,28 +563,21 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 
               try {
                 final cellVoltages = voltageControllers
-                    .map(
-                      (controller) => parseDecimal(controller.text)!,
-                    )
+                    .map((controller) => parseDecimal(controller.text)!)
                     .toList();
 
                 final internalResistances = usesResistance
                     ? resistanceControllers
-                        .map(
-                          (controller) => parseDecimal(controller.text)!,
-                        )
-                        .toList()
+                          .map((controller) => parseDecimal(controller.text)!)
+                          .toList()
                     : const <double>[];
 
                 final newMeasurement = BatteryMeasurement(
                   id: initialMeasurement?.id,
                   batteryCode: battery.id,
-                  measuredAt:
-                      initialMeasurement?.measuredAt ?? DateTime.now(),
+                  measuredAt: initialMeasurement?.measuredAt ?? DateTime.now(),
                   measurementType: measurementType,
-                  chargePercent: int.parse(
-                    chargeController.text.trim(),
-                  ),
+                  chargePercent: int.parse(chargeController.text.trim()),
                   cellVoltages: cellVoltages,
                   cellInternalResistances: internalResistances,
                   batteryTemperature: usesResistance
@@ -638,25 +594,28 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 late final BatteryMeasurement savedMeasurement;
 
                 if (initialMeasurement != null) {
-                  if (measurementType ==
-                      BatteryMeasurement.referenceType) {
-                    savedMeasurement = await BatteryService
-                        .saveReferenceMeasurement(newMeasurement)
-                        .timeout(const Duration(seconds: 15));
+                  if (measurementType == BatteryMeasurement.referenceType) {
+                    savedMeasurement =
+                        await BatteryService.saveReferenceMeasurement(
+                          newMeasurement,
+                        ).timeout(const Duration(seconds: 15));
                   } else {
-                    savedMeasurement = await BatteryService
-                        .updateBatteryMeasurement(newMeasurement)
-                        .timeout(const Duration(seconds: 15));
+                    savedMeasurement =
+                        await BatteryService.updateBatteryMeasurement(
+                          newMeasurement,
+                        ).timeout(const Duration(seconds: 15));
                   }
                 } else if (measurementType ==
                     BatteryMeasurement.referenceType) {
-                  savedMeasurement = await BatteryService
-                      .saveReferenceMeasurement(newMeasurement)
-                      .timeout(const Duration(seconds: 15));
+                  savedMeasurement =
+                      await BatteryService.saveReferenceMeasurement(
+                        newMeasurement,
+                      ).timeout(const Duration(seconds: 15));
                 } else {
-                  savedMeasurement = await BatteryService
-                      .createBatteryMeasurement(newMeasurement)
-                      .timeout(const Duration(seconds: 15));
+                  savedMeasurement =
+                      await BatteryService.createBatteryMeasurement(
+                        newMeasurement,
+                      ).timeout(const Duration(seconds: 15));
                 }
 
                 if (!dialogContext.mounted) {
@@ -690,11 +649,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 });
 
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Enregistrement impossible : $error',
-                    ),
-                  ),
+                  SnackBar(content: Text('Enregistrement impossible : $error')),
                 );
               }
             }
@@ -753,8 +708,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                               child: TextFormField(
                                 controller: temperatureController,
                                 enabled: !isSaving,
-                                keyboardType: const TextInputType
-                                    .numberWithOptions(decimal: true),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 decoration: const InputDecoration(
                                   labelText: 'Température (facultative)',
                                   suffixText: '°C',
@@ -857,8 +814,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                                 child: TextFormField(
                                   controller: voltageControllers[index],
                                   enabled: !isSaving,
-                                  keyboardType: const TextInputType
-                                      .numberWithOptions(decimal: true),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
                                   decoration: const InputDecoration(
                                     hintText: '0,000',
                                     suffixText: 'V',
@@ -866,8 +825,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                                     isDense: true,
                                   ),
                                   onChanged: (_) => setDialogState(() {}),
-                                  validator: (value) =>
-                                      validatePositiveDecimal(
+                                  validator: (value) => validatePositiveDecimal(
                                     value,
                                     'de tension',
                                   ),
@@ -877,11 +835,12 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: TextFormField(
-                                    controller:
-                                        resistanceControllers[index],
+                                    controller: resistanceControllers[index],
                                     enabled: !isSaving,
-                                    keyboardType: const TextInputType
-                                        .numberWithOptions(decimal: true),
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
                                     decoration: const InputDecoration(
                                       hintText: '0,0',
                                       suffixText: 'mΩ',
@@ -890,9 +849,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                                     ),
                                     validator: (value) =>
                                         validateNonNegativeDecimal(
-                                      value,
-                                      'de résistance',
-                                    ),
+                                          value,
+                                          'de résistance',
+                                        ),
                                   ),
                                 ),
                               ],
@@ -915,14 +874,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   icon: isSaving
                       ? const SizedBox.square(
                           dimension: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.save),
-                  label: Text(
-                    isSaving ? 'Enregistrement...' : 'Enregistrer',
-                  ),
+                  label: Text(isSaving ? 'Enregistrement...' : 'Enregistrer'),
                 ),
               ],
             );
@@ -954,30 +909,35 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 
     if (measurementType == BatteryMeasurement.afterChargeType &&
         afterChargeState != null) {
+      final updatedChargeState = afterChargeState == BatteryChargeState.storage
+          ? BatteryChargeState.storage
+          : measurement.chargePercent >= 95
+          ? BatteryChargeState.charged
+          : BatteryChargeState.partial;
+
       setState(() {
-        battery = battery.copyWith(chargeState: afterChargeState);
+        battery = battery.copyWith(
+          chargeState: updatedChargeState,
+          chargePercent: measurement.chargePercent,
+        );
       });
     }
 
     if (initialMeasurement != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Relevé modifié.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Relevé modifié.')));
     } else if (measurement.hasInternalResistance) {
       _tabController.animateTo(1);
       await _showMeasurementResult(measurement);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Relevé fin de roulage enregistré.'),
-        ),
+        const SnackBar(content: Text('Relevé fin de roulage enregistré.')),
       );
     }
   }
 
-  Future<void> _showMeasurementResult(
-    BatteryMeasurement measurement,
-  ) async {
+  Future<void> _showMeasurementResult(BatteryMeasurement measurement) async {
     final analysis = _analyzeMeasurement(measurement);
 
     await showDialog<void>(
@@ -990,13 +950,13 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 analysis.hasCritical
                     ? Icons.error
                     : analysis.hasWarning
-                        ? Icons.warning_amber
-                        : Icons.check_circle,
+                    ? Icons.warning_amber
+                    : Icons.check_circle,
                 color: analysis.hasCritical
                     ? Theme.of(context).colorScheme.error
                     : analysis.hasWarning
-                        ? Colors.orange
-                        : Colors.green,
+                    ? Colors.orange
+                    : Colors.green,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1004,8 +964,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   analysis.hasCritical
                       ? 'Relevé enregistré — ALERTE'
                       : analysis.hasWarning
-                          ? 'Relevé enregistré — À surveiller'
-                          : 'Relevé enregistré — Bon état',
+                      ? 'Relevé enregistré — À surveiller'
+                      : 'Relevé enregistré — Bon état',
                 ),
               ),
             ],
@@ -1031,10 +991,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   const Divider(height: 28),
                   Text(
                     'Analyse des cellules',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   ...analysis.cellMessages.map(
@@ -1047,10 +1006,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                     const Divider(height: 28),
                     Text(
                       'Analyse globale',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     ...analysis.globalMessages.map(
@@ -1065,10 +1023,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                     'Ces alertes sont des repères de suivi. '
                     'En cas de gonflement, choc, fuite, odeur ou '
                     'échauffement anormal, retire la batterie du service.',
-                    style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Colors.white70),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.white70),
                   ),
                 ],
               ),
@@ -1085,9 +1042,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     );
   }
 
-  _MeasurementAnalysis _analyzeMeasurement(
-    BatteryMeasurement measurement,
-  ) {
+  _MeasurementAnalysis _analyzeMeasurement(BatteryMeasurement measurement) {
     BatteryMeasurement? reference;
 
     for (final item in _measurements) {
@@ -1098,8 +1053,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     }
 
     final voltageSpread = measurement.maximumVoltageDifference;
-    final resistanceSpread =
-        measurement.maximumInternalResistanceDifference;
+    final resistanceSpread = measurement.maximumInternalResistanceDifference;
     final referenceAverage = reference?.averageInternalResistance ?? 0;
     final currentAverage = measurement.averageInternalResistance;
     final evolution = referenceAverage <= 0
@@ -1109,28 +1063,28 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     final voltageLabel = voltageSpread <= 0.020
         ? 'Excellent'
         : voltageSpread <= 0.050
-            ? 'Correct'
-            : voltageSpread <= 0.100
-                ? 'À surveiller'
-                : 'Mauvais';
+        ? 'Correct'
+        : voltageSpread <= 0.100
+        ? 'À surveiller'
+        : 'Mauvais';
 
     final resistanceLabel = resistanceSpread <= 3.0
         ? 'Excellent'
         : resistanceSpread <= 5.0
-            ? 'Correct'
-            : resistanceSpread <= 10.0
-                ? 'À surveiller'
-                : 'Mauvais';
+        ? 'Correct'
+        : resistanceSpread <= 10.0
+        ? 'À surveiller'
+        : 'Mauvais';
 
     final evolutionLabel = reference == null
         ? 'Référence absente'
         : evolution <= 25.0
-            ? 'Normale'
-            : evolution <= 50.0
-                ? 'À surveiller'
-                : evolution <= 100.0
-                    ? 'Dégradation importante'
-                    : 'Très forte dégradation';
+        ? 'Normale'
+        : evolution <= 50.0
+        ? 'À surveiller'
+        : evolution <= 100.0
+        ? 'Dégradation importante'
+        : 'Très forte dégradation';
 
     final reasons = <String>[
       'Équilibrage : ${_formatDecimal(voltageSpread)} V — $voltageLabel.',
@@ -1140,14 +1094,13 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       reference == null
           ? 'Évolution : mesure de référence absente.'
           : 'Évolution de la résistance moyenne : '
-              '${evolution >= 0 ? '+' : ''}'
-              '${_formatDecimal(evolution, maxDecimals: 1)} % — '
-              '$evolutionLabel.',
+                '${evolution >= 0 ? '+' : ''}'
+                '${_formatDecimal(evolution, maxDecimals: 1)} % — '
+                '$evolutionLabel.',
     ];
 
-    final severe = voltageSpread > 0.100 ||
-        resistanceSpread > 10.0 ||
-        evolution > 100.0;
+    final severe =
+        voltageSpread > 0.100 || resistanceSpread > 10.0 || evolution > 100.0;
     final voltageDegraded = voltageSpread > 0.050;
     final resistanceDegraded = resistanceSpread > 5.0;
     final evolutionWarning = reference != null && evolution > 25.0;
@@ -1236,29 +1189,19 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       case 'lihv':
       case 'liion':
       case 'life':
-        return const _VoltageSpreadThresholds(
-          warning: 0.030,
-          critical: 0.050,
-        );
+        return const _VoltageSpreadThresholds(warning: 0.030, critical: 0.050);
       default:
-        return const _VoltageSpreadThresholds(
-          warning: 0.050,
-          critical: 0.100,
-        );
+        return const _VoltageSpreadThresholds(warning: 0.050, critical: 0.100);
     }
   }
 
-  Future<void> _deleteMeasurement(
-    BatteryMeasurement measurement,
-  ) async {
+  Future<void> _deleteMeasurement(BatteryMeasurement measurement) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Supprimer ce relevé ?'),
-          content: const Text(
-            'Cette action est irréversible.',
-          ),
+          content: const Text('Cette action est irréversible.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -1267,10 +1210,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
               style: FilledButton.styleFrom(
-                backgroundColor:
-                    Theme.of(context).colorScheme.error,
-                foregroundColor:
-                    Theme.of(context).colorScheme.onError,
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
               ),
               child: const Text('Supprimer'),
             ),
@@ -1291,20 +1232,16 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Relevé supprimé'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Relevé supprimé')));
     } catch (error) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Suppression impossible : $error'),
-        ),
+        SnackBar(content: Text('Suppression impossible : $error')),
       );
     }
   }
@@ -1325,28 +1262,18 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
           controller: _tabController,
           isScrollable: true,
           tabs: const [
-            Tab(
-              icon: Icon(Icons.add_chart),
-              text: 'Mesures',
-            ),
+            Tab(icon: Icon(Icons.add_chart), text: 'Mesures'),
             Tab(
               icon: Icon(Icons.monitor_heart_outlined),
               text: 'État de la batterie',
             ),
-            Tab(
-              icon: Icon(Icons.qr_code_2),
-              text: 'QR Code',
-            ),
+            Tab(icon: Icon(Icons.qr_code_2), text: 'QR Code'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildMeasurementsTab(),
-          _buildHealthTab(),
-          _buildQrTab(),
-        ],
+        children: [_buildMeasurementsTab(), _buildHealthTab(), _buildQrTab()],
       ),
     );
   }
@@ -1375,8 +1302,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     final analysis = _latestAnalysis;
 
     return switch (analysis?.level) {
-      null || _BatteryHealthLevel.notEvaluated =>
-        Theme.of(context).colorScheme.surfaceContainerHighest,
+      null || _BatteryHealthLevel.notEvaluated => Theme.of(
+        context,
+      ).colorScheme.surfaceContainerHighest,
       _BatteryHealthLevel.good => Colors.green.shade700,
       _BatteryHealthLevel.warning => Colors.amber.shade800,
       _BatteryHealthLevel.tired => Colors.orange.shade800,
@@ -1393,26 +1321,35 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     return Colors.white;
   }
 
-  Color _chargeStateColor(BatteryChargeState state) {
-    return switch (state) {
-      BatteryChargeState.charged => Colors.green.shade700,
-      BatteryChargeState.storage => Colors.blue.shade700,
-      BatteryChargeState.partial => Colors.orange.shade700,
-      BatteryChargeState.discharged => Colors.red.shade700,
-    };
+  Color _chargeStateColor() {
+    if (battery.chargeState == BatteryChargeState.storage) {
+      return Colors.blue.shade700;
+    }
+
+    final percent = battery.chargePercent;
+
+    if (percent == null) {
+      return Colors.red.shade700;
+    }
+
+    if (percent >= 50) {
+      return Colors.green.shade700;
+    }
+
+    if (percent > 21) {
+      return Colors.orange.shade700;
+    }
+
+    return Colors.red.shade700;
   }
 
   Widget _chargeStateChip() {
     return Chip(
       visualDensity: VisualDensity.compact,
-      backgroundColor: _chargeStateColor(battery.chargeState),
-      avatar: const Icon(
-        Icons.battery_std,
-        size: 18,
-        color: Colors.white,
-      ),
+      backgroundColor: _chargeStateColor(),
+      avatar: const Icon(Icons.battery_std, size: 18, color: Colors.white),
       label: Text(
-        battery.chargeState.label,
+        battery.chargeDisplayLabel,
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w700,
@@ -1428,10 +1365,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(
-              Icons.battery_charging_full,
-              size: 42,
-            ),
+            const Icon(Icons.battery_charging_full, size: 42),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1499,10 +1433,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 const SizedBox(height: 12),
                 const Text(
                   'Étiquette QR Code individuelle',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -1544,9 +1475,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () => _addMeasurement(
-                  BatteryMeasurement.referenceType,
-                ),
+                onPressed: () =>
+                    _addMeasurement(BatteryMeasurement.referenceType),
                 icon: const Icon(Icons.straighten_outlined),
                 label: const Text('Ajouter le relevé de référence'),
               ),
@@ -1565,9 +1495,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _addMeasurement(
-                    BatteryMeasurement.endOfRunType,
-                  ),
+                  onPressed: () =>
+                      _addMeasurement(BatteryMeasurement.endOfRunType),
                   icon: const Icon(Icons.sports_score),
                   label: const Text('Relevé après roulage'),
                 ),
@@ -1588,10 +1517,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
           const SizedBox(height: 20),
           Text(
             'Historique des relevés',
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 10),
           if (_isLoadingMeasurements)
@@ -1607,10 +1535,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    Text(
-                      _measurementsError!,
-                      textAlign: TextAlign.center,
-                    ),
+                    Text(_measurementsError!, textAlign: TextAlign.center),
                     const SizedBox(height: 12),
                     FilledButton.icon(
                       onPressed: _loadMeasurements,
@@ -1647,10 +1572,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
-            _measurementsError!,
-            textAlign: TextAlign.center,
-          ),
+          child: Text(_measurementsError!, textAlign: TextAlign.center),
         ),
       );
     }
@@ -1670,10 +1592,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   SizedBox(height: 12),
                   Text(
                     'ÉTAT NON ÉVALUÉ*',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
                   ),
                   SizedBox(height: 8),
                   Text(
@@ -1696,13 +1615,12 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     );
     final analysis = _analyzeMeasurement(latest);
 
-    final resistanceEvolution =
-        reference.averageInternalResistance == 0
-            ? 0.0
-            : ((latest.averageInternalResistance -
-                        reference.averageInternalResistance) /
-                    reference.averageInternalResistance) *
-                100;
+    final resistanceEvolution = reference.averageInternalResistance == 0
+        ? 0.0
+        : ((latest.averageInternalResistance -
+                      reference.averageInternalResistance) /
+                  reference.averageInternalResistance) *
+              100;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -1715,8 +1633,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             _BatteryHealthLevel.warning => Colors.amber.shade800,
             _BatteryHealthLevel.tired => Colors.orange.shade800,
             _BatteryHealthLevel.replace => Colors.red.shade800,
-            _BatteryHealthLevel.notEvaluated =>
-              Theme.of(context).colorScheme.surfaceContainerHighest,
+            _BatteryHealthLevel.notEvaluated => Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest,
           },
           child: Padding(
             padding: const EdgeInsets.all(18),
@@ -1731,8 +1650,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                         _BatteryHealthLevel.warning => Icons.warning_amber,
                         _BatteryHealthLevel.tired => Icons.battery_alert,
                         _BatteryHealthLevel.replace => Icons.error,
-                        _BatteryHealthLevel.notEvaluated =>
-                          Icons.help_outline,
+                        _BatteryHealthLevel.notEvaluated => Icons.help_outline,
                       },
                       size: 46,
                       color: Colors.white,
@@ -1759,13 +1677,15 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                   ),
                 ),
                 const SizedBox(height: 6),
-                ...analysis.cellMessages.map((message) => Padding(
-                          padding: const EdgeInsets.only(bottom: 5),
-                          child: Text(
-                            '• $message',
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        )),
+                ...analysis.cellMessages.map(
+                  (message) => Padding(
+                    padding: const EdgeInsets.only(bottom: 5),
+                    child: Text(
+                      '• $message',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
                 ...analysis.globalMessages.map(
                   (message) => Padding(
                     padding: const EdgeInsets.only(bottom: 5),
@@ -1786,7 +1706,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         ),
         _info(
           'Nombre de mesures',
-          _measurements.where((item) => item.hasInternalResistance).length.toString(),
+          _measurements
+              .where((item) => item.hasInternalResistance)
+              .length
+              .toString(),
         ),
         _info(
           'RI moyenne actuelle',
@@ -1814,10 +1737,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               children: [
                 const Text(
                   'Analyse actuelle',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
                 ...analysis.cellMessages.map(
@@ -1847,10 +1767,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
           'et de la mise hors service de ses batteries. RC Companion et son '
           'concepteur ne sauraient être tenus responsables d’un dommage matériel '
           'ou corporel lié à l’utilisation d’une batterie.',
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.grey,
-          ),
+          style: TextStyle(fontSize: 11, color: Colors.grey),
           textAlign: TextAlign.justify,
         ),
         const SizedBox(height: 16),
@@ -1858,9 +1775,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     );
   }
 
-  String? _modelNameFromMeasurement(
-    BatteryMeasurement measurement,
-  ) {
+  String? _modelNameFromMeasurement(BatteryMeasurement measurement) {
     final notes = measurement.notes;
 
     if (notes == null || notes.isEmpty) {
@@ -1876,7 +1791,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 
     return null;
   }
-
 
   Color _measurementTypeColor(BatteryMeasurement measurement) {
     if (measurement.isReference) {
@@ -1930,10 +1844,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             color: typeColor,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            _measurementTypeIcon(measurement),
-            color: Colors.white,
-          ),
+          child: Icon(_measurementTypeIcon(measurement), color: Colors.white),
         ),
         title: Row(
           children: [
@@ -1957,9 +1868,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
               if (measurement.isEndOfSession && modelName != null)
                 Text(
                   'Modèle : $modelName',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               Text(_formatDateTime(measurement.measuredAt)),
               const SizedBox(height: 3),
@@ -1974,21 +1883,14 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           const SizedBox(height: 8),
-          _resultLine(
-            'Type de relevé',
-            measurement.measurementType,
-          ),
+          _resultLine('Type de relevé', measurement.measurementType),
           if (measurement.isEndOfSession && modelName != null)
-            _resultLine(
-              'Modèle utilisé',
-              modelName,
-            ),
+            _resultLine('Modèle utilisé', modelName),
           _resultLine(
             measurement.isEndOfRun ? 'Capacité restante' : 'Niveau de charge',
             '${measurement.chargePercent}%',
           ),
-          if (measurement.isEndOfRun &&
-              measurement.batteryTemperature != null)
+          if (measurement.isEndOfRun && measurement.batteryTemperature != null)
             _resultLine(
               'Température',
               '${_formatDecimal(measurement.batteryTemperature!)} °C',
@@ -2008,9 +1910,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             ),
           ],
           const Divider(height: 24),
-          for (var index = 0;
-              index < measurement.cellVoltages.length;
-              index++)
+          for (var index = 0; index < measurement.cellVoltages.length; index++)
             ListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
@@ -2019,7 +1919,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                 measurement.hasInternalResistance &&
                         index < measurement.cellInternalResistances.length
                     ? '${_formatDecimal(measurement.cellVoltages[index])} V • '
-                        '${_formatDecimal(measurement.cellInternalResistances[index], maxDecimals: 2)} mΩ'
+                          '${_formatDecimal(measurement.cellInternalResistances[index], maxDecimals: 2)} mΩ'
                     : '${_formatDecimal(measurement.cellVoltages[index])} V',
               ),
             ),
@@ -2058,10 +1958,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         children: [
           Expanded(child: Text(title)),
           const SizedBox(width: 12),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -2073,10 +1970,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         title: Text(title),
         trailing: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 280),
-          child: Text(
-            value,
-            textAlign: TextAlign.end,
-          ),
+          child: Text(value, textAlign: TextAlign.end),
         ),
       ),
     );
@@ -2095,10 +1989,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 }
 
 class _ResistanceThresholds {
-  const _ResistanceThresholds({
-    required this.warning,
-    required this.critical,
-  });
+  const _ResistanceThresholds({required this.warning, required this.critical});
 
   final double warning;
   final double critical;
@@ -2114,13 +2005,7 @@ class _VoltageSpreadThresholds {
   final double critical;
 }
 
-enum _BatteryHealthLevel {
-  notEvaluated,
-  good,
-  warning,
-  tired,
-  replace,
-}
+enum _BatteryHealthLevel { notEvaluated, good, warning, tired, replace }
 
 class _MeasurementAnalysis {
   const _MeasurementAnalysis({
