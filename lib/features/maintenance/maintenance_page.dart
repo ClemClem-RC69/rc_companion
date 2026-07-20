@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../models/model_setup.dart';
 import '../../models/rc_model.dart';
+import '../../services/model_setup_service.dart';
 import '../../services/supabase_service.dart';
 
 class MaintenancePage extends StatefulWidget {
@@ -220,6 +222,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       await SupabaseService.client.from('maintenance_records').insert(payload);
 
       if (draft.type == _MaintenanceType.revision) {
+        await _synchronizeCurrentSetupFromRevision(draft);
         await _recalculateRevisionCounters(modelId);
       }
 
@@ -266,6 +269,13 @@ class _MaintenancePageState extends State<MaintenancePage> {
           .eq('id', record.id)
           .eq('user_id', user.id);
 
+      if (draft.type == _MaintenanceType.revision) {
+        await _synchronizeCurrentSetupFromRevision(
+          draft,
+          editedRecordId: record.id,
+        );
+      }
+
       final affectedModelIds = <String>{};
 
       if (record.type == _MaintenanceType.revision) {
@@ -289,6 +299,94 @@ class _MaintenancePageState extends State<MaintenancePage> {
     } catch (error) {
       _showMessage('Modification impossible : $error');
     }
+  }
+
+  Future<void> _synchronizeCurrentSetupFromRevision(
+    _MaintenanceDraft draft, {
+    String? editedRecordId,
+  }) async {
+    final modelId = draft.model.id;
+
+    if (modelId == null || modelId.isEmpty) {
+      return;
+    }
+
+    // Une révision rétroactive reste dans l'historique, mais ne doit pas
+    // écraser un setup plus récent déjà enregistré.
+    var laterQuery = SupabaseService.client
+        .from('maintenance_records')
+        .select('id')
+        .eq('model_id', modelId)
+        .eq('record_type', 'REVISION')
+        .gt('maintenance_date', draft.date.toUtc().toIso8601String());
+
+    final laterRows = await laterQuery.limit(1);
+
+    final hasLaterRevision = laterRows.any(
+      (row) => editedRecordId == null || row['id'] != editedRecordId,
+    );
+
+    if (hasLaterRevision) {
+      return;
+    }
+
+    final updates = <String, String>{};
+
+    void addFluid(String sourceKey, String setupKey) {
+      final value = draft.fluids[sourceKey]?.trim() ?? '';
+
+      if (value.isNotEmpty) {
+        updates[setupKey] = _withCstSuffix(value);
+      }
+    }
+
+    addFluid('diffFront', 'front_diff_oil');
+    addFluid('diffCenter', 'center_diff_oil');
+    addFluid('diffRear', 'rear_diff_oil');
+    addFluid('shockFront', 'front_shock_oil');
+    addFluid('shockRear', 'rear_shock_oil');
+
+    for (final change in draft.setupChanges) {
+      final fieldKey = change['fieldKey']?.trim() ?? '';
+      final newValue = change['newValue']?.trim() ?? '';
+
+      if (fieldKey.isNotEmpty && newValue.isNotEmpty) {
+        updates[fieldKey] = newValue;
+      }
+    }
+
+    if (updates.isEmpty) {
+      return;
+    }
+
+    final currentSetup = await ModelSetupService.getSetup(modelId);
+    final enabledFields = List<String>.from(currentSetup.enabledFields);
+    final currentValues = Map<String, String>.from(currentSetup.currentValues);
+
+    for (final entry in updates.entries) {
+      currentValues[entry.key] = entry.value;
+
+      if (!enabledFields.contains(entry.key)) {
+        enabledFields.add(entry.key);
+      }
+    }
+
+    final updatedSetup = currentSetup.copyWith(
+      enabledFields: enabledFields,
+      currentValues: currentValues,
+    );
+
+    await ModelSetupService.saveSetup(updatedSetup);
+  }
+
+  static String _withCstSuffix(String value) {
+    final cleanValue = value.trim();
+
+    if (cleanValue.toLowerCase().contains('cst')) {
+      return cleanValue;
+    }
+
+    return '$cleanValue cSt';
   }
 
   Future<void> _recalculateRevisionCounters(String modelId) async {
@@ -368,7 +466,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
           .where((run) {
             final afterPrevious =
                 previousRevisionDate == null ||
-                run.startedAt.isAfter(previousRevisionDate!);
+                run.startedAt.isAfter(previousRevisionDate);
             final beforeOrAtRevision = !run.startedAt.isAfter(revisionDate);
             return afterPrevious && beforeOrAtRevision;
           })
@@ -753,27 +851,20 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
 
   String? _errorMessage;
 
-  static const _setupFieldChoices = <String>[
-    'Carrossage avant',
-    'Carrossage arrière',
-    'Pincement avant',
-    'Pincement arrière',
-    'Garde au sol avant',
-    'Garde au sol arrière',
-    'Position amortisseurs avant',
-    'Position amortisseurs arrière',
-    'Ressorts avant',
-    'Ressorts arrière',
-    'Pignon moteur',
-    'Couronne',
-    'Punch ESC',
-    'Frein moteur',
-    'EPA direction',
-    'Dual Rate',
-    'Expo direction',
-    'Pneus',
-    'Inserts',
-    'Autre réglage',
+  static const _setupFieldChoices = <_SetupFieldChoice>[
+    _SetupFieldChoice('pinion', 'Pignon moteur'),
+    _SetupFieldChoice('spur', 'Couronne'),
+    _SetupFieldChoice('front_camber', 'Carrossage avant'),
+    _SetupFieldChoice('rear_camber', 'Carrossage arrière'),
+    _SetupFieldChoice('front_toe', 'Pincement avant'),
+    _SetupFieldChoice('rear_toe', 'Pincement arrière'),
+    _SetupFieldChoice('front_ride_height', 'Garde au sol avant'),
+    _SetupFieldChoice('rear_ride_height', 'Garde au sol arrière'),
+    _SetupFieldChoice('esc', 'ESC'),
+    _SetupFieldChoice('motor', 'Moteur'),
+    _SetupFieldChoice('servo', 'Servo'),
+    _SetupFieldChoice('tires', 'Pneus'),
+    _SetupFieldChoice('notes', 'Notes'),
   ];
 
   @override
@@ -812,10 +903,25 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
 
     for (final change in record.setupChanges) {
       final editor = _SetupChangeEditor();
-      editor.field = change['field'];
+      editor.fieldKey =
+          change['fieldKey'] ?? _setupKeyFromLegacyLabel(change['field']);
       editor.valueController.text = change['newValue'] ?? '';
       _setupChanges.add(editor);
     }
+  }
+
+  static String? _setupKeyFromLegacyLabel(String? label) {
+    if (label == null || label.trim().isEmpty) {
+      return null;
+    }
+
+    for (final choice in _setupFieldChoices) {
+      if (choice.label == label) {
+        return choice.keyName;
+      }
+    }
+
+    return null;
   }
 
   @override
@@ -928,12 +1034,22 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
     final setupChanges = <Map<String, String>>[];
 
     for (final change in _setupChanges) {
-      final field = change.field;
+      final fieldKey = change.fieldKey;
       final value = change.valueController.text.trim();
 
-      if (field != null && value.isNotEmpty) {
-        setupChanges.add({'field': field, 'newValue': value});
+      if (fieldKey == null || value.isEmpty) {
+        continue;
       }
+
+      final choice = _setupFieldChoices.firstWhere(
+        (item) => item.keyName == fieldKey,
+      );
+
+      setupChanges.add({
+        'fieldKey': fieldKey,
+        'field': choice.label,
+        'newValue': value,
+      });
     }
 
     Navigator.of(context).pop(
@@ -1296,7 +1412,7 @@ class _SetupChangeRow extends StatefulWidget {
   });
 
   final _SetupChangeEditor editor;
-  final List<String> choices;
+  final List<_SetupFieldChoice> choices;
   final VoidCallback onRemove;
 
   @override
@@ -1313,7 +1429,7 @@ class _SetupChangeRowState extends State<_SetupChangeRow> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final dropdown = DropdownButtonFormField<String>(
-              initialValue: widget.editor.field,
+              initialValue: widget.editor.fieldKey,
               isExpanded: true,
               decoration: const InputDecoration(
                 labelText: 'Élément du setup',
@@ -1322,14 +1438,17 @@ class _SetupChangeRowState extends State<_SetupChangeRow> {
               items: widget.choices
                   .map(
                     (choice) => DropdownMenuItem(
-                      value: choice,
-                      child: Text(choice, overflow: TextOverflow.ellipsis),
+                      value: choice.keyName,
+                      child: Text(
+                        choice.label,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   )
                   .toList(),
               onChanged: (value) {
                 setState(() {
-                  widget.editor.field = value;
+                  widget.editor.fieldKey = value;
                 });
               },
             );
@@ -1583,6 +1702,33 @@ class _MaintenanceDraft {
   final String title;
   final String notes;
   final Map<String, dynamic> data;
+
+  Map<String, String> get fluids {
+    final raw = data['fluids'];
+
+    if (raw is! Map) {
+      return const {};
+    }
+
+    return raw.map((key, value) => MapEntry(key.toString(), value.toString()));
+  }
+
+  List<Map<String, String>> get setupChanges {
+    final raw = data['setupChanges'];
+
+    if (raw is! List) {
+      return const [];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          return item.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          );
+        })
+        .toList(growable: false);
+  }
 }
 
 class _MaintenanceRecord {
@@ -1666,8 +1812,15 @@ class _MaintenanceRecord {
   }
 }
 
+class _SetupFieldChoice {
+  const _SetupFieldChoice(this.keyName, this.label);
+
+  final String keyName;
+  final String label;
+}
+
 class _SetupChangeEditor {
-  String? field;
+  String? fieldKey;
   final TextEditingController valueController = TextEditingController();
 
   void dispose() {
