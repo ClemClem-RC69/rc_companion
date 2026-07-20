@@ -4,17 +4,15 @@ class InfoPage extends StatelessWidget {
   const InfoPage({super.key});
 
   static const String appVersion = 'V1.0';
-  static const String batteryHealthVersion = 'V1.1';
+  static const String batteryHealthVersion = 'V1.2';
   static const String batteryCompatibilityVersion = 'V1.0';
-  static const String batteryChargeStateVersion = 'V1.0';
+  static const String batteryChargeStateVersion = 'V1.1';
   static const String lastUpdate = 'Juillet 2026';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Informations & Références'),
-      ),
+      appBar: AppBar(title: const Text('Informations & Références')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
@@ -28,48 +26,48 @@ class InfoPage extends StatelessWidget {
             title: 'État de charge',
             children: const [
               Text(
-                'RC Companion distingue quatre états énergétiques : '
-                'Chargée, Storage, Partiellement chargée et Déchargée.',
-              ),
-              SizedBox(height: 10),
-              _InfoBullet(
-                'Chargée et Storage sont attribués uniquement par '
-                'l’utilisateur lors d’un relevé après charge.',
-              ),
-              _InfoBullet(
-                'Partiellement chargée et Déchargée sont déterminés '
-                'automatiquement après un relevé de fin de roulage.',
+                'RC Companion distingue l’état de charge actuel d’une '
+                'batterie de son état général de santé.',
               ),
               SizedBox(height: 10),
               Text(
-                'Seuils automatiques actuellement retenus :',
+                'Le niveau de charge est déterminé à partir du pourcentage '
+                'enregistré dans le dernier relevé utile.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Affichage du niveau de charge',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet('De 50 à 100 % : affichage CHARGE XX % en vert.'),
+              _InfoBullet('De 21 à 49 % : affichage CHARGE XX % en orange.'),
+              _InfoBullet('De 0 à 20 % : affichage CHARGE XX % en rouge.'),
+              _InfoBullet('Le mode STORAGE est affiché en bleu.'),
+              SizedBox(height: 12),
+              Text(
+                'Sélection pour un roulage',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               SizedBox(height: 8),
               _InfoBullet(
-                'LiPo et LiHV : Déchargée si la capacité restante est '
-                'inférieure ou égale à 15 % ou si une cellule est '
-                'inférieure ou égale à 3,50 V.',
+                'Une batterie dont le niveau de charge est supérieur à '
+                '20 % peut être sélectionnée pour un roulage.',
               ),
               _InfoBullet(
-                'Li-Ion : Déchargée si la capacité restante est '
-                'inférieure ou égale à 15 % ou si une cellule est '
-                'inférieure ou égale à 3,20 V.',
+                'Une batterie dont le niveau de charge est inférieur ou '
+                'égal à 20 % ne peut pas être sélectionnée.',
               ),
               _InfoBullet(
-                'LiFe : Déchargée si la capacité restante est '
-                'inférieure ou égale à 15 % ou si une cellule est '
-                'inférieure ou égale à 2,90 V.',
+                'Une batterie en mode STORAGE reste sélectionnable. '
+                'L’utilisateur doit toutefois vérifier que son niveau de '
+                'charge convient à l’utilisation prévue.',
               ),
-              _InfoBullet(
-                'NiMH et NiCd : Déchargée si la capacité restante est '
-                'inférieure ou égale à 15 %.',
-              ),
-              SizedBox(height: 10),
+              SizedBox(height: 12),
               Text(
-                'Une batterie Storage ou Déchargée n’est pas proposée '
-                'pour un roulage. Une batterie Chargée ou Partiellement '
-                'chargée reste sélectionnable.',
+                'Le niveau de charge affiché dépend des valeurs saisies '
+                'dans les relevés. Une saisie incorrecte peut donc produire '
+                'un état de charge erroné.',
               ),
               SizedBox(height: 12),
               _VersionLine(
@@ -85,45 +83,146 @@ class InfoPage extends StatelessWidget {
             title: 'Santé batterie',
             children: const [
               Text(
-                'La santé est évaluée uniquement à partir du dernier '
-                'relevé après charge et du relevé de référence. Les relevés '
-                'de fin de roulage ne sont pas utilisés pour ce diagnostic.',
+                'RC Companion distingue l’état de charge d’une batterie '
+                'de sa santé.',
+              ),
+              SizedBox(height: 10),
+              Text(
+                'La santé est une estimation de l’état général de la '
+                'batterie au fil du temps. Une batterie peut être '
+                'faiblement chargée mais en bonne santé, ou inversement.',
               ),
               SizedBox(height: 12),
               Text(
-                'Équilibrage des tensions',
+                'Données utilisées',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
-              _InfoBullet('Écart ≤ 0,02 V : Excellent.'),
-              _InfoBullet('Écart de 0,021 à 0,05 V : Correct.'),
-              _InfoBullet('Écart de 0,051 à 0,10 V : À surveiller.'),
-              _InfoBullet('Écart > 0,10 V : Mauvais.'),
-              SizedBox(height: 10),
-              Text(
-                'Homogénéité des résistances internes',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              _InfoBullet('Écart ≤ 3 mΩ : Excellent.'),
-              _InfoBullet('Écart de 3,01 à 5 mΩ : Correct.'),
-              _InfoBullet('Écart de 5,01 à 10 mΩ : À surveiller.'),
-              _InfoBullet('Écart > 10 mΩ : Mauvais.'),
-              SizedBox(height: 10),
-              Text(
-                'Évolution depuis le relevé de référence',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              _InfoBullet('Hausse ≤ 25 % : Normale.'),
-              _InfoBullet('Hausse de 25,01 à 50 % : À surveiller.'),
+              SizedBox(height: 8),
               _InfoBullet(
-                'Hausse de 50,01 à 100 % : Dégradation importante.',
+                'La mesure de référence sert de base de comparaison.',
               ),
-              _InfoBullet('Hausse > 100 % : Très forte dégradation.'),
+              _InfoBullet(
+                'Seuls les relevés effectués après charge sont utilisés '
+                'dans l’historique de santé.',
+              ),
+              _InfoBullet(
+                'Les relevés de fin de roulage ne sont pas utilisés pour '
+                'déterminer la santé de la batterie.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Critères analysés',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Évolution de la résistance interne moyenne par rapport '
+                'à la mesure de référence.',
+              ),
+              _InfoBullet(
+                'Écart de tension entre la cellule la plus haute et la '
+                'cellule la plus basse.',
+              ),
+              _InfoBullet('Écart de résistance interne entre les cellules.'),
+              _InfoBullet('Évolution historique des relevés après charge.'),
+              _InfoBullet(
+                'Tendance observée sur les trois derniers relevés après '
+                'charge lorsqu’ils sont disponibles.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Seuils actuellement utilisés',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Écart de tension supérieur à 0,050 V : indicateur à '
+                'surveiller.',
+              ),
+              _InfoBullet(
+                'Écart de tension supérieur à 0,100 V : indicateur '
+                'critique.',
+              ),
+              _InfoBullet(
+                'Écart de résistance interne supérieur à 5 mΩ : '
+                'indicateur à surveiller.',
+              ),
+              _InfoBullet(
+                'Écart de résistance interne supérieur à 10 mΩ : '
+                'indicateur critique.',
+              ),
+              _InfoBullet(
+                'Hausse de la résistance interne moyenne supérieure à '
+                '25 % par rapport à la référence : indicateur à surveiller.',
+              ),
+              _InfoBullet(
+                'Hausse supérieure à 100 % par rapport à la référence : '
+                'indicateur critique.',
+              ),
+              _InfoBullet(
+                'Une hausse régulière supérieure à 15 % entre le premier '
+                'et le dernier des trois relevés récents est considérée '
+                'comme une tendance défavorable.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Niveaux de santé',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Bonne : les valeurs restent cohérentes et aucune '
+                'dégradation significative n’est détectée.',
+              ),
+              _InfoBullet(
+                'À surveiller : au moins un indicateur de dégradation ou '
+                'une tendance défavorable est détecté.',
+              ),
+              _InfoBullet(
+                'HS : un indicateur critique est présent sur le dernier '
+                'relevé ou une dégradation critique est confirmée sur '
+                'plusieurs relevés récents.',
+              ),
+              _InfoBullet(
+                'Non évaluée : aucune mesure de référence exploitable ou '
+                'aucun relevé après charge exploitable n’est disponible.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Limites du calcul',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'La santé affichée dépend directement de la qualité, de '
+                'la précision et de la régularité des mesures saisies.',
+              ),
+              _InfoBullet(
+                'Le résultat constitue une aide au suivi et non une '
+                'expertise technique.',
+              ),
+              _InfoBullet(
+                'Une batterie classée Bonne peut néanmoins présenter un '
+                'défaut non détecté par les données enregistrées.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Avertissement',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'RC Companion fournit une aide à la décision destinée au '
+                'suivi des batteries. Les calculs, recommandations et '
+                'niveaux de santé affichés ne constituent ni une '
+                'certification, ni une garantie de sécurité ou de bon '
+                'fonctionnement.',
+              ),
               SizedBox(height: 10),
               Text(
-                'Le diagnostic final est factuel : Bonne, À surveiller, '
-                'Fatiguée ou À remplacer. RC Companion affiche les valeurs '
-                'mesurées et les motifs ayant conduit à ce diagnostic, sans '
-                'attribuer de score artificiel.',
+                'L’utilisateur demeure seul responsable de la vérification, '
+                'de la charge, du stockage, de l’utilisation et de la mise '
+                'au rebut de ses batteries.',
               ),
               SizedBox(height: 12),
               _VersionLine(
@@ -175,8 +274,9 @@ class InfoPage extends StatelessWidget {
               ),
               SizedBox(height: 10),
               Text(
-                'Cette page sera mise à jour à chaque ajout ou modification '
-                'd’un calcul, d’un seuil ou d’une règle de compatibilité.',
+                'Cette page est mise à jour lors de l’ajout ou de la '
+                'modification d’un calcul, d’un seuil ou d’une règle de '
+                'compatibilité.',
               ),
             ],
           ),
@@ -199,10 +299,7 @@ class InfoPage extends StatelessWidget {
             const SizedBox(height: 10),
             const Text(
               'RC Companion',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             const _VersionLine(
@@ -346,10 +443,7 @@ class _InfoBullet extends StatelessWidget {
 }
 
 class _VersionLine extends StatelessWidget {
-  const _VersionLine({
-    required this.label,
-    required this.value,
-  });
+  const _VersionLine({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -362,10 +456,7 @@ class _VersionLine extends StatelessWidget {
         children: [
           Expanded(child: Text(label)),
           const SizedBox(width: 12),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
         ],
       ),
     );
