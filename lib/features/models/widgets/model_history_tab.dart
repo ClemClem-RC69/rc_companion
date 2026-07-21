@@ -1,4 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../../../models/battery.dart';
 import '../../../models/rc_model.dart';
@@ -246,6 +251,12 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     }
 
     items.sort((first, second) => second.date.compareTo(first.date));
+    return items;
+  }
+
+  List<_TimelineItem> get _pdfTimelineItems {
+    final items = List<_TimelineItem>.from(_timelineItems);
+    items.sort((first, second) => first.date.compareTo(second.date));
     return items;
   }
 
@@ -719,6 +730,526 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     return _acquisitionCard(item.date);
   }
 
+  Future<Uint8List> _buildPdf(PdfPageFormat format) async {
+    pw.ImageProvider? modelImage;
+
+    final photoUrl = widget.model.photoUrl?.trim() ?? '';
+    if (photoUrl.isNotEmpty) {
+      try {
+        modelImage = await networkImage(photoUrl);
+      } catch (_) {
+        modelImage = null;
+      }
+    }
+
+    final document = pw.Document(
+      title: 'Historique ${widget.model.name}',
+      author: 'RC Companion',
+      subject: 'Carnet de vie du modèle',
+      creator: 'RC Companion',
+    );
+
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(20, 18, 20, 22),
+        footer: (context) => pw.Container(
+          margin: const pw.EdgeInsets.only(top: 5),
+          padding: const pw.EdgeInsets.only(top: 4),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(
+              top: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
+            ),
+          ),
+          child: pw.Row(
+            children: [
+              pw.Expanded(
+                child: pw.Text(
+                  'Document généré par RC Companion - Données indicatives, '
+                  "ne remplace pas une vérification technique ni l'entretien régulier.",
+                  maxLines: 1,
+                  style: const pw.TextStyle(
+                    fontSize: 6.8,
+                    color: PdfColors.grey700,
+                  ),
+                ),
+              ),
+              pw.SizedBox(width: 8),
+              pw.Text(
+                'Page ${context.pageNumber}/${context.pagesCount}',
+                style: const pw.TextStyle(
+                  fontSize: 7,
+                  color: PdfColors.grey700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        build: (context) => [
+          _pdfVisualHeader(modelImage),
+          pw.SizedBox(height: 10),
+          _pdfVisualSummary(),
+          pw.SizedBox(height: 13),
+          _pdfLineSectionTitle('Informations du modèle'),
+          _pdfCompactModelInformation(),
+          pw.SizedBox(height: 12),
+          _pdfLineSectionTitle('Statistiques détaillées'),
+          _pdfDetailedStatistics(),
+          pw.SizedBox(height: 13),
+          _pdfLineSectionTitle('Historique (du plus ancien au plus récent)'),
+          _pdfHistoryTable(),
+        ],
+      ),
+    );
+
+    return document.save();
+  }
+
+  pw.Widget _pdfVisualHeader(pw.ImageProvider? modelImage) {
+    final subtitleValues = <String>[
+      widget.model.brand.trim(),
+      widget.model.category.trim(),
+      widget.model.scale.trim(),
+      if (widget.model.discipline.trim().isNotEmpty)
+        widget.model.discipline.trim(),
+      widget.model.motorization.trim(),
+    ].where((value) => value.isNotEmpty).toList(growable: false);
+
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Container(
+          width: 105,
+          height: 82,
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: PdfColors.grey500, width: 0.7),
+            borderRadius: pw.BorderRadius.circular(7),
+          ),
+          padding: const pw.EdgeInsets.all(5),
+          child: modelImage == null
+              ? pw.Center(
+                  child: pw.Text(
+                    'Aucune photo',
+                    style: const pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColors.grey600,
+                    ),
+                  ),
+                )
+              : pw.Image(modelImage, fit: pw.BoxFit.contain),
+        ),
+        pw.SizedBox(width: 14),
+        pw.Expanded(
+          child: pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 2),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  widget.model.name,
+                  style: pw.TextStyle(
+                    fontSize: 25,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  subtitleValues.join(' - '),
+                  style: const pw.TextStyle(fontSize: 11),
+                ),
+                pw.SizedBox(height: 7),
+                pw.Text(
+                  'Carnet de vie du modèle',
+                  style: pw.TextStyle(
+                    fontSize: 15,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.blueGrey900,
+                  ),
+                ),
+                pw.SizedBox(height: 5),
+                pw.Text(
+                  'Généré le ${_formatDateTime(DateTime.now())}',
+                  style: const pw.TextStyle(
+                    fontSize: 9,
+                    color: PdfColors.grey700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _pdfVisualSummary() {
+    final values = <List<String>>[
+      ['Sessions', _sessions.length.toString()],
+      ['Roulages', _totalRuns.toString()],
+      ['Packs utilisés', _totalPacks.toString()],
+      ['Temps total', _durationLabel(_totalDurationMinutes)],
+    ];
+
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey500, width: 0.7),
+        borderRadius: pw.BorderRadius.circular(7),
+      ),
+      child: pw.Row(
+        children: [
+          for (var index = 0; index < values.length; index++) ...[
+            pw.Expanded(
+              child: pw.Column(
+                children: [
+                  pw.Text(
+                    values[index][0],
+                    textAlign: pw.TextAlign.center,
+                    style: const pw.TextStyle(fontSize: 9),
+                  ),
+                  pw.SizedBox(height: 3),
+                  pw.Text(
+                    values[index][1],
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                      fontSize: 15,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (index < values.length - 1)
+              pw.Container(width: 0.6, height: 34, color: PdfColors.grey400),
+          ],
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pdfLineSectionTitle(String title) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          title,
+          style: pw.TextStyle(
+            fontSize: 12.5,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.blueGrey900,
+          ),
+        ),
+        pw.SizedBox(height: 3),
+        pw.Container(height: 0.7, color: PdfColors.blueGrey800),
+        pw.SizedBox(height: 7),
+      ],
+    );
+  }
+
+  pw.Widget _pdfCompactModelInformation() {
+    final items = <_PdfLabelValue>[
+      _PdfLabelValue('Catégorie', widget.model.category),
+      if (widget.model.discipline.trim().isNotEmpty)
+        _PdfLabelValue('Discipline', widget.model.discipline),
+      _PdfLabelValue('Motorisation', widget.model.motorization),
+      _PdfLabelValue('Échelle', widget.model.scale),
+      if (widget.model.motorization == 'Électrique')
+        _PdfLabelValue(
+          'Nombre de batteries',
+          widget.model.batteryCount.toString(),
+        ),
+      if (widget.model.motorization == 'Électrique')
+        _PdfLabelValue('Configuration maxi', widget.model.maxCells),
+      if (widget.model.weightKg != null)
+        _PdfLabelValue('Poids', widget.model.formattedWeight),
+      if (widget.model.hasAcquisitionDate)
+        _PdfLabelValue('Acquisition', widget.model.formattedAcquisitionDate),
+      if (widget.model.purchaseType != null &&
+          widget.model.purchaseType!.trim().isNotEmpty)
+        _PdfLabelValue('Type d\u0027achat', widget.model.purchaseType!.trim()),
+      if (widget.model.purchaseLocation != null &&
+          widget.model.purchaseLocation!.trim().isNotEmpty)
+        _PdfLabelValue(
+          'Lieu d\u0027achat',
+          widget.model.purchaseLocation!.trim(),
+        ),
+    ];
+
+    return pw.Wrap(
+      spacing: 12,
+      runSpacing: 7,
+      children: [
+        for (final item in items)
+          pw.Row(
+            mainAxisSize: pw.MainAxisSize.min,
+            children: [
+              pw.Text(
+                '${item.label} : ',
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Text(item.value, style: const pw.TextStyle(fontSize: 9)),
+              pw.SizedBox(width: 3),
+              pw.Text(
+                ' | ',
+                style: const pw.TextStyle(
+                  fontSize: 9,
+                  color: PdfColors.grey700,
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  pw.Widget _pdfDetailedStatistics() {
+    final averageRuns = _sessions.isEmpty ? 0.0 : _totalRuns / _sessions.length;
+    final averageSessionMinutes = _sessions.isEmpty
+        ? 0
+        : (_totalDurationMinutes / _sessions.length).round();
+    final averageRunMinutes = _totalRuns == 0
+        ? 0
+        : (_totalDurationMinutes / _totalRuns).round();
+
+    DateTime? firstSession;
+    DateTime? lastSession;
+    if (_sessions.isNotEmpty) {
+      final ordered = List<RcSession>.from(_sessions)
+        ..sort((first, second) => first.startedAt.compareTo(second.startedAt));
+      firstSession = ordered.first.startedAt;
+      lastSession = ordered.last.startedAt;
+    }
+
+    final values = <List<String>>[
+      [
+        'Moyenne par session',
+        '${averageRuns.toStringAsFixed(1).replaceAll('.', ',')} roulage(s)'
+            ' - ${_durationLabel(averageSessionMinutes)}',
+      ],
+      ['Moyenne par roulage', _durationLabel(averageRunMinutes)],
+      ['Moyenne par pack', _durationLabel(averageRunMinutes)],
+      [
+        'Première session',
+        firstSession == null ? '-' : _formatDate(firstSession),
+      ],
+      [
+        'Dernière session',
+        lastSession == null ? '-' : _formatDate(lastSession),
+      ],
+    ];
+
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        for (var index = 0; index < values.length; index++) ...[
+          pw.Expanded(
+            child: pw.Column(
+              children: [
+                pw.Text(
+                  values[index][0],
+                  textAlign: pw.TextAlign.center,
+                  style: const pw.TextStyle(fontSize: 8),
+                ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  values[index][1],
+                  textAlign: pw.TextAlign.center,
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (index < values.length - 1)
+            pw.Container(width: 0.5, height: 30, color: PdfColors.grey400),
+        ],
+      ],
+    );
+  }
+
+  pw.Widget _pdfHistoryTable() {
+    if (_pdfTimelineItems.isEmpty) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 12),
+        child: pw.Text(
+          'Aucun événement enregistré pour ce modèle.',
+          style: const pw.TextStyle(fontSize: 9),
+        ),
+      );
+    }
+
+    return pw.Table(
+      border: const pw.TableBorder(
+        horizontalInside: pw.BorderSide(color: PdfColors.grey400, width: 0.45),
+        top: pw.BorderSide(color: PdfColors.grey500, width: 0.55),
+        bottom: pw.BorderSide(color: PdfColors.grey500, width: 0.55),
+      ),
+      columnWidths: const {
+        0: pw.FixedColumnWidth(66),
+        1: pw.FixedColumnWidth(78),
+        2: pw.FlexColumnWidth(3.8),
+        3: pw.FixedColumnWidth(82),
+      },
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+          children: [
+            _pdfHistoryCell('Date', header: true),
+            _pdfHistoryCell('Type', header: true),
+            _pdfHistoryCell('Détails', header: true),
+            _pdfHistoryCell('Infos clés', header: true),
+          ],
+        ),
+        for (final item in _pdfTimelineItems) _pdfHistoryRow(item),
+      ],
+    );
+  }
+
+  pw.TableRow _pdfHistoryRow(_TimelineItem item) {
+    if (item.session != null) {
+      final session = item.session!;
+      final location = session.location.trim().isEmpty
+          ? 'Lieu non renseigné'
+          : session.location.trim();
+
+      final batteryIds = <String>[];
+      for (final run in session.runs) {
+        for (final battery in run.batteries) {
+          if (!batteryIds.contains(battery.id)) {
+            batteryIds.add(battery.id);
+          }
+        }
+      }
+
+      final details = <String>[
+        'Terrain : $location - ${session.runs.length} roulage(s) '
+            '(${_durationLabel(session.totalDurationMinutes)})',
+        if (batteryIds.isNotEmpty) 'Batteries : ${batteryIds.join(' / ')}',
+        if (session.breakages.trim().isNotEmpty)
+          'Casses : ${session.breakages.trim()}',
+        if (session.partsReplacedOnSite.trim().isNotEmpty)
+          'Pièces remplacées : ${session.partsReplacedOnSite.trim()}',
+        if (session.maintenanceToDo.trim().isNotEmpty)
+          'Entretien : ${session.maintenanceToDo.trim()}',
+        if (session.changesBeforeNextSession.trim().isNotEmpty)
+          'Modifications : ${session.changesBeforeNextSession.trim()}',
+        if (session.generalNotes.trim().isNotEmpty)
+          'Notes : ${session.generalNotes.trim()}',
+      ].join('\n');
+
+      return pw.TableRow(
+        children: [
+          _pdfHistoryCell(_formatDate(session.startedAt)),
+          _pdfHistoryCell('Session'),
+          _pdfHistoryCell(details),
+          _pdfHistoryCell(
+            '${_durationLabel(session.totalDurationMinutes)}'
+            ' - ${session.runs.length} pack(s)',
+          ),
+        ],
+      );
+    }
+
+    if (item.maintenance != null) {
+      final record = item.maintenance!;
+      final details = <String>[
+        if (record.title.trim().isNotEmpty) record.title.trim(),
+        if (record.notes.trim().isNotEmpty) record.notes.trim(),
+        if (record.fluids.isNotEmpty)
+          record.fluids.entries
+              .map((entry) => '${_fluidLabel(entry.key)} : ${entry.value} cSt')
+              .join(' / '),
+        if (record.setupChanges.isNotEmpty)
+          record.setupChanges
+              .map(
+                (change) =>
+                    '${change['field'] ?? 'Réglage'} : '
+                    '${change['newValue'] ?? ''}',
+              )
+              .join(' / '),
+      ].where((value) => value.isNotEmpty).join('\n');
+
+      return pw.TableRow(
+        children: [
+          _pdfHistoryCell(_formatDate(record.date)),
+          _pdfHistoryCell(record.typeLabel),
+          _pdfHistoryCell(details.isEmpty ? record.typeLabel : details),
+          _pdfHistoryCell(
+            record.isRevision
+                ? '${record.packsSinceLastRevision ?? 0} pack(s)'
+                      ' - ${_durationLabel(record.runtimeMinutesSinceLastRevision)}'
+                : '-',
+          ),
+        ],
+      );
+    }
+
+    final acquisitionDetails = <String>[
+      if (widget.model.purchaseType != null &&
+          widget.model.purchaseType!.trim().isNotEmpty)
+        'Modèle acheté ${widget.model.purchaseType!.trim().toLowerCase()}',
+      if (widget.model.purchaseLocation != null &&
+          widget.model.purchaseLocation!.trim().isNotEmpty)
+        'chez ${widget.model.purchaseLocation!.trim()}',
+    ].join(' ');
+
+    return pw.TableRow(
+      children: [
+        _pdfHistoryCell(_formatDate(item.date)),
+        _pdfHistoryCell('Acquisition'),
+        _pdfHistoryCell(
+          acquisitionDetails.isEmpty
+              ? widget.model.formattedAcquisition
+              : '$acquisitionDetails.',
+        ),
+        _pdfHistoryCell('-'),
+      ],
+    );
+  }
+
+  pw.Widget _pdfHistoryCell(String value, {bool header = false}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+      child: pw.Text(
+        value,
+        style: pw.TextStyle(
+          fontSize: header ? 8.2 : 7.7,
+          fontWeight: header ? pw.FontWeight.bold : pw.FontWeight.normal,
+        ),
+      ),
+    );
+  }
+
+  String get _pdfFileName {
+    final cleanName = widget.model.name
+        .trim()
+        .replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
+    final now = DateTime.now();
+    final date =
+        '${now.year}${now.month.toString().padLeft(2, '0')}'
+        '${now.day.toString().padLeft(2, '0')}';
+    return 'RC_Companion_${cleanName.isEmpty ? 'modele' : cleanName}_$date.pdf';
+  }
+
+  Future<void> _openPdfPreview() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _ModelHistoryPdfPreviewPage(
+          title: 'Historique — ${widget.model.name}',
+          fileName: _pdfFileName,
+          buildPdf: _buildPdf,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -755,6 +1286,15 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: _openPdfPreview,
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: const Text('Exporter en PDF'),
+            ),
+          ),
+          const SizedBox(height: 12),
           _summaryCard(),
           const SizedBox(height: 18),
           Text(
@@ -786,6 +1326,53 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       ),
     );
   }
+}
+
+class _ModelHistoryPdfPreviewPage extends StatelessWidget {
+  const _ModelHistoryPdfPreviewPage({
+    required this.title,
+    required this.fileName,
+    required this.buildPdf,
+  });
+
+  final String title;
+  final String fileName;
+  final Future<Uint8List> Function(PdfPageFormat format) buildPdf;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+      body: PdfPreview(
+        build: buildPdf,
+        pdfFileName: fileName,
+        canChangeOrientation: false,
+        canChangePageFormat: false,
+        canDebug: false,
+        allowPrinting: true,
+        allowSharing: true,
+        loadingWidget: const Center(child: CircularProgressIndicator()),
+        onError: (context, error) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Impossible de générer le PDF.\n$error',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PdfLabelValue {
+  const _PdfLabelValue(this.label, this.value);
+
+  final String label;
+  final String value;
 }
 
 class _TimelineItem {
