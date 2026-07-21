@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../app/app.dart';
 import '../../pages/radios_page.dart';
 import '../batteries/batteries_page.dart';
 import '../info/info_page.dart';
@@ -9,374 +8,656 @@ import '../maintenance/maintenance_page.dart';
 import '../models/models_page.dart';
 import '../sessions/sessions_page.dart';
 
-class DashboardPage extends StatelessWidget {
+class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
-  void open(BuildContext context, Widget page) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  int modelCount = 0;
+  int batteryCount = 0;
+  int sessionCount = 0;
+  int maintenanceCount = 0;
+  int batteriesToCharge = 0;
+  bool loading = true;
+  Map<String, dynamic>? lastSession;
+  String lastModelCategory = 'Voiture';
+  int totalRunMinutes = 0;
+  int totalPacks = 0;
+  List<double> chartValues = const <double>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboard();
   }
 
-  Future<void> logout(BuildContext context) async {
-    final shouldLogout = await showDialog<bool>(
+  Future<void> _loadDashboard() async {
+    try {
+      final client = Supabase.instance.client;
+
+      final results = await Future.wait<int>([
+        _countRows(client, 'rc_models'),
+        _countRows(client, 'batteries'),
+        _countRows(client, 'rc_sessions'),
+        _countRows(client, 'maintenance_records'),
+      ]);
+
+      Map<String, dynamic>? recent;
+      String category = 'Voiture';
+      int runMinutes = 0;
+      int packs = 0;
+      final valuesByDay = <DateTime, int>{};
+
+      try {
+        final sessions = await client
+            .from('rc_sessions')
+            .select(
+              'id, model_id, model_name, started_at, ended_at, location, breakages',
+            )
+            .order('started_at', ascending: false)
+            .limit(30);
+
+        if (sessions.isNotEmpty) {
+          recent = Map<String, dynamic>.from(sessions.first);
+
+          final modelId = recent['model_id']?.toString();
+          if (modelId != null && modelId.isNotEmpty) {
+            final models = await client
+                .from('rc_models')
+                .select('category')
+                .eq('id', modelId)
+                .limit(1);
+            if (models.isNotEmpty) {
+              category =
+                  models.first['category']?.toString().trim() ?? 'Voiture';
+            }
+          }
+
+          final sessionIds = sessions
+              .map((row) => row['id']?.toString())
+              .whereType<String>()
+              .where((id) => id.isNotEmpty)
+              .toList();
+
+          if (sessionIds.isNotEmpty) {
+            final runs = await client
+                .from('session_runs')
+                .select('session_id, started_at, duration_minutes')
+                .inFilter('session_id', sessionIds);
+
+            for (final raw in runs) {
+              final row = Map<String, dynamic>.from(raw);
+              final duration =
+                  int.tryParse('${row['duration_minutes'] ?? 0}') ?? 0;
+              runMinutes += duration;
+              packs += 1;
+
+              final startedAt = DateTime.tryParse(
+                '${row['started_at'] ?? ''}',
+              )?.toLocal();
+              if (startedAt != null) {
+                final day = DateTime(
+                  startedAt.year,
+                  startedAt.month,
+                  startedAt.day,
+                );
+                valuesByDay.update(
+                  day,
+                  (value) => value + duration,
+                  ifAbsent: () => duration,
+                );
+              }
+            }
+
+            final recentId = recent['id']?.toString();
+            if (recentId != null) {
+              final recentRuns = await client
+                  .from('session_runs')
+                  .select('duration_minutes')
+                  .eq('session_id', recentId);
+              recent['dashboard_duration_minutes'] = recentRuns.fold<int>(
+                0,
+                (sum, row) =>
+                    sum +
+                    (int.tryParse('${row['duration_minutes'] ?? 0}') ?? 0),
+              );
+            }
+          }
+        }
+      } catch (_) {}
+
+      int chargeCount = 0;
+      try {
+        final batteryRows = await client.from('batteries').select('id, status');
+
+        final measurementRows = await client
+            .from('battery_measurements')
+            .select(
+              'battery_code, measured_at, charge_percent, measurement_type, notes',
+            )
+            .order('measured_at', ascending: false);
+
+        final latestByBattery = <String, Map<String, dynamic>>{};
+        for (final raw in measurementRows) {
+          final measurement = Map<String, dynamic>.from(raw);
+          final code = measurement['battery_code']?.toString();
+          if (code != null && code.isNotEmpty) {
+            latestByBattery.putIfAbsent(code, () => measurement);
+          }
+        }
+
+        for (final raw in batteryRows) {
+          final battery = Map<String, dynamic>.from(raw);
+          final code = battery['id']?.toString();
+          if (code == null || code.isEmpty) {
+            continue;
+          }
+
+          final status = (battery['status']?.toString() ?? '').toLowerCase();
+          if (status.contains('hs') ||
+              status.contains('retir') ||
+              status.contains('stockage')) {
+            continue;
+          }
+
+          final latest = latestByBattery[code];
+          if (latest == null) {
+            continue;
+          }
+
+          final notes = (latest['notes']?.toString() ?? '').toLowerCase();
+          final explicitlyStored =
+              notes.contains('storage') || notes.contains('stockage');
+          final explicitlyCharged =
+              notes.contains('charged') || notes.contains('chargée');
+
+          if (explicitlyStored) {
+            continue;
+          }
+
+          final chargePercent = _asDouble(latest['charge_percent']);
+          if (!explicitlyCharged &&
+              chargePercent != null &&
+              chargePercent < 95) {
+            chargeCount++;
+          }
+        }
+      } catch (_) {}
+
+      final sortedDays = valuesByDay.keys.toList()..sort();
+      var cumulativeMinutes = 0.0;
+      final chart = <double>[];
+      for (final day in sortedDays) {
+        cumulativeMinutes += valuesByDay[day]!.toDouble();
+        chart.add(cumulativeMinutes);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        modelCount = results[0];
+        batteryCount = results[1];
+        sessionCount = results[2];
+        maintenanceCount = results[3];
+        batteriesToCharge = chargeCount;
+        lastSession = recent;
+        lastModelCategory = category;
+        totalRunMinutes = runMinutes;
+        totalPacks = packs;
+        chartValues = chart;
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => loading = false);
+    }
+  }
+
+  Future<int> _countRows(SupabaseClient client, String table) async {
+    try {
+      final rows = await client.from(table).select('id');
+      return rows.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  double? _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse('$value');
+  }
+
+  void _open(Widget page) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => page),
+    ).then((_) => _loadDashboard());
+  }
+
+  Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Déconnexion'),
-          content: const Text(
-            'Veux-tu vraiment te déconnecter de RC Companion ?',
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Déconnexion'),
+        content: const Text(
+          'Veux-tu vraiment te déconnecter de RC Companion ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annuler'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              style: FilledButton.styleFrom(backgroundColor: RCColors.accent),
-              child: const Text('Se déconnecter'),
-            ),
-          ],
-        );
-      },
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Se déconnecter'),
+          ),
+        ],
+      ),
     );
 
-    if (shouldLogout != true) return;
-
-    try {
+    if (confirmed == true) {
       await Supabase.instance.client.auth.signOut();
-      if (!context.mounted) return;
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur lors de la déconnexion : $error')),
-      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final userEmail = Supabase.instance.client.auth.currentUser?.email;
-    final displayName = _displayName(userEmail);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final desktop = constraints.maxWidth >= 860;
+        return Scaffold(
+          backgroundColor: const Color(0xFF050D18),
+          body: SafeArea(
+            child: desktop
+                ? Row(
+                    children: [
+                      _DesktopSidebar(
+                        onHome: () {},
+                        onModels: () => _open(const ModelsPage()),
+                        onBatteries: () => _open(const BatteriesPage()),
+                        onSessions: () => _open(const SessionsPage()),
+                        onMaintenance: () => _open(const MaintenancePage()),
+                        onRadios: () => _open(const RadiosPage()),
+                        onInfo: () => _open(const InfoPage()),
+                      ),
+                      Expanded(child: _dashboardContent(desktop: true)),
+                    ],
+                  )
+                : _dashboardContent(desktop: false),
+          ),
+          bottomNavigationBar: desktop
+              ? null
+              : _MobileNavigation(
+                  onHome: () {},
+                  onModels: () => _open(const ModelsPage()),
+                  onBatteries: () => _open(const BatteriesPage()),
+                  onSessions: () => _open(const SessionsPage()),
+                  onMore: _showMoreMenu,
+                ),
+        );
+      },
+    );
+  }
 
-    return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 18,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(9),
-              child: Image.asset(
-                'assets/images/rc_companion_logo.png',
-                width: 46,
-                height: 46,
-                fit: BoxFit.cover,
-              ),
+  Widget _dashboardContent({required bool desktop}) {
+    final email = Supabase.instance.client.auth.currentUser?.email;
+    final name = _displayName(email);
+
+    return RefreshIndicator(
+      onRefresh: _loadDashboard,
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: _TopBar(
+              desktop: desktop,
+              name: name,
+              onInfo: () => _open(const InfoPage()),
+              onLogout: _logout,
             ),
-            const SizedBox(width: 12),
-            const Column(
+          ),
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              desktop ? 24 : 16,
+              8,
+              desktop ? 24 : 16,
+              28,
+            ),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                _metricGrid(desktop),
+                const SizedBox(height: 16),
+                if (desktop)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _lastSessionCard()),
+                      const SizedBox(width: 16),
+                      Expanded(child: _batteryChargeCard()),
+                    ],
+                  )
+                else ...[
+                  _lastSessionCard(),
+                  const SizedBox(height: 14),
+                  _batteryChargeCard(),
+                ],
+                const SizedBox(height: 16),
+                _statisticsCard(),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metricGrid(bool desktop) {
+    final cards = [
+      _MetricCardData(
+        value: modelCount,
+        label: 'MODÈLES',
+        asset: 'assets/images/rc_icon_models_hd.png',
+        color: const Color(0xFF218BFF),
+        onTap: () => _open(const ModelsPage()),
+      ),
+      _MetricCardData(
+        value: batteryCount,
+        label: 'BATTERIES',
+        asset: 'assets/images/rc_icon_batteries_hd.png',
+        color: const Color(0xFFFF3D36),
+        onTap: () => _open(const BatteriesPage()),
+      ),
+      _MetricCardData(
+        value: sessionCount,
+        label: 'SESSIONS',
+        asset: 'assets/images/rc_icon_sessions_hd.png',
+        color: const Color(0xFF168CFF),
+        onTap: () => _open(const SessionsPage()),
+      ),
+      _MetricCardData(
+        value: maintenanceCount,
+        label: 'MAINTENANCES',
+        asset: 'assets/images/rc_icon_maintenance_hd.png',
+        color: const Color(0xFFD9DEE8),
+        onTap: () => _open(const MaintenancePage()),
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = desktop ? 4 : 1;
+        final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: cards
+              .map(
+                (card) => SizedBox(
+                  width: width,
+                  child: _MetricCard(data: card, loading: loading),
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Widget _lastSessionCard() {
+    final row = lastSession;
+    final date = _formatSessionDate(row);
+    final model =
+        _firstText(row, ['model_name', 'name', 'model', 'title']) ??
+        'Aucun modèle';
+    final place =
+        _firstText(row, ['location', 'place', 'terrain']) ??
+        'Lieu non renseigné';
+    final breakages = _firstText(row, ['breakages']);
+    final incidentText = breakages == null || breakages.trim().isEmpty
+        ? 'Aucune casse'
+        : breakages;
+    final duration = _durationText(row);
+
+    return _DashboardPanel(
+      title: 'DERNIÈRE SESSION',
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('RC COMPANION'),
+                Text(date, style: const TextStyle(color: Colors.white70)),
+                const SizedBox(height: 6),
                 Text(
-                  'Gestionnaire RC',
-                  style: TextStyle(
-                    color: RCColors.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                  model,
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
                   ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  duration,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  incidentText,
+                  style: const TextStyle(color: Color(0xFF7F8DA0)),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  place,
+                  style: const TextStyle(
+                    color: Color(0xFF65758A),
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                OutlinedButton(
+                  onPressed: () => _open(const SessionsPage()),
+                  child: const Text('Voir la session'),
                 ),
               ],
             ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Informations & Références',
-            icon: const Icon(Icons.info_outline_rounded),
-            onPressed: () => open(context, const InfoPage()),
           ),
-          IconButton(
-            tooltip: 'Se déconnecter',
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: () => logout(context),
+          SizedBox(
+            width: 170,
+            height: 120,
+            child: Image.asset(
+              _categoryAsset(lastModelCategory),
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+            ),
           ),
-          const SizedBox(width: 8),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final horizontalPadding = constraints.maxWidth >= 900 ? 32.0 : 16.0;
-          final crossAxisCount = constraints.maxWidth >= 1100
-              ? 4
-              : constraints.maxWidth >= 700
-                  ? 3
-                  : 2;
+    );
+  }
 
-          return ListView(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              18,
-              horizontalPadding,
-              28,
+  Widget _batteryChargeCard() {
+    return _DashboardPanel(
+      title: 'BATTERIES À CHARGER',
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  batteriesToCharge == 0
+                      ? 'Aucun pack à charger'
+                      : '$batteriesToCharge pack${batteriesToCharge > 1 ? 's' : ''} à charger',
+                  style: const TextStyle(fontSize: 17),
+                ),
+                const SizedBox(height: 18),
+                OutlinedButton(
+                  onPressed: () => _open(const BatteriesPage()),
+                  child: const Text('Voir mes batteries'),
+                ),
+              ],
             ),
+          ),
+          SizedBox(
+            width: 116,
+            height: 132,
+            child: Image.asset(
+              'assets/images/rc_battery_dashboard_hd.png',
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statisticsCard() {
+    final hours = totalRunMinutes ~/ 60;
+    final minutes = totalRunMinutes % 60;
+
+    return _DashboardPanel(
+      title: 'STATISTIQUES — ÉVOLUTION RÉELLE',
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth > 620;
+          final stats = Column(
             children: [
-              _WelcomeHeader(
-                displayName: displayName,
-                email: userEmail,
-              ),
-              const SizedBox(height: 22),
-              Text(
-                'MON GARAGE RC',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.2,
-                    ),
+              _StatLine(
+                icon: Icons.schedule_rounded,
+                label: 'Temps total',
+                value: '${hours}h ${minutes.toString().padLeft(2, '0')}m',
               ),
               const SizedBox(height: 12),
-              GridView.count(
-                crossAxisCount: crossAxisCount,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
-                childAspectRatio: constraints.maxWidth >= 700 ? 1.25 : 0.95,
-                children: [
-                  DashboardCard(
-                    icon: Icons.directions_car_filled_rounded,
-                    iconColor: RCColors.primaryLight,
-                    title: 'Mes modèles',
-                    subtitle: 'Gère tes modèles et leurs setups',
-                    onTap: () => open(context, const ModelsPage()),
-                  ),
-                  DashboardCard(
-                    icon: Icons.battery_charging_full_rounded,
-                    iconColor: RCColors.accent,
-                    title: 'Mes batteries',
-                    subtitle: 'Suivi, mesures et santé de tes packs',
-                    onTap: () => open(context, const BatteriesPage()),
-                  ),
-                  DashboardCard(
-                    icon: Icons.calendar_month_rounded,
-                    iconColor: RCColors.primaryLight,
-                    title: 'Mes sessions',
-                    subtitle: 'Roulages, lieux et historiques',
-                    onTap: () => open(context, const SessionsPage()),
-                  ),
-                  DashboardCard(
-                    icon: Icons.build_circle_rounded,
-                    iconColor: RCColors.success,
-                    title: 'Maintenance',
-                    subtitle: 'Révisions, réparations et modifications',
-                    onTap: () => open(context, const MaintenancePage()),
-                  ),
-                  DashboardCard(
-                    icon: Icons.settings_remote_rounded,
-                    iconColor: RCColors.warning,
-                    title: 'Mes radios',
-                    subtitle: 'Catalogue et réglages radio',
-                    onTap: () => open(context, const RadiosPage()),
-                  ),
-                  DashboardCard(
-                    icon: Icons.info_outline_rounded,
-                    iconColor: RCColors.textSecondary,
-                    title: 'Informations',
-                    subtitle: 'Références, règles et avertissements',
-                    onTap: () => open(context, const InfoPage()),
-                  ),
-                ],
+              _StatLine(
+                icon: Icons.rocket_launch_outlined,
+                label: 'Nombre de packs utilisés',
+                value: '$totalPacks',
               ),
-              const SizedBox(height: 22),
-              const _FeatureStrip(),
             ],
           );
+
+          final chart = SizedBox(
+            height: 150,
+            child: CustomPaint(
+              painter: _DashboardChartPainter(chartValues),
+              child: const SizedBox.expand(),
+            ),
+          );
+
+          if (wide) {
+            return Row(
+              children: [
+                Expanded(flex: 2, child: stats),
+                const SizedBox(width: 18),
+                Expanded(flex: 3, child: chart),
+              ],
+            );
+          }
+          return Column(children: [stats, const SizedBox(height: 18), chart]);
         },
       ),
     );
   }
 
+  String _categoryAsset(String category) {
+    final normalized = category.toLowerCase();
+    if (normalized.contains('moto')) {
+      return 'assets/images/rc_vehicle_moto_hd.png';
+    }
+    if (normalized.contains('bateau')) {
+      return 'assets/images/rc_vehicle_boat_hd.png';
+    }
+    return 'assets/images/rc_vehicle_car_hd.png';
+  }
+
+  String _formatSessionDate(Map<String, dynamic>? row) {
+    final raw = _firstText(row, ['started_at', 'session_date', 'date']);
+    final date = raw == null ? null : DateTime.tryParse(raw)?.toLocal();
+    if (date == null) return 'Aucune session';
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    return '$day/$month/${date.year}';
+  }
+
   String _displayName(String? email) {
-    if (email == null || email.trim().isEmpty) return 'pilote';
-    final raw = email.split('@').first.trim();
-    if (raw.isEmpty) return 'pilote';
+    final metadata =
+        Supabase.instance.client.auth.currentUser?.userMetadata ?? {};
+    final pseudo = metadata['pseudo']?.toString().trim();
+    if (pseudo != null && pseudo.isNotEmpty) {
+      return pseudo;
+    }
+    final raw = email?.split('@').first.trim();
+    if (raw == null || raw.isEmpty) return 'Pilote';
     return '${raw[0].toUpperCase()}${raw.substring(1)}';
   }
-}
 
-class _WelcomeHeader extends StatelessWidget {
-  const _WelcomeHeader({required this.displayName, required this.email});
-
-  final String displayName;
-  final String? email;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: RCColors.border),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF172C4E), RCColors.surface],
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: RCColors.primary,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: RCColors.primary.withValues(alpha: 0.25),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.sports_motorsports_rounded, size: 30),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Bonjour, $displayName !',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  email == null
-                      ? 'Bienvenue dans ton garage RC.'
-                      : 'Connecté avec $email',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: RCColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          const Icon(
-            Icons.bolt_rounded,
-            color: RCColors.accent,
-            size: 34,
-          ),
-        ],
-      ),
-    );
+  String? _firstText(Map<String, dynamic>? row, List<String> keys) {
+    if (row == null) return null;
+    for (final key in keys) {
+      final value = row[key];
+      if (value != null && '$value'.trim().isNotEmpty) {
+        return '$value';
+      }
+    }
+    return null;
   }
-}
 
-class DashboardCard extends StatelessWidget {
-  const DashboardCard({
-    super.key,
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: iconColor.withValues(alpha: 0.13),
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(
-                        color: iconColor.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Icon(icon, color: iconColor, size: 27),
-                  ),
-                  const Spacer(),
-                  const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 16,
-                    color: RCColors.textSecondary,
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-              ),
-              const SizedBox(height: 7),
-              Text(
-                subtitle,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: RCColors.textSecondary,
-                  height: 1.3,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  String _durationText(Map<String, dynamic>? row) {
+    if (row == null) return '0 min';
+    final value =
+        row['dashboard_duration_minutes'] ??
+        row['duration_minutes'] ??
+        row['runtime_minutes'] ??
+        row['total_minutes'];
+    final minutes = int.tryParse('$value') ?? 0;
+    if (minutes < 60) return '$minutes min';
+    return '${minutes ~/ 60}h ${(minutes % 60).toString().padLeft(2, '0')}m';
   }
-}
 
-class _FeatureStrip extends StatelessWidget {
-  const _FeatureStrip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
+  void _showMoreMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
         child: Wrap(
-          spacing: 24,
-          runSpacing: 18,
-          alignment: WrapAlignment.spaceAround,
-          children: const [
-            _FeatureItem(
-              icon: Icons.speed_rounded,
-              title: 'Simple & rapide',
-              subtitle: 'Les infos utiles en quelques secondes',
+          children: [
+            ListTile(
+              leading: const Icon(Icons.build_rounded),
+              title: const Text('Maintenance'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _open(const MaintenancePage());
+              },
             ),
-            _FeatureItem(
-              icon: Icons.fact_check_outlined,
-              title: 'Suivi complet',
-              subtitle: 'Modèles, batteries, sessions et entretiens',
+            ListTile(
+              leading: const Icon(Icons.settings_remote_rounded),
+              title: const Text('Mes radios'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _open(const RadiosPage());
+              },
             ),
-            _FeatureItem(
-              icon: Icons.query_stats_rounded,
-              title: 'Historique détaillé',
-              subtitle: 'Suis l’évolution de ton matériel',
+            ListTile(
+              leading: const Icon(Icons.info_outline_rounded),
+              title: const Text('Informations & Références'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _open(const InfoPage());
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded),
+              title: const Text('Se déconnecter'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _logout();
+              },
             ),
           ],
         ),
@@ -385,50 +666,547 @@ class _FeatureStrip extends StatelessWidget {
   }
 }
 
-class _FeatureItem extends StatelessWidget {
-  const _FeatureItem({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
+class _TopBar extends StatelessWidget {
+  const _TopBar({
+    required this.desktop,
+    required this.name,
+    required this.onInfo,
+    required this.onLogout,
   });
 
-  final IconData icon;
-  final String title;
-  final String subtitle;
+  final bool desktop;
+  final String name;
+  final VoidCallback onInfo;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 245,
+    return Container(
+      height: desktop ? 88 : 78,
+      padding: EdgeInsets.symmetric(horizontal: desktop ? 24 : 16),
+      decoration: const BoxDecoration(
+        color: Color(0xFF071426),
+        border: Border(bottom: BorderSide(color: Color(0xFF18304B))),
+      ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: const Color(0x332563EB),
-            child: Icon(icon, color: RCColors.primaryLight),
+          if (!desktop) ...[
+            const Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'RC ',
+                    style: TextStyle(
+                      color: Color(0xFFFF3D36),
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                  TextSpan(
+                    text: 'COMPANION',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+          ] else ...[
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bonjour, $name !',
+                    style: const TextStyle(
+                      fontSize: 23,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Voici un résumé de votre activité.',
+                    style: TextStyle(color: Color(0xFF7F8DA0)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          IconButton(
+            onPressed: onInfo,
+            icon: const Icon(Icons.notifications_none_rounded),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: RCColors.textSecondary,
-                    fontSize: 12,
+          if (desktop) ...[
+            const SizedBox(width: 8),
+            CircleAvatar(
+              backgroundColor: const Color(0xFF185BEA),
+              child: Text(
+                name.isEmpty ? 'R' : name[0].toUpperCase(),
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              onPressed: onLogout,
+              icon: const Icon(Icons.logout_rounded),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DesktopSidebar extends StatelessWidget {
+  const _DesktopSidebar({
+    required this.onHome,
+    required this.onModels,
+    required this.onBatteries,
+    required this.onSessions,
+    required this.onMaintenance,
+    required this.onRadios,
+    required this.onInfo,
+  });
+
+  final VoidCallback onHome;
+  final VoidCallback onModels;
+  final VoidCallback onBatteries;
+  final VoidCallback onSessions;
+  final VoidCallback onMaintenance;
+  final VoidCallback onRadios;
+  final VoidCallback onInfo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 220,
+      decoration: const BoxDecoration(
+        color: Color(0xFF061222),
+        border: Border(right: BorderSide(color: Color(0xFF17314D))),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+            child: Image.asset(
+              'assets/images/rc_logo_sidebar_hd.png',
+              height: 108,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+            ),
+          ),
+          _SideItem(
+            icon: Icons.home_rounded,
+            label: 'Accueil',
+            selected: true,
+            onTap: onHome,
+          ),
+          _SideItem(
+            icon: Icons.directions_car_filled_rounded,
+            asset: 'assets/images/rc_icon_models_hd.png',
+            label: 'Modèles',
+            onTap: onModels,
+          ),
+          _SideItem(
+            icon: Icons.battery_charging_full_rounded,
+            asset: 'assets/images/rc_icon_batteries_hd.png',
+            label: 'Batteries',
+            onTap: onBatteries,
+          ),
+          _SideItem(
+            icon: Icons.calendar_month_rounded,
+            asset: 'assets/images/rc_icon_sessions_hd.png',
+            label: 'Sessions',
+            onTap: onSessions,
+          ),
+          _SideItem(
+            icon: Icons.build_rounded,
+            asset: 'assets/images/rc_icon_maintenance_hd.png',
+            label: 'Maintenance',
+            onTap: onMaintenance,
+          ),
+          _SideItem(
+            icon: Icons.settings_remote_rounded,
+            asset: 'assets/images/rc_icon_radio_nb4_hd.png',
+            label: 'Radios',
+            onTap: onRadios,
+          ),
+          const Spacer(),
+          _SideItem(
+            icon: Icons.info_outline_rounded,
+            label: 'Informations',
+            onTap: onInfo,
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+class _SideItem extends StatelessWidget {
+  const _SideItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+    this.asset,
+  });
+
+  final IconData icon;
+  final String? asset;
+  final String label;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFF092F67) : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        border: selected
+            ? const Border(left: BorderSide(color: Color(0xFF168CFF), width: 4))
+            : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          dense: true,
+          leading: asset == null
+              ? Icon(
+                  icon,
+                  color: selected ? const Color(0xFF168CFF) : Colors.white70,
+                )
+              : SizedBox(
+                  width: 38,
+                  height: 38,
+                  child: Image.asset(
+                    asset!,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
                   ),
                 ),
-              ],
+          title: Text(
+            label,
+            style: TextStyle(
+              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
             ),
+          ),
+          onTap: onTap,
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricCardData {
+  const _MetricCardData({
+    required this.value,
+    required this.label,
+    required this.asset,
+    required this.color,
+    required this.onTap,
+  });
+
+  final int value;
+  final String label;
+  final String asset;
+  final Color color;
+  final VoidCallback onTap;
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({required this.data, required this.loading});
+
+  final _MetricCardData data;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: data.onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        height: 108,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0B1A2D),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF23405E)),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black38,
+              blurRadius: 12,
+              offset: Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 58,
+              height: 58,
+              child: Image.asset(
+                data.asset,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: loading
+                  ? const LinearProgressIndicator()
+                  : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${data.value}',
+                            style: TextStyle(
+                              color: data.color,
+                              fontSize: 28,
+                              height: 1,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            data.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardPanel extends StatelessWidget {
+  const _DashboardPanel({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF071426),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF23405E)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _StatLine extends StatelessWidget {
+  const _StatLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1A2D),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF168CFF), size: 30),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: Color(0xFF7F8DA0)),
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DashboardChartPainter extends CustomPainter {
+  const _DashboardChartPainter(this.values);
+
+  final List<double> values;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final grid = Paint()
+      ..color = const Color(0xFF18304B)
+      ..strokeWidth = 1;
+
+    for (var i = 0; i <= 5; i++) {
+      final y = size.height * i / 5;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    }
+    for (var i = 0; i <= 6; i++) {
+      final x = size.width * i / 6;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
+    }
+
+    final usableValues = values.length >= 2
+        ? values
+        : const <double>[0, 0, 0, 0, 0, 0, 0];
+    final maxValue = usableValues.fold<double>(
+      1,
+      (current, value) => value > current ? value : current,
+    );
+
+    final path = Path();
+    for (var i = 0; i < usableValues.length; i++) {
+      final x = usableValues.length == 1
+          ? 0.0
+          : size.width * i / (usableValues.length - 1);
+      final y =
+          size.height -
+          (usableValues[i] / maxValue * (size.height * .88)) -
+          size.height * .05;
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+
+    final fillPath = Path.from(path)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(
+      fillPath,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x553B82F6), Color(0x00168CFF)],
+        ).createShader(Offset.zero & size)
+        ..style = PaintingStyle.fill,
+    );
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFF168CFF)
+        ..strokeWidth = 3
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashboardChartPainter oldDelegate) {
+    return oldDelegate.values != values;
+  }
+}
+
+class _MobileNavigation extends StatelessWidget {
+  const _MobileNavigation({
+    required this.onHome,
+    required this.onModels,
+    required this.onBatteries,
+    required this.onSessions,
+    required this.onMore,
+  });
+
+  final VoidCallback onHome;
+  final VoidCallback onModels;
+  final VoidCallback onBatteries;
+  final VoidCallback onSessions;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    return NavigationBar(
+      selectedIndex: 0,
+      onDestinationSelected: (index) {
+        switch (index) {
+          case 0:
+            onHome();
+          case 1:
+            onModels();
+          case 2:
+            onBatteries();
+          case 3:
+            onSessions();
+          case 4:
+            onMore();
+        }
+      },
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home_rounded),
+          label: 'Accueil',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.directions_car_outlined),
+          selectedIcon: Icon(Icons.directions_car_filled_rounded),
+          label: 'Modèles',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.battery_4_bar_outlined),
+          selectedIcon: Icon(Icons.battery_charging_full_rounded),
+          label: 'Batteries',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.calendar_month_outlined),
+          selectedIcon: Icon(Icons.calendar_month_rounded),
+          label: 'Sessions',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.more_horiz_rounded),
+          label: 'Plus',
+        ),
+      ],
     );
   }
 }
