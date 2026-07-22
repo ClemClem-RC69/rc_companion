@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../models/battery.dart';
@@ -15,6 +16,7 @@ class BatteriesPage extends StatefulWidget {
 
 class _BatteriesPageState extends State<BatteriesPage> {
   List<Battery> _batteries = [];
+  Timer? _autoRefreshTimer;
   final Map<String, _BatteryHealthStatus> _healthByBatteryCode = {};
   bool _isLoading = true;
   String? _errorMessage;
@@ -23,6 +25,18 @@ class _BatteriesPageState extends State<BatteriesPage> {
   void initState() {
     super.initState();
     _loadBatteries();
+
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted && !_isLoading) {
+        _loadBatteries();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadBatteries() async {

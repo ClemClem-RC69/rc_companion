@@ -361,14 +361,20 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       },
     );
 
+    if (result == null || !mounted) {
+      brandController.dispose();
+      capacityController.dispose();
+      cRateController.dispose();
+      notesController.dispose();
+      return;
+    }
+
+    await Future.delayed(const Duration(milliseconds: 100));
+
     brandController.dispose();
     capacityController.dispose();
     cRateController.dispose();
     notesController.dispose();
-
-    if (result == null || !mounted) {
-      return;
-    }
 
     final updatedBattery = result.$1;
     final pairWasDissolved = result.$2;
@@ -886,6 +892,23 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       },
     );
 
+    if (measurement == null || !mounted) {
+      chargeController.dispose();
+      temperatureController.dispose();
+
+      for (final controller in voltageControllers) {
+        controller.dispose();
+      }
+
+      for (final controller in resistanceControllers) {
+        controller.dispose();
+      }
+
+      return;
+    }
+
+    await Future.delayed(const Duration(milliseconds: 100));
+
     chargeController.dispose();
     temperatureController.dispose();
 
@@ -895,10 +918,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 
     for (final controller in resistanceControllers) {
       controller.dispose();
-    }
-
-    if (measurement == null || !mounted) {
-      return;
     }
 
     await _loadMeasurements();
