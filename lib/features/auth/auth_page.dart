@@ -184,10 +184,15 @@ class _AuthPageState extends State<AuthPage> {
                             borderRadius: BorderRadius.circular(16),
                             child: AspectRatio(
                               aspectRatio: 16 / 11,
-                              child: Image.asset(
-                                'assets/images/rc_logo_login_hd.png',
-                                fit: BoxFit.contain,
-                                filterQuality: FilterQuality.high,
+                              child: Center(
+                                child: Transform.scale(
+                                  scale: 1.60,
+                                  child: Image.asset(
+                                    'assets/images/rc_logo_login_hd.png',
+                                    fit: BoxFit.contain,
+                                    filterQuality: FilterQuality.high,
+                                  ),
+                                ),
                               ),
                             ),
                           ),

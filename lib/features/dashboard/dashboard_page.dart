@@ -468,12 +468,17 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           SizedBox(
-            width: 170,
-            height: 120,
-            child: Image.asset(
-              _categoryAsset(lastModelCategory),
-              fit: BoxFit.contain,
-              filterQuality: FilterQuality.high,
+            width: 210,
+            height: 145,
+            child: Center(
+              child: Transform.scale(
+                scale: 1.65,
+                child: Image.asset(
+                  _categoryAsset(lastModelCategory),
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
             ),
           ),
         ],
@@ -505,12 +510,17 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           SizedBox(
-            width: 116,
-            height: 132,
-            child: Image.asset(
-              'assets/images/rc_battery_dashboard_hd.png',
-              fit: BoxFit.contain,
-              filterQuality: FilterQuality.high,
+            width: 210,
+            height: 190,
+            child: Center(
+              child: Transform.scale(
+                scale: 0.95,
+                child: Image.asset(
+                  'assets/images/rc_battery_dashboard_hd.png',
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
             ),
           ),
         ],
@@ -783,7 +793,7 @@ class _DesktopSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 220,
+      width: 248,
       decoration: const BoxDecoration(
         color: Color(0xFF061222),
         border: Border(right: BorderSide(color: Color(0xFF17314D))),
@@ -791,12 +801,19 @@ class _DesktopSidebar extends StatelessWidget {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
-            child: Image.asset(
-              'assets/images/rc_logo_sidebar_hd.png',
-              height: 108,
-              fit: BoxFit.contain,
-              filterQuality: FilterQuality.high,
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+            child: SizedBox(
+              height: 250,
+              child: Center(
+                child: Transform.scale(
+                  scale: 1.18,
+                  child: Image.asset(
+                    'assets/images/rc_logo_login_hd.png',
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
+                ),
+              ),
             ),
           ),
           _SideItem(
@@ -866,7 +883,7 @@ class _SideItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: selected ? const Color(0xFF092F67) : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
@@ -879,15 +896,23 @@ class _SideItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         clipBehavior: Clip.antiAlias,
         child: ListTile(
-          dense: true,
+          dense: false,
+          minTileHeight: 60,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          horizontalTitleGap: 12,
           leading: asset == null
-              ? Icon(
-                  icon,
-                  color: selected ? const Color(0xFF168CFF) : Colors.white70,
+              ? SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Icon(
+                    icon,
+                    size: selected ? 34 : 28,
+                    color: selected ? const Color(0xFF168CFF) : Colors.white70,
+                  ),
                 )
               : SizedBox(
-                  width: 38,
-                  height: 38,
+                  width: 48,
+                  height: 48,
                   child: Image.asset(
                     asset!,
                     fit: BoxFit.contain,
@@ -897,7 +922,8 @@ class _SideItem extends StatelessWidget {
           title: Text(
             label,
             style: TextStyle(
-              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              fontSize: 17,
+              fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
             ),
           ),
           onTap: onTap,
@@ -935,7 +961,7 @@ class _MetricCard extends StatelessWidget {
       onTap: data.onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        height: 108,
+        height: 120,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: const Color(0xFF0B1A2D),
@@ -952,8 +978,8 @@ class _MetricCard extends StatelessWidget {
         child: Row(
           children: [
             SizedBox(
-              width: 58,
-              height: 58,
+              width: 70,
+              height: 70,
               child: Image.asset(
                 data.asset,
                 fit: BoxFit.contain,
@@ -964,35 +990,34 @@ class _MetricCard extends StatelessWidget {
             Expanded(
               child: loading
                   ? const LinearProgressIndicator()
-                  : FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${data.value}',
-                            style: TextStyle(
-                              color: data.color,
-                              fontSize: 28,
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${data.value}',
+                          style: TextStyle(
+                            color: data.color,
+                            fontSize: 29,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            data.label,
+                            maxLines: 1,
+                            style: const TextStyle(
+                              fontSize: 12,
                               height: 1,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
-                          const SizedBox(height: 5),
-                          Text(
-                            data.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              height: 1,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
             ),
           ],
