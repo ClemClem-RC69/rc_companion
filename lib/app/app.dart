@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/auth/auth_page.dart';
 import '../features/dashboard/dashboard_page.dart';
+import '../services/battery_sync_service.dart';
 import '../services/supabase_service.dart';
 
 class RCColors {
@@ -121,10 +122,7 @@ class RCCompanionApp extends StatelessWidget {
           foregroundColor: Colors.white,
           minimumSize: const Size(0, 52),
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
-          textStyle: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-          ),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -162,9 +160,7 @@ class RCCompanionApp extends StatelessWidget {
         backgroundColor: RCColors.surfaceHigh,
         contentTextStyle: const TextStyle(color: RCColors.textPrimary),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       navigationBarTheme: const NavigationBarThemeData(
         backgroundColor: RCColors.surface,
@@ -193,10 +189,19 @@ class _AuthGateState extends State<AuthGate> {
     super.initState();
     session = SupabaseService.client.auth.currentSession;
 
+    if (session != null) {
+      unawaited(BatterySyncService.syncNow());
+    }
+
     authSubscription = SupabaseService.client.auth.onAuthStateChange.listen(
       (data) {
         if (!mounted) return;
+
         setState(() => session = data.session);
+
+        if (data.session != null) {
+          unawaited(BatterySyncService.syncNow());
+        }
       },
       onError: (Object error, StackTrace stackTrace) {
         debugPrint('Erreur d’authentification Supabase : $error');

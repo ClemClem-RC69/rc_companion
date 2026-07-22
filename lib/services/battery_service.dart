@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 
 import '../models/battery.dart';
 import '../models/battery_measurement.dart';
+import '../database/app_database.dart';
 import 'battery_local_store.dart';
+import 'battery_sync_service.dart';
 import 'supabase_service.dart';
 
 class BatteryService {
   static final _client = SupabaseService.client;
+  static final _database = AppDatabase.instance;
 
   static Future<List<Battery>> getBatteries() async {
     final user = _client.auth.currentUser;
@@ -60,13 +64,15 @@ class BatteryService {
         .from('batteries')
         .select()
         .eq('user_id', userId)
-        .order('created_at', ascending: false);
+        .order('created_at', ascending: false)
+        .timeout(const Duration(seconds: 8));
 
     final measurementResponse = await _client
         .from('battery_measurements')
         .select()
         .eq('user_id', userId)
-        .order('measured_at', ascending: false);
+        .order('measured_at', ascending: false)
+        .timeout(const Duration(seconds: 8));
 
     final batteryRows = batteryResponse
         .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
@@ -149,26 +155,27 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    await _client.from('batteries').insert({
-      'user_id': user.id,
-      ...battery.toJson(),
-    });
+    await BatteryLocalStore.upsertBattery(userId: user.id, battery: battery);
+
+    await _database.replacePendingSyncOperation(
+      userId: user.id,
+      entityType: 'battery',
+      entityId: battery.id,
+      operation: 'upsert',
+      payloadJson: jsonEncode({
+        'user_id': user.id,
+        ...battery.toJson(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }),
+    );
+
+    unawaited(BatterySyncService.syncNow());
   }
 
   static Future<void> createBatteries(List<Battery> batteries) async {
-    final user = _client.auth.currentUser;
-
-    if (user == null) {
-      throw StateError('Utilisateur non connecté');
+    for (final battery in batteries) {
+      await createBattery(battery);
     }
-
-    await _client
-        .from('batteries')
-        .insert(
-          batteries
-              .map((battery) => {'user_id': user.id, ...battery.toJson()})
-              .toList(),
-        );
   }
 
   static Future<void> createBatteryPairedWithExisting({
@@ -341,14 +348,21 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    await _client
-        .from('batteries')
-        .update({
-          ...battery.toJson(),
-          'updated_at': DateTime.now().toIso8601String(),
-        })
-        .eq('user_id', user.id)
-        .eq('battery_code', battery.id);
+    await BatteryLocalStore.upsertBattery(userId: user.id, battery: battery);
+
+    await _database.replacePendingSyncOperation(
+      userId: user.id,
+      entityType: 'battery',
+      entityId: battery.id,
+      operation: 'upsert',
+      payloadJson: jsonEncode({
+        'user_id': user.id,
+        ...battery.toJson(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }),
+    );
+
+    unawaited(BatterySyncService.syncNow());
   }
 
   static Future<void> dissolvePair(String pairId) async {
@@ -376,24 +390,29 @@ class BatteryService {
     }
 
     final pairId = battery.pairId;
-
     if (pairId != null && pairId.isNotEmpty) {
-      await _client
-          .from('batteries')
-          .update({
-            'pair_id': null,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('user_id', user.id)
-          .eq('pair_id', pairId)
-          .neq('battery_code', battery.id);
+      final cached = await BatteryLocalStore.getBatteries(userId: user.id);
+
+      for (final other in cached.where(
+        (item) => item.id != battery.id && item.pairId == pairId,
+      )) {
+        await updateBattery(other.copyWith(removePair: true));
+      }
     }
 
-    await _client
-        .from('batteries')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('battery_code', battery.id);
+    await BatteryLocalStore.markBatteryDeleted(
+      userId: user.id,
+      battery: battery,
+    );
+
+    await _database.replacePendingSyncOperation(
+      userId: user.id,
+      entityType: 'battery',
+      entityId: battery.id,
+      operation: 'delete',
+    );
+
+    unawaited(BatterySyncService.syncNow());
   }
 
   static Future<List<BatteryMeasurement>> getBatteryMeasurements(
@@ -452,7 +471,8 @@ class BatteryService {
         .select()
         .eq('user_id', userId)
         .eq('battery_code', batteryCode)
-        .order('measured_at', ascending: false);
+        .order('measured_at', ascending: false)
+        .timeout(const Duration(seconds: 8));
 
     final rows = response
         .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
@@ -569,13 +589,27 @@ class BatteryService {
 
     _validateMeasurement(measurement);
 
-    final insertedRow = await _client
-        .from('battery_measurements')
-        .insert({'user_id': user.id, ...measurement.toJson()})
-        .select()
-        .single();
+    final entityId = BatteryLocalStore.measurementEntityId(
+      userId: user.id,
+      measurement: measurement,
+    );
 
-    return BatteryMeasurement.fromJson(Map<String, dynamic>.from(insertedRow));
+    await BatteryLocalStore.upsertMeasurement(
+      userId: user.id,
+      measurement: measurement,
+      forcedLocalKey: entityId,
+    );
+
+    await _database.replacePendingSyncOperation(
+      userId: user.id,
+      entityType: 'battery_measurement',
+      entityId: entityId,
+      operation: 'upsert',
+      payloadJson: jsonEncode({'user_id': user.id, ...measurement.toJson()}),
+    );
+
+    unawaited(BatterySyncService.syncNow());
+    return measurement;
   }
 
   static Future<BatteryMeasurement> updateBatteryMeasurement(
@@ -587,32 +621,33 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    if (measurement.id == null) {
-      throw StateError('Mesure introuvable');
-    }
-
     _validateMeasurement(measurement);
 
-    final updatedRow = await _client
-        .from('battery_measurements')
-        .update(measurement.toJson())
-        .eq('user_id', user.id)
-        .eq('id', measurement.id!)
-        .select()
-        .single();
-
-    final savedMeasurement = BatteryMeasurement.fromJson(
-      Map<String, dynamic>.from(updatedRow),
+    final entityId = BatteryLocalStore.measurementEntityId(
+      userId: user.id,
+      measurement: measurement,
     );
 
-    if (savedMeasurement.isEndOfRun) {
-      await _synchronizeSessionRunMeasurement(
-        userId: user.id,
-        measurement: savedMeasurement,
-      );
-    }
+    await BatteryLocalStore.upsertMeasurement(
+      userId: user.id,
+      measurement: measurement,
+      forcedLocalKey: entityId,
+    );
 
-    return savedMeasurement;
+    await _database.replacePendingSyncOperation(
+      userId: user.id,
+      entityType: 'battery_measurement',
+      entityId: entityId,
+      operation: 'upsert',
+      payloadJson: jsonEncode({
+        'user_id': user.id,
+        if (measurement.id != null) 'id': measurement.id,
+        ...measurement.toJson(),
+      }),
+    );
+
+    unawaited(BatterySyncService.syncNow());
+    return measurement;
   }
 
   static Future<void> _synchronizeSessionRunMeasurement({
@@ -689,15 +724,27 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    if (measurement.id == null) {
-      throw StateError('Mesure introuvable');
-    }
+    final entityId = BatteryLocalStore.measurementEntityId(
+      userId: user.id,
+      measurement: measurement,
+    );
 
-    await _client
-        .from('battery_measurements')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('id', measurement.id!);
+    await BatteryLocalStore.markMeasurementDeleted(
+      userId: user.id,
+      measurement: measurement,
+    );
+
+    await _database.replacePendingSyncOperation(
+      userId: user.id,
+      entityType: 'battery_measurement',
+      entityId: entityId,
+      operation: 'delete',
+      payloadJson: jsonEncode({
+        if (measurement.id != null) 'id': measurement.id,
+      }),
+    );
+
+    unawaited(BatterySyncService.syncNow());
   }
 
   static void _validateMeasurement(BatteryMeasurement measurement) {
@@ -752,19 +799,14 @@ class BatteryService {
     }
 
     final prefix = '${_technologyPrefix(technology)}-';
-
-    final response = await _client
-        .from('batteries')
-        .select('battery_code')
-        .eq('user_id', user.id)
-        .like('battery_code', '$prefix%');
+    final batteries = await BatteryLocalStore.getBatteries(userId: user.id);
 
     var highestNumber = 0;
 
-    for (final row in response) {
-      final code = row['battery_code'] as String?;
+    for (final battery in batteries) {
+      final code = battery.id;
 
-      if (code == null || !code.startsWith(prefix)) {
+      if (!code.startsWith(prefix)) {
         continue;
       }
 
@@ -785,16 +827,12 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    final response = await _client
-        .from('batteries')
-        .select('pair_id')
-        .eq('user_id', user.id)
-        .like('pair_id', 'P-%');
+    final batteries = await BatteryLocalStore.getBatteries(userId: user.id);
 
     var highestNumber = 0;
 
-    for (final row in response) {
-      final pairId = row['pair_id'] as String?;
+    for (final battery in batteries) {
+      final pairId = battery.pairId;
 
       if (pairId == null || !pairId.startsWith('P-')) {
         continue;

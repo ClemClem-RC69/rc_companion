@@ -36,15 +36,23 @@ class BatteryLocalStore {
     required List<Map<String, dynamic>> rows,
   }) async {
     await _database.transaction(() async {
-      await (_database.delete(
-        _database.localBatteries,
-      )..where((row) => row.userId.equals(userId))).go();
+      final pendingBatteryCodes = await _database.getPendingEntityIds(
+        userId: userId,
+        entityType: 'battery',
+      );
 
-      if (rows.isEmpty) {
-        return;
-      }
+      await (_database.delete(_database.localBatteries)..where(
+            (row) =>
+                row.userId.equals(userId) &
+                row.batteryCode.isNotIn(pendingBatteryCodes.toList()),
+          ))
+          .go();
 
-      final values = rows
+      final cloudRows = rows.where(
+        (row) => !pendingBatteryCodes.contains(row['battery_code']?.toString()),
+      );
+
+      final values = cloudRows
           .map((row) {
             final batteryCode = row['battery_code'] as String;
 
@@ -59,13 +67,15 @@ class BatteryLocalStore {
           })
           .toList(growable: false);
 
-      await _database.batch((batch) {
-        batch.insertAll(
-          _database.localBatteries,
-          values,
-          mode: InsertMode.insertOrReplace,
-        );
-      });
+      if (values.isNotEmpty) {
+        await _database.batch((batch) {
+          batch.insertAll(
+            _database.localBatteries,
+            values,
+            mode: InsertMode.insertOrReplace,
+          );
+        });
+      }
     });
   }
 
@@ -74,15 +84,27 @@ class BatteryLocalStore {
     required List<Map<String, dynamic>> rows,
   }) async {
     await _database.transaction(() async {
-      await (_database.delete(
-        _database.localBatteryMeasurements,
-      )..where((row) => row.userId.equals(userId))).go();
+      final pendingMeasurementKeys = await _database.getPendingEntityIds(
+        userId: userId,
+        entityType: 'battery_measurement',
+      );
 
-      if (rows.isEmpty) {
-        return;
-      }
+      await (_database.delete(_database.localBatteryMeasurements)..where(
+            (row) =>
+                row.userId.equals(userId) &
+                row.localKey.isNotIn(pendingMeasurementKeys.toList()),
+          ))
+          .go();
 
       final values = rows
+          .where((row) {
+            final measurement = BatteryMeasurement.fromJson(row);
+            final key = _measurementKey(
+              userId: userId,
+              measurement: measurement,
+            );
+            return !pendingMeasurementKeys.contains(key);
+          })
           .map((row) {
             final measurement = BatteryMeasurement.fromJson(row);
 
@@ -101,13 +123,15 @@ class BatteryLocalStore {
           })
           .toList(growable: false);
 
-      await _database.batch((batch) {
-        batch.insertAll(
-          _database.localBatteryMeasurements,
-          values,
-          mode: InsertMode.insertOrReplace,
-        );
-      });
+      if (values.isNotEmpty) {
+        await _database.batch((batch) {
+          batch.insertAll(
+            _database.localBatteryMeasurements,
+            values,
+            mode: InsertMode.insertOrReplace,
+          );
+        });
+      }
     });
   }
 
@@ -154,6 +178,116 @@ class BatteryLocalStore {
         );
       });
     });
+  }
+
+  static Future<void> upsertBattery({
+    required String userId,
+    required Battery battery,
+    bool isDeleted = false,
+  }) async {
+    final now = DateTime.now();
+    final row = <String, dynamic>{
+      'user_id': userId,
+      ...battery.toJson(),
+      'updated_at': now.toUtc().toIso8601String(),
+    };
+
+    await _database
+        .into(_database.localBatteries)
+        .insert(
+          LocalBatteriesCompanion.insert(
+            localKey: _batteryKey(userId: userId, batteryCode: battery.id),
+            userId: userId,
+            batteryCode: battery.id,
+            payloadJson: jsonEncode(row),
+            updatedAt: Value(now),
+            isDeleted: Value(isDeleted),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
+  static Future<void> upsertBatteries({
+    required String userId,
+    required List<Battery> batteries,
+  }) async {
+    await _database.transaction(() async {
+      for (final battery in batteries) {
+        await upsertBattery(userId: userId, battery: battery);
+      }
+    });
+  }
+
+  static Future<void> markBatteryDeleted({
+    required String userId,
+    required Battery battery,
+  }) {
+    return upsertBattery(userId: userId, battery: battery, isDeleted: true);
+  }
+
+  static Future<void> upsertMeasurement({
+    required String userId,
+    required BatteryMeasurement measurement,
+    String? forcedLocalKey,
+    bool isDeleted = false,
+  }) async {
+    final row = <String, dynamic>{
+      'user_id': userId,
+      ...measurement.toJson(),
+      if (measurement.id != null) 'id': measurement.id,
+    };
+
+    await _database
+        .into(_database.localBatteryMeasurements)
+        .insert(
+          LocalBatteryMeasurementsCompanion.insert(
+            localKey:
+                forcedLocalKey ??
+                _measurementKey(userId: userId, measurement: measurement),
+            userId: userId,
+            remoteId: Value(measurement.id),
+            batteryCode: measurement.batteryCode,
+            measurementType: measurement.measurementType,
+            measuredAt: measurement.measuredAt,
+            payloadJson: jsonEncode(row),
+            isDeleted: Value(isDeleted),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
+  static Future<void> markMeasurementDeleted({
+    required String userId,
+    required BatteryMeasurement measurement,
+  }) {
+    return upsertMeasurement(
+      userId: userId,
+      measurement: measurement,
+      isDeleted: true,
+    );
+  }
+
+  static Future<void> promoteMeasurementToRemote({
+    required String userId,
+    required String previousLocalKey,
+    required Map<String, dynamic> remoteRow,
+  }) async {
+    final measurement = BatteryMeasurement.fromJson(remoteRow);
+
+    await _database.transaction(() async {
+      await (_database.delete(
+        _database.localBatteryMeasurements,
+      )..where((row) => row.localKey.equals(previousLocalKey))).go();
+
+      await upsertMeasurement(userId: userId, measurement: measurement);
+    });
+  }
+
+  static String measurementEntityId({
+    required String userId,
+    required BatteryMeasurement measurement,
+  }) {
+    return _measurementKey(userId: userId, measurement: measurement);
   }
 
   static Future<List<Battery>> getBatteries({required String userId}) async {

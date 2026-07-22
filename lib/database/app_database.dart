@@ -101,6 +101,46 @@ final class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<Set<String>> getPendingEntityIds({
+    required String userId,
+    required String entityType,
+  }) async {
+    final rows =
+        await (select(syncQueueEntries)..where(
+              (row) =>
+                  row.userId.equals(userId) & row.entityType.equals(entityType),
+            ))
+            .get();
+
+    return rows.map((row) => row.entityId).toSet();
+  }
+
+  Future<int> replacePendingSyncOperation({
+    required String userId,
+    required String entityType,
+    required String entityId,
+    required String operation,
+    String? payloadJson,
+  }) async {
+    return transaction(() async {
+      await (delete(syncQueueEntries)..where(
+            (row) =>
+                row.userId.equals(userId) &
+                row.entityType.equals(entityType) &
+                row.entityId.equals(entityId),
+          ))
+          .go();
+
+      return enqueueSyncOperation(
+        userId: userId,
+        entityType: entityType,
+        entityId: entityId,
+        operation: operation,
+        payloadJson: payloadJson,
+      );
+    });
+  }
+
   Future<int> enqueueSyncOperation({
     required String userId,
     required String entityType,
@@ -120,8 +160,15 @@ final class AppDatabase extends _$AppDatabase {
   }
 
   Future<List<SyncQueueEntry>> getPendingSyncOperations({int limit = 100}) {
+    final now = DateTime.now();
+
     return (select(syncQueueEntries)
-          ..where((row) => row.isProcessing.equals(false))
+          ..where(
+            (row) =>
+                row.isProcessing.equals(false) &
+                (row.nextAttemptAt.isNull() |
+                    row.nextAttemptAt.isSmallerOrEqualValue(now)),
+          )
           ..orderBy([(row) => OrderingTerm.asc(row.createdAt)])
           ..limit(limit))
         .get();
