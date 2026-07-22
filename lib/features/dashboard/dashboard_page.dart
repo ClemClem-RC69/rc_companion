@@ -1,7 +1,10 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../pages/radios_page.dart';
+import '../../models/battery.dart';
+import '../../services/battery_service.dart';
 import '../batteries/batteries_page.dart';
 import '../info/info_page.dart';
 import '../maintenance/maintenance_page.dart';
@@ -36,6 +39,25 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _loadDashboard() async {
     try {
+      final localBatteries = await BatteryService.getCachedBatteries();
+
+      if (mounted) {
+        setState(() {
+          batteryCount = localBatteries.length;
+          batteriesToCharge = _countBatteriesToCharge(localBatteries);
+          loading = false;
+        });
+      }
+
+      final connectivity = await Connectivity().checkConnectivity();
+      final isOffline =
+          connectivity.isEmpty ||
+          connectivity.every((result) => result == ConnectivityResult.none);
+
+      if (isOffline) {
+        return;
+      }
+
       final client = Supabase.instance.client;
 
       final results = await Future.wait<int>([
@@ -43,7 +65,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _countRows(client, 'batteries'),
         _countRows(client, 'rc_sessions'),
         _countRows(client, 'maintenance_records'),
-      ]);
+      ]).timeout(const Duration(seconds: 4));
 
       Map<String, dynamic>? recent;
       String category = 'Voiture';
@@ -129,7 +151,7 @@ class _DashboardPageState extends State<DashboardPage> {
         }
       } catch (_) {}
 
-      int chargeCount = 0;
+      int chargeCount = _countBatteriesToCharge(localBatteries);
       try {
         final batteryRows = await client.from('batteries').select('id, status');
 
@@ -213,6 +235,31 @@ class _DashboardPageState extends State<DashboardPage> {
       if (!mounted) return;
       setState(() => loading = false);
     }
+  }
+
+  int _countBatteriesToCharge(List<Battery> batteries) {
+    var count = 0;
+
+    for (final battery in batteries) {
+      final status = battery.status.toLowerCase();
+
+      if (status.contains('hs') ||
+          status.contains('retir') ||
+          status.contains('stockage')) {
+        continue;
+      }
+
+      if (battery.chargeState == BatteryChargeState.storage) {
+        continue;
+      }
+
+      final percent = battery.chargePercent;
+      if (percent != null && percent < 95) {
+        count++;
+      }
+    }
+
+    return count;
   }
 
   Future<int> _countRows(SupabaseClient client, String table) async {

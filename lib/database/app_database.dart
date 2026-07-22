@@ -3,55 +3,68 @@ import 'package:drift_flutter/drift_flutter.dart';
 
 part 'app_database.g.dart';
 
-/// Opérations locales restant à envoyer vers Supabase.
-///
-/// Une ligne représente une action complète et rejouable : création,
-/// modification ou suppression d'une entité.
+class LocalBatteries extends Table {
+  TextColumn get localKey => text()();
+  TextColumn get userId => text()();
+  TextColumn get batteryCode => text()();
+  TextColumn get payloadJson => text()();
+  DateTimeColumn get createdAt => dateTime().nullable()();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+  DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {localKey};
+}
+
+class LocalBatteryMeasurements extends Table {
+  TextColumn get localKey => text()();
+  TextColumn get userId => text()();
+  IntColumn get remoteId => integer().nullable()();
+  TextColumn get batteryCode => text()();
+  TextColumn get measurementType => text()();
+  DateTimeColumn get measuredAt => dateTime()();
+  TextColumn get payloadJson => text()();
+  DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {localKey};
+}
+
 class SyncQueueEntries extends Table {
   IntColumn get id => integer().autoIncrement()();
-
   TextColumn get userId => text()();
-
-  /// Type fonctionnel : battery, battery_measurement, session, model, etc.
   TextColumn get entityType => text()();
-
-  /// Identifiant stable de l'entité concernée.
   TextColumn get entityId => text()();
-
-  /// create, update ou delete.
   TextColumn get operation => text()();
-
-  /// Données JSON nécessaires pour rejouer l'opération.
   TextColumn get payloadJson => text().nullable()();
-
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
-
   DateTimeColumn get nextAttemptAt => dateTime().nullable()();
-
   IntColumn get attemptCount => integer().withDefault(const Constant(0))();
-
   TextColumn get lastError => text().nullable()();
-
   BoolColumn get isProcessing => boolean().withDefault(const Constant(false))();
 }
 
-/// État de synchronisation propre à chaque utilisateur connecté.
 class LocalSyncStates extends Table {
   TextColumn get userId => text()();
-
   DateTimeColumn get lastSuccessfulPullAt => dateTime().nullable()();
-
   DateTimeColumn get lastSuccessfulPushAt => dateTime().nullable()();
-
   DateTimeColumn get lastAttemptAt => dateTime().nullable()();
-
   TextColumn get lastError => text().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {userId};
 }
 
-@DriftDatabase(tables: [SyncQueueEntries, LocalSyncStates])
+@DriftDatabase(
+  tables: [
+    LocalBatteries,
+    LocalBatteryMeasurements,
+    SyncQueueEntries,
+    LocalSyncStates,
+  ],
+)
 final class AppDatabase extends _$AppDatabase {
   AppDatabase._()
     : super(
@@ -63,14 +76,30 @@ final class AppDatabase extends _$AppDatabase {
 
   static final AppDatabase instance = AppDatabase._();
 
-  /// Ouvre réellement le fichier SQLite afin de détecter immédiatement
-  /// une éventuelle erreur d'initialisation.
   static Future<void> initialize() async {
     await instance.customSelect('SELECT 1').get();
   }
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration {
+    return MigrationStrategy(
+      onCreate: (migrator) async {
+        await migrator.createAll();
+      },
+      onUpgrade: (migrator, from, to) async {
+        if (from < 2) {
+          await migrator.createTable(localBatteries);
+          await migrator.createTable(localBatteryMeasurements);
+        }
+      },
+      beforeOpen: (details) async {
+        await customStatement('PRAGMA foreign_keys = ON');
+      },
+    );
+  }
 
   Future<int> enqueueSyncOperation({
     required String userId,

@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import '../models/battery.dart';
 import '../models/battery_measurement.dart';
+import 'battery_local_store.dart';
 import 'supabase_service.dart';
 
 class BatteryService {
@@ -12,53 +15,77 @@ class BatteryService {
       return [];
     }
 
-    final batteryRows = await _client
-        .from('batteries')
-        .select()
-        .eq('user_id', user.id)
-        .order('created_at', ascending: false);
+    final cachedBatteries = await getCachedBatteries();
+    final hasCache = await BatteryLocalStore.hasBatteryCache(userId: user.id);
 
-    final measurementRows = await _client
-        .from('battery_measurements')
-        .select()
-        .eq('user_id', user.id)
-        .order('measured_at', ascending: false);
-
-    final latestUsefulMeasurementByBattery = <String, BatteryMeasurement>{};
-
-    for (final rawRow in measurementRows) {
-      final measurement = BatteryMeasurement.fromJson(
-        Map<String, dynamic>.from(rawRow),
-      );
-
-      if (measurement.isReference) {
-        continue;
-      }
-
-      final isUsefulChargeMeasurement =
-          measurement.isAfterCharge || measurement.isEndOfRun;
-
-      if (!isUsefulChargeMeasurement) {
-        continue;
-      }
-
-      latestUsefulMeasurementByBattery.putIfAbsent(
-        measurement.batteryCode,
-        () => measurement,
-      );
+    if (hasCache) {
+      unawaited(_refreshBatteriesSilently(user.id));
+      return cachedBatteries;
     }
 
-    return batteryRows
-        .map<Battery>((json) {
-          final battery = Battery.fromJson(Map<String, dynamic>.from(json));
-          final latest = latestUsefulMeasurementByBattery[battery.id];
+    return _refreshBatteriesFromCloud(user.id);
+  }
 
-          return battery.copyWith(
-            chargeState: _chargeStateFor(battery: battery, measurement: latest),
-            chargePercent: latest?.chargePercent,
-          );
-        })
+  static Future<List<Battery>> getCachedBatteries() async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      return [];
+    }
+
+    final cachedBatteries = await BatteryLocalStore.getBatteries(
+      userId: user.id,
+    );
+    final cachedMeasurements = await BatteryLocalStore.getMeasurements(
+      userId: user.id,
+    );
+
+    return _applyChargeState(
+      batteries: cachedBatteries,
+      measurements: cachedMeasurements,
+    );
+  }
+
+  static Future<void> _refreshBatteriesSilently(String userId) async {
+    try {
+      await _refreshBatteriesFromCloud(userId);
+    } catch (_) {
+      // Le cache local reste la source d'affichage lorsque le réseau
+      // est indisponible. La prochaine ouverture tentera à nouveau.
+    }
+  }
+
+  static Future<List<Battery>> _refreshBatteriesFromCloud(String userId) async {
+    final batteryResponse = await _client
+        .from('batteries')
+        .select()
+        .eq('user_id', userId)
+        .order('created_at', ascending: false);
+
+    final measurementResponse = await _client
+        .from('battery_measurements')
+        .select()
+        .eq('user_id', userId)
+        .order('measured_at', ascending: false);
+
+    final batteryRows = batteryResponse
+        .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
         .toList(growable: false);
+
+    final measurementRows = measurementResponse
+        .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+
+    await BatteryLocalStore.replaceBatteries(userId: userId, rows: batteryRows);
+    await BatteryLocalStore.replaceMeasurements(
+      userId: userId,
+      rows: measurementRows,
+    );
+
+    return _buildBatteries(
+      batteryRows: batteryRows,
+      measurementRows: measurementRows,
+    );
   }
 
   static Future<List<Battery>> getAvailablePairCandidates({
@@ -74,29 +101,45 @@ class BatteryService {
       throw StateError('Utilisateur non connecté');
     }
 
-    final cellsNumber = int.parse(cells.replaceAll('S', ''));
+    try {
+      final cellsNumber = int.parse(cells.replaceAll('S', ''));
 
-    var query = _client
-        .from('batteries')
-        .select()
-        .eq('user_id', user.id)
-        .eq('technology', technology)
-        .eq('capacity_mah', capacity)
-        .eq('cells', cellsNumber)
-        .eq('c_rate', cRate)
-        .isFilter('pair_id', null);
+      var query = _client
+          .from('batteries')
+          .select()
+          .eq('user_id', user.id)
+          .eq('technology', technology)
+          .eq('capacity_mah', capacity)
+          .eq('cells', cellsNumber)
+          .eq('c_rate', cRate)
+          .isFilter('pair_id', null);
 
-    if (excludedBatteryCode != null && excludedBatteryCode.isNotEmpty) {
-      query = query.neq('battery_code', excludedBatteryCode);
+      if (excludedBatteryCode != null && excludedBatteryCode.isNotEmpty) {
+        query = query.neq('battery_code', excludedBatteryCode);
+      }
+
+      final response = await query.order('created_at');
+
+      return response
+          .map<Battery>(
+            (json) => Battery.fromJson(Map<String, dynamic>.from(json)),
+          )
+          .toList(growable: false);
+    } catch (_) {
+      final cached = await BatteryLocalStore.getBatteries(userId: user.id);
+
+      return cached
+          .where(
+            (battery) =>
+                battery.technology == technology &&
+                battery.capacity == capacity &&
+                battery.cells == cells &&
+                battery.cRate == cRate &&
+                !battery.isPaired &&
+                battery.id != excludedBatteryCode,
+          )
+          .toList(growable: false);
     }
-
-    final response = await query.order('created_at');
-
-    return response
-        .map<Battery>(
-          (json) => Battery.fromJson(Map<String, dynamic>.from(json)),
-        )
-        .toList();
   }
 
   static Future<void> createBattery(Battery battery) async {
@@ -362,48 +405,82 @@ class BatteryService {
       return [];
     }
 
+    final cached = await BatteryLocalStore.getMeasurements(
+      userId: user.id,
+      batteryCode: batteryCode,
+    );
+    final hasBatteryCache = await BatteryLocalStore.hasBatteryCache(
+      userId: user.id,
+    );
+
+    if (hasBatteryCache) {
+      unawaited(
+        _refreshBatteryMeasurementsSilently(
+          userId: user.id,
+          batteryCode: batteryCode,
+        ),
+      );
+      return cached;
+    }
+
+    return _refreshBatteryMeasurementsFromCloud(
+      userId: user.id,
+      batteryCode: batteryCode,
+    );
+  }
+
+  static Future<void> _refreshBatteryMeasurementsSilently({
+    required String userId,
+    required String batteryCode,
+  }) async {
+    try {
+      await _refreshBatteryMeasurementsFromCloud(
+        userId: userId,
+        batteryCode: batteryCode,
+      );
+    } catch (_) {
+      // Le relevé local, même vide, reste valable hors ligne.
+    }
+  }
+
+  static Future<List<BatteryMeasurement>> _refreshBatteryMeasurementsFromCloud({
+    required String userId,
+    required String batteryCode,
+  }) async {
     final response = await _client
         .from('battery_measurements')
         .select()
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('battery_code', batteryCode)
         .order('measured_at', ascending: false);
 
-    return response
-        .map<BatteryMeasurement>(
-          (json) =>
-              BatteryMeasurement.fromJson(Map<String, dynamic>.from(json)),
-        )
-        .toList();
+    final rows = response
+        .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+
+    await BatteryLocalStore.replaceMeasurementsForBattery(
+      userId: userId,
+      batteryCode: batteryCode,
+      rows: rows,
+    );
+
+    return rows
+        .map<BatteryMeasurement>(BatteryMeasurement.fromJson)
+        .toList(growable: false);
   }
 
   static Future<BatteryMeasurement?> getReferenceMeasurement(
     String batteryCode,
   ) async {
-    final user = _client.auth.currentUser;
+    final measurements = await getBatteryMeasurements(batteryCode);
 
-    if (user == null) {
-      return null;
+    for (final measurement in measurements) {
+      if (measurement.isReference) {
+        return measurement;
+      }
     }
 
-    final response = await _client
-        .from('battery_measurements')
-        .select()
-        .eq('user_id', user.id)
-        .eq('battery_code', batteryCode)
-        .inFilter('measurement_type', const [
-          BatteryMeasurement.referenceType,
-          'Mesure de référence',
-        ])
-        .order('measured_at', ascending: false)
-        .limit(1)
-        .maybeSingle();
-
-    if (response == null) {
-      return null;
-    }
-
-    return BatteryMeasurement.fromJson(Map<String, dynamic>.from(response));
+    return null;
   }
 
   static Future<BatteryMeasurement> saveReferenceMeasurement(
@@ -477,26 +554,8 @@ class BatteryService {
   static Future<BatteryMeasurement?> getLatestBatteryMeasurement(
     String batteryCode,
   ) async {
-    final user = _client.auth.currentUser;
-
-    if (user == null) {
-      return null;
-    }
-
-    final response = await _client
-        .from('battery_measurements')
-        .select()
-        .eq('user_id', user.id)
-        .eq('battery_code', batteryCode)
-        .order('measured_at', ascending: false)
-        .limit(1)
-        .maybeSingle();
-
-    if (response == null) {
-      return null;
-    }
-
-    return BatteryMeasurement.fromJson(Map<String, dynamic>.from(response));
+    final measurements = await getBatteryMeasurements(batteryCode);
+    return measurements.isEmpty ? null : measurements.first;
   }
 
   static Future<BatteryMeasurement> createBatteryMeasurement(
@@ -978,6 +1037,56 @@ class BatteryService {
       risingTrend: risingTrend,
       reasons: reasons,
     );
+  }
+
+  static List<Battery> _buildBatteries({
+    required List<Map<String, dynamic>> batteryRows,
+    required List<Map<String, dynamic>> measurementRows,
+  }) {
+    final batteries = batteryRows
+        .map<Battery>(Battery.fromJson)
+        .toList(growable: false);
+    final measurements = measurementRows
+        .map<BatteryMeasurement>(BatteryMeasurement.fromJson)
+        .toList(growable: false);
+
+    return _applyChargeState(batteries: batteries, measurements: measurements);
+  }
+
+  static List<Battery> _applyChargeState({
+    required List<Battery> batteries,
+    required List<BatteryMeasurement> measurements,
+  }) {
+    final sortedMeasurements = List<BatteryMeasurement>.from(measurements)
+      ..sort((first, second) => second.measuredAt.compareTo(first.measuredAt));
+
+    final latestUsefulMeasurementByBattery = <String, BatteryMeasurement>{};
+
+    for (final measurement in sortedMeasurements) {
+      if (measurement.isReference) {
+        continue;
+      }
+
+      if (!measurement.isAfterCharge && !measurement.isEndOfRun) {
+        continue;
+      }
+
+      latestUsefulMeasurementByBattery.putIfAbsent(
+        measurement.batteryCode,
+        () => measurement,
+      );
+    }
+
+    return batteries
+        .map((battery) {
+          final latest = latestUsefulMeasurementByBattery[battery.id];
+
+          return battery.copyWith(
+            chargeState: _chargeStateFor(battery: battery, measurement: latest),
+            chargePercent: latest?.chargePercent,
+          );
+        })
+        .toList(growable: false);
   }
 
   static String _technologyPrefix(String technology) {
