@@ -18,18 +18,26 @@ dependencies:
   pdf: ^3.11.3
   printing: ^5.14.2
 
-  # Sélection des notices et vues éclatées en PDF
   file_picker: ^11.0.2
-
-  # Affichage des PDF directement dans RC Companion
   pdfrx: ^2.4.7
   mobile_scanner: ^7.3.0
+
+  # OFFLINE FIRST
+  drift: ^2.29.0
+  drift_flutter: ^0.2.5
+  sqlite3_flutter_libs: ^0.5.39
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  connectivity_plus: ^7.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
+
+  drift_dev: ^2.29.0
+  build_runner: ^2.6.0
 
 flutter:
   uses-material-design: true
