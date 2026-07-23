@@ -1,15 +1,30 @@
+import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../pages/radios_page.dart';
 import '../../models/battery.dart';
+import '../../services/battery_local_store.dart';
 import '../../services/battery_service.dart';
 import '../batteries/batteries_page.dart';
 import '../info/info_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../models/models_page.dart';
 import '../sessions/sessions_page.dart';
+
+class _BatteryChargeMetrics {
+  const _BatteryChargeMetrics({
+    required this.charged,
+    required this.storage,
+    required this.toCharge,
+  });
+
+  final int charged;
+  final int storage;
+  final int toCharge;
+}
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -18,11 +33,14 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends State<DashboardPage>
+    with WidgetsBindingObserver {
   int modelCount = 0;
   int batteryCount = 0;
   int sessionCount = 0;
   int maintenanceCount = 0;
+  int chargedBatteries = 0;
+  int storageBatteries = 0;
   int batteriesToCharge = 0;
   bool loading = true;
   Map<String, dynamic>? lastSession;
@@ -31,10 +49,132 @@ class _DashboardPageState extends State<DashboardPage> {
   int totalPacks = 0;
   List<double> chartValues = const <double>[];
 
+  StreamSubscription<List<Battery>>? _batterySubscription;
+  StreamSubscription? _measurementSubscription;
+  Timer? _batteryRefreshDebounce;
+  Timer? _dashboardRefreshDebounce;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  RealtimeChannel? _dashboardRealtimeChannel;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startBatteryLiveUpdates();
+    _startDashboardRefreshTriggers();
     _loadDashboard();
+  }
+
+  void _startDashboardRefreshTriggers() {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      results,
+    ) {
+      final isOnline =
+          results.isNotEmpty &&
+          results.any((result) => result != ConnectivityResult.none);
+      if (isOnline) {
+        _scheduleDashboardRefresh();
+      }
+    });
+
+    final client = Supabase.instance.client;
+    _dashboardRealtimeChannel = client
+        .channel('dashboard-live-${client.auth.currentUser?.id ?? 'anonymous'}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'rc_models',
+          callback: (_) => _scheduleDashboardRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'rc_sessions',
+          callback: (_) => _scheduleDashboardRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'session_runs',
+          callback: (_) => _scheduleDashboardRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_records',
+          callback: (_) => _scheduleDashboardRefresh(),
+        )
+        .subscribe();
+  }
+
+  void _scheduleDashboardRefresh() {
+    _dashboardRefreshDebounce?.cancel();
+    _dashboardRefreshDebounce = Timer(
+      const Duration(milliseconds: 250),
+      _loadDashboard,
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _scheduleDashboardRefresh();
+    }
+  }
+
+  void _startBatteryLiveUpdates() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _batterySubscription = BatteryLocalStore.watchBatteries(
+      userId: user.id,
+    ).listen((_) => _scheduleBatteryMetricsRefresh());
+
+    _measurementSubscription = BatteryLocalStore.watchMeasurements(
+      userId: user.id,
+    ).listen((_) => _scheduleBatteryMetricsRefresh());
+  }
+
+  void _scheduleBatteryMetricsRefresh() {
+    _batteryRefreshDebounce?.cancel();
+    _batteryRefreshDebounce = Timer(
+      const Duration(milliseconds: 80),
+      _refreshBatteryMetricsFromDrift,
+    );
+  }
+
+  Future<void> _refreshBatteryMetricsFromDrift() async {
+    final batteries = await BatteryService.getCachedBatteries();
+    if (!mounted) return;
+
+    final metrics = _batteryChargeMetrics(batteries);
+
+    setState(() {
+      batteryCount = batteries.length;
+      chargedBatteries = metrics.charged;
+      storageBatteries = metrics.storage;
+      batteriesToCharge = metrics.toCharge;
+      loading = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _batteryRefreshDebounce?.cancel();
+    _dashboardRefreshDebounce?.cancel();
+    _batterySubscription?.cancel();
+    _measurementSubscription?.cancel();
+    _connectivitySubscription?.cancel();
+
+    final channel = _dashboardRealtimeChannel;
+    if (channel != null) {
+      Supabase.instance.client.removeChannel(channel);
+    }
+
+    super.dispose();
   }
 
   Future<void> _loadDashboard() async {
@@ -42,9 +182,12 @@ class _DashboardPageState extends State<DashboardPage> {
       final localBatteries = await BatteryService.getCachedBatteries();
 
       if (mounted) {
+        final metrics = _batteryChargeMetrics(localBatteries);
         setState(() {
           batteryCount = localBatteries.length;
-          batteriesToCharge = _countBatteriesToCharge(localBatteries);
+          chargedBatteries = metrics.charged;
+          storageBatteries = metrics.storage;
+          batteriesToCharge = metrics.toCharge;
           loading = false;
         });
       }
@@ -58,11 +201,16 @@ class _DashboardPageState extends State<DashboardPage> {
         return;
       }
 
+      // Supabase alimente uniquement le cache local. Le Dashboard reste basé
+      // sur Drift et se met à jour via les streams ci-dessus.
+      try {
+        await BatteryService.getBatteries();
+      } catch (_) {}
+
       final client = Supabase.instance.client;
 
       final results = await Future.wait<int>([
         _countRows(client, 'rc_models'),
-        _countRows(client, 'batteries'),
         _countRows(client, 'rc_sessions'),
         _countRows(client, 'maintenance_records'),
       ]).timeout(const Duration(seconds: 4));
@@ -151,64 +299,6 @@ class _DashboardPageState extends State<DashboardPage> {
         }
       } catch (_) {}
 
-      int chargeCount = _countBatteriesToCharge(localBatteries);
-      try {
-        final batteryRows = await client.from('batteries').select('id, status');
-
-        final measurementRows = await client
-            .from('battery_measurements')
-            .select(
-              'battery_code, measured_at, charge_percent, measurement_type, notes',
-            )
-            .order('measured_at', ascending: false);
-
-        final latestByBattery = <String, Map<String, dynamic>>{};
-        for (final raw in measurementRows) {
-          final measurement = Map<String, dynamic>.from(raw);
-          final code = measurement['battery_code']?.toString();
-          if (code != null && code.isNotEmpty) {
-            latestByBattery.putIfAbsent(code, () => measurement);
-          }
-        }
-
-        for (final raw in batteryRows) {
-          final battery = Map<String, dynamic>.from(raw);
-          final code = battery['id']?.toString();
-          if (code == null || code.isEmpty) {
-            continue;
-          }
-
-          final status = (battery['status']?.toString() ?? '').toLowerCase();
-          if (status.contains('hs') ||
-              status.contains('retir') ||
-              status.contains('stockage')) {
-            continue;
-          }
-
-          final latest = latestByBattery[code];
-          if (latest == null) {
-            continue;
-          }
-
-          final notes = (latest['notes']?.toString() ?? '').toLowerCase();
-          final explicitlyStored =
-              notes.contains('storage') || notes.contains('stockage');
-          final explicitlyCharged =
-              notes.contains('charged') || notes.contains('chargée');
-
-          if (explicitlyStored) {
-            continue;
-          }
-
-          final chargePercent = _asDouble(latest['charge_percent']);
-          if (!explicitlyCharged &&
-              chargePercent != null &&
-              chargePercent < 95) {
-            chargeCount++;
-          }
-        }
-      } catch (_) {}
-
       final sortedDays = valuesByDay.keys.toList()..sort();
       var cumulativeMinutes = 0.0;
       final chart = <double>[];
@@ -220,10 +310,8 @@ class _DashboardPageState extends State<DashboardPage> {
       if (!mounted) return;
       setState(() {
         modelCount = results[0];
-        batteryCount = results[1];
-        sessionCount = results[2];
-        maintenanceCount = results[3];
-        batteriesToCharge = chargeCount;
+        sessionCount = results[1];
+        maintenanceCount = results[2];
         lastSession = recent;
         lastModelCategory = category;
         totalRunMinutes = runMinutes;
@@ -237,29 +325,37 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  int _countBatteriesToCharge(List<Battery> batteries) {
-    var count = 0;
+  _BatteryChargeMetrics _batteryChargeMetrics(List<Battery> batteries) {
+    var charged = 0;
+    var storage = 0;
+    var toCharge = 0;
 
     for (final battery in batteries) {
       final status = battery.status.toLowerCase();
 
-      if (status.contains('hs') ||
-          status.contains('retir') ||
-          status.contains('stockage')) {
+      if (status.contains('hs') || status.contains('retir')) {
         continue;
       }
 
-      if (battery.chargeState == BatteryChargeState.storage) {
-        continue;
-      }
-
-      final percent = battery.chargePercent;
-      if (percent != null && percent < 95) {
-        count++;
+      switch (battery.chargeState) {
+        case BatteryChargeState.charged:
+          charged += 1;
+          break;
+        case BatteryChargeState.storage:
+          storage += 1;
+          break;
+        case BatteryChargeState.partial:
+        case BatteryChargeState.discharged:
+          toCharge += 1;
+          break;
       }
     }
 
-    return count;
+    return _BatteryChargeMetrics(
+      charged: charged,
+      storage: storage,
+      toCharge: toCharge,
+    );
   }
 
   Future<int> _countRows(SupabaseClient client, String table) async {
@@ -269,11 +365,6 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (_) {
       return 0;
     }
-  }
-
-  double? _asDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse('$value');
   }
 
   void _open(Widget page) {
@@ -535,43 +626,97 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _batteryChargeCard() {
     return _DashboardPanel(
-      title: 'BATTERIES À CHARGER',
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  batteriesToCharge == 0
-                      ? 'Aucun pack à charger'
-                      : '$batteriesToCharge pack${batteriesToCharge > 1 ? 's' : ''} à charger',
-                  style: const TextStyle(fontSize: 17),
-                ),
-                const SizedBox(height: 18),
-                OutlinedButton(
-                  onPressed: () => _open(const BatteriesPage()),
-                  child: const Text('Voir mes batteries'),
-                ),
-              ],
+      title: 'ÉTAT DES BATTERIES',
+      child: SizedBox(
+        height: 190,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _batteryStateLine(
+                    label: 'Chargées',
+                    value: chargedBatteries,
+                    color: const Color(0xFF2E9B57),
+                  ),
+                  const SizedBox(height: 7),
+                  _batteryStateLine(
+                    label: 'Storage',
+                    value: storageBatteries,
+                    color: const Color(0xFF3578C8),
+                  ),
+                  const SizedBox(height: 7),
+                  _batteryStateLine(
+                    label: 'À charger',
+                    value: batteriesToCharge,
+                    color: const Color(0xFFE28A2B),
+                  ),
+                  const SizedBox(height: 13),
+                  OutlinedButton(
+                    onPressed: () => _open(const BatteriesPage()),
+                    child: const Text(
+                      'Voir mes batteries',
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.visible,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          SizedBox(
-            width: 210,
-            height: 190,
-            child: Center(
-              child: Transform.scale(
-                scale: 0.95,
-                child: Image.asset(
-                  'assets/images/rc_battery_dashboard_hd.png',
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
+            SizedBox(
+              width: 210,
+              height: 190,
+              child: Center(
+                child: Transform.scale(
+                  scale: 0.95,
+                  child: Image.asset(
+                    'assets/images/rc_battery_dashboard_hd.png',
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _batteryStateLine({
+    required String label,
+    required int value,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '$value',
+          style: TextStyle(
+            color: color,
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
     );
   }
 
