@@ -290,6 +290,45 @@ class BatteryLocalStore {
     return _measurementKey(userId: userId, measurement: measurement);
   }
 
+  static Stream<List<Battery>> watchBatteries({required String userId}) {
+    final query = _database.select(_database.localBatteries)
+      ..where((row) => row.userId.equals(userId) & row.isDeleted.equals(false))
+      ..orderBy([
+        (row) => OrderingTerm.desc(row.updatedAt, nulls: NullsOrder.last),
+        (row) => OrderingTerm.desc(row.cachedAt),
+      ]);
+
+    return query.watch().map(
+      (rows) => rows
+          .map((row) {
+            final data = Map<String, dynamic>.from(
+              jsonDecode(row.payloadJson) as Map,
+            );
+            return Battery.fromJson(data);
+          })
+          .toList(growable: false),
+    );
+  }
+
+  static Stream<List<BatteryMeasurement>> watchMeasurements({
+    required String userId,
+  }) {
+    final query = _database.select(_database.localBatteryMeasurements)
+      ..where((row) => row.userId.equals(userId) & row.isDeleted.equals(false))
+      ..orderBy([(row) => OrderingTerm.desc(row.measuredAt)]);
+
+    return query.watch().map(
+      (rows) => rows
+          .map((row) {
+            final data = Map<String, dynamic>.from(
+              jsonDecode(row.payloadJson) as Map,
+            );
+            return BatteryMeasurement.fromJson(data);
+          })
+          .toList(growable: false),
+    );
+  }
+
   static Future<List<Battery>> getBatteries({required String userId}) async {
     final rows =
         await (_database.select(_database.localBatteries)

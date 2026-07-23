@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../../models/battery.dart';
 import '../../models/battery_measurement.dart';
+import '../../services/battery_local_store.dart';
 import '../../services/battery_service.dart';
+import '../../services/supabase_service.dart';
 import 'battery_detail_page.dart';
 import 'battery_scanner_page.dart';
 
@@ -16,46 +18,89 @@ class BatteriesPage extends StatefulWidget {
 
 class _BatteriesPageState extends State<BatteriesPage> {
   List<Battery> _batteries = [];
-  Timer? _autoRefreshTimer;
+  StreamSubscription<List<Battery>>? _batterySubscription;
+  StreamSubscription<List<BatteryMeasurement>>? _measurementSubscription;
   final Map<String, _BatteryHealthStatus> _healthByBatteryCode = {};
   bool _isLoading = true;
+  bool _localRefreshScheduled = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _loadBatteries();
-
-    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (mounted && !_isLoading) {
-        _loadBatteries();
-      }
-    });
+    unawaited(_startLiveUpdates());
   }
 
   @override
   void dispose() {
-    _autoRefreshTimer?.cancel();
+    _batterySubscription?.cancel();
+    _measurementSubscription?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadBatteries() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+  Future<void> _startLiveUpdates() async {
+    final user = SupabaseService.client.auth.currentUser;
+
+    if (user != null) {
+      _batterySubscription = BatteryLocalStore.watchBatteries(
+        userId: user.id,
+      ).listen((_) => _scheduleLocalRefresh());
+
+      _measurementSubscription = BatteryLocalStore.watchMeasurements(
+        userId: user.id,
+      ).listen((_) => _scheduleLocalRefresh());
+    }
+
+    await _loadBatteries();
+  }
+
+  void _scheduleLocalRefresh() {
+    if (!mounted || _localRefreshScheduled) {
+      return;
+    }
+
+    _localRefreshScheduled = true;
+
+    scheduleMicrotask(() async {
+      _localRefreshScheduled = false;
+      await _loadBatteriesFromCache();
     });
+  }
+
+  Future<void> _loadBatteriesFromCache() async {
+    final user = SupabaseService.client.auth.currentUser;
+
+    if (user == null) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _batteries = [];
+        _healthByBatteryCode.clear();
+        _isLoading = false;
+      });
+      return;
+    }
 
     try {
-      final batteries = await BatteryService.getBatteries();
+      final batteries = await BatteryService.getCachedBatteries();
+      final measurements = await BatteryLocalStore.getMeasurements(
+        userId: user.id,
+      );
 
-      final healthEntries = await Future.wait(
-        batteries.map((battery) async {
-          final measurements = await BatteryService.getBatteryMeasurements(
-            battery.id,
-          );
+      final measurementsByBattery = <String, List<BatteryMeasurement>>{};
+      for (final measurement in measurements) {
+        measurementsByBattery
+            .putIfAbsent(measurement.batteryCode, () => [])
+            .add(measurement);
+      }
 
-          return MapEntry(battery.id, _healthStatusFor(measurements));
-        }),
+      final healthEntries = batteries.map(
+        (battery) => MapEntry(
+          battery.id,
+          _healthStatusFor(measurementsByBattery[battery.id] ?? const []),
+        ),
       );
 
       if (!mounted) {
@@ -67,6 +112,8 @@ class _BatteriesPageState extends State<BatteriesPage> {
         _healthByBatteryCode
           ..clear()
           ..addEntries(healthEntries);
+        _errorMessage = null;
+        _isLoading = false;
       });
     } catch (error) {
       if (!mounted) {
@@ -75,13 +122,31 @@ class _BatteriesPageState extends State<BatteriesPage> {
 
       setState(() {
         _errorMessage = 'Impossible de charger les batteries.\n$error';
+        _isLoading = false;
       });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+    }
+  }
+
+  Future<void> _loadBatteries() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = _batteries.isEmpty;
+        _errorMessage = null;
+      });
+    }
+
+    try {
+      await BatteryService.getBatteries();
+      await _loadBatteriesFromCache();
+    } catch (error) {
+      if (!mounted) {
+        return;
       }
+
+      setState(() {
+        _errorMessage = 'Impossible de charger les batteries.\n$error';
+        _isLoading = false;
+      });
     }
   }
 
