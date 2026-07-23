@@ -315,20 +315,9 @@ class BatteryService {
       throw StateError('La paire $pairId est introuvable');
     }
 
-    final unpairedBatteries = pairedBatteries
-        .map((battery) => battery.copyWith(removePair: true))
-        .toList(growable: false);
-
-    await BatteryLocalStore.upsertBatteries(
-      userId: user.id,
-      batteries: unpairedBatteries,
-    );
-
-    for (final battery in unpairedBatteries) {
-      await _queueBatteryUpsert(userId: user.id, battery: battery);
+    for (final battery in pairedBatteries) {
+      await updateBattery(battery.copyWith(removePair: true));
     }
-
-    unawaited(BatterySyncService.syncNow());
   }
 
   static Future<void> deleteBattery(Battery battery) async {
