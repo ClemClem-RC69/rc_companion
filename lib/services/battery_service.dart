@@ -907,6 +907,18 @@ class BatteryService {
       return BatteryChargeState.discharged;
     }
 
+    if (measurement.isReference) {
+      if (measurement.chargePercent <= 20) {
+        return BatteryChargeState.discharged;
+      }
+
+      if (measurement.chargePercent >= 95) {
+        return BatteryChargeState.charged;
+      }
+
+      return BatteryChargeState.partial;
+    }
+
     if (measurement.isAfterCharge) {
       final note = measurement.notes ?? '';
 
@@ -962,8 +974,46 @@ class BatteryService {
             (first, second) => first.measuredAt.compareTo(second.measuredAt),
           );
 
-    if (reference == null || afterChargeMeasurements.isEmpty) {
+    if (reference == null) {
       return const BatteryHealthAnalysis.notEvaluated();
+    }
+
+    if (afterChargeMeasurements.isEmpty) {
+      final referenceHasSevereIssue =
+          reference.maximumVoltageDifference > 0.100 ||
+          reference.maximumInternalResistanceDifference > 10.0;
+
+      final referenceHasWarning =
+          reference.maximumVoltageDifference > 0.050 ||
+          reference.maximumInternalResistanceDifference > 5.0;
+
+      final reasons = <String>[
+        'Écart de tension de référence : '
+            '${reference.maximumVoltageDifference.toStringAsFixed(3)} V.',
+        'Écart de résistance interne de référence : '
+            '${reference.maximumInternalResistanceDifference.toStringAsFixed(2)} mΩ.',
+        'Santé initiale calculée à partir de la mesure de référence. '
+            'Les relevés après charge permettront ensuite de suivre son évolution.',
+      ];
+
+      return BatteryHealthAnalysis(
+        level: referenceHasSevereIssue
+            ? BatteryHealthLevel.hs
+            : referenceHasWarning
+            ? BatteryHealthLevel.warning
+            : BatteryHealthLevel.good,
+        label: referenceHasSevereIssue
+            ? 'HS*'
+            : referenceHasWarning
+            ? 'À surveiller*'
+            : 'Bonne*',
+        reference: reference,
+        latestAfterCharge: null,
+        afterChargeCount: 0,
+        resistanceEvolutionPercent: 0.0,
+        risingTrend: false,
+        reasons: reasons,
+      );
     }
 
     final latest = afterChargeMeasurements.last;
@@ -1091,11 +1141,9 @@ class BatteryService {
     final latestUsefulMeasurementByBattery = <String, BatteryMeasurement>{};
 
     for (final measurement in sortedMeasurements) {
-      if (measurement.isReference) {
-        continue;
-      }
-
-      if (!measurement.isAfterCharge && !measurement.isEndOfRun) {
+      if (!measurement.isReference &&
+          !measurement.isAfterCharge &&
+          !measurement.isEndOfRun) {
         continue;
       }
 

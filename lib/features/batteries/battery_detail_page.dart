@@ -1251,7 +1251,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 
   BatteryMeasurement? get _latestHealthMeasurement {
     for (final measurement in _measurements) {
-      if (measurement.isAfterCharge && measurement.hasInternalResistance) {
+      if ((measurement.isAfterCharge || measurement.isReference) &&
+          measurement.hasInternalResistance) {
         return measurement;
       }
     }
