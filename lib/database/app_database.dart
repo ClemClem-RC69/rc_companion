@@ -60,6 +60,19 @@ class LocalSessions extends Table {
   Set<Column<Object>> get primaryKey => {localKey};
 }
 
+class LocalModelSetups extends Table {
+  TextColumn get localKey => text()();
+  TextColumn get userId => text()();
+  TextColumn get modelId => text()();
+  TextColumn get payloadJson => text()();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+  DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {localKey};
+}
+
 class SyncQueueEntries extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get userId => text()();
@@ -91,6 +104,7 @@ class LocalSyncStates extends Table {
     LocalBatteryMeasurements,
     LocalSessions,
     LocalModels,
+    LocalModelSetups,
     SyncQueueEntries,
     LocalSyncStates,
   ],
@@ -111,7 +125,7 @@ final class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration {
@@ -129,6 +143,9 @@ final class AppDatabase extends _$AppDatabase {
         }
         if (from < 4) {
           await migrator.createTable(localModels);
+        }
+        if (from < 5) {
+          await migrator.createTable(localModelSetups);
         }
       },
       beforeOpen: (details) async {

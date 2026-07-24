@@ -14,6 +14,7 @@ import '../info/info_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../models/models_page.dart';
 import '../sessions/sessions_page.dart';
+import '../../services/model_local_store.dart';
 
 class _BatteryChargeMetrics {
   const _BatteryChargeMetrics({
@@ -281,6 +282,17 @@ class _DashboardPageState extends State<DashboardPage>
   Future<void> _loadDashboard() async {
     try {
       final localBatteries = await BatteryService.getCachedBatteries();
+      final user = Supabase.instance.client.auth.currentUser;
+
+      if (user != null) {
+        final localModels = await ModelLocalStore.getModels(userId: user.id);
+
+        if (mounted) {
+          setState(() {
+            modelCount = localModels.length;
+          });
+        }
+      }
 
       if (mounted) {
         final metrics = _batteryChargeMetrics(localBatteries);
