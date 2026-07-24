@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../pages/radios_page.dart';
 import '../../models/battery.dart';
+import '../../models/rc_model.dart';
 import '../../services/battery_local_store.dart';
 import '../../services/battery_service.dart';
 import '../../services/session_local_store.dart';
@@ -54,6 +55,7 @@ class _DashboardPageState extends State<DashboardPage>
   StreamSubscription<List<Battery>>? _batterySubscription;
   StreamSubscription? _measurementSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _sessionSubscription;
+  StreamSubscription<List<RcModel>>? _modelSubscription;
   Timer? _batteryRefreshDebounce;
   Timer? _sessionRefreshDebounce;
   Timer? _dashboardRefreshDebounce;
@@ -65,6 +67,7 @@ class _DashboardPageState extends State<DashboardPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startBatteryLiveUpdates();
+    _startModelLiveUpdates();
     _startSessionLiveUpdates();
     _startDashboardRefreshTriggers();
     _loadDashboard();
@@ -140,6 +143,26 @@ class _DashboardPageState extends State<DashboardPage>
     _measurementSubscription = BatteryLocalStore.watchMeasurements(
       userId: user.id,
     ).listen((_) => _scheduleBatteryMetricsRefresh());
+  }
+
+  void _startModelLiveUpdates() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _modelSubscription = ModelLocalStore.watchModels(userId: user.id).listen((
+      models,
+    ) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        modelCount = models.length;
+        loading = false;
+      });
+    });
   }
 
   void _startSessionLiveUpdates() {
@@ -253,6 +276,7 @@ class _DashboardPageState extends State<DashboardPage>
     _batterySubscription?.cancel();
     _measurementSubscription?.cancel();
     _sessionSubscription?.cancel();
+    _modelSubscription?.cancel();
     _connectivitySubscription?.cancel();
 
     final channel = _dashboardRealtimeChannel;
@@ -424,7 +448,6 @@ class _DashboardPageState extends State<DashboardPage>
 
       if (!mounted) return;
       setState(() {
-        modelCount = results[0];
         maintenanceCount = results[2];
         lastSession = recent;
         lastModelCategory = category;

@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/rc_model.dart';
 import '../../services/model_local_store.dart';
-import '../../services/storage_service.dart';
+import '../../services/model_service.dart';
 import 'model_detail_page.dart';
 import 'model_form_page.dart';
 
@@ -21,13 +21,33 @@ class _ModelsPageState extends State<ModelsPage> {
 
   List<_StoredModel> models = [];
 
+  StreamSubscription<List<RcModel>>? _modelsSubscription;
+
   bool isLoading = true;
   String? errorMessage;
 
   @override
   void initState() {
     super.initState();
+    _startModelLiveUpdates();
     loadModels();
+  }
+
+  void _startModelLiveUpdates() {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _modelsSubscription = ModelLocalStore.watchModels(
+      userId: user.id,
+    ).listen(_applyCachedModels);
+  }
+
+  @override
+  void dispose() {
+    _modelsSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> loadModels() async {
@@ -99,22 +119,14 @@ class _ModelsPageState extends State<ModelsPage> {
     bool showError = false,
   }) async {
     try {
-      final response = await supabase
-          .from('rc_models')
-          .select()
-          .eq('user_id', userId)
-          .order('created_at', ascending: false)
-          .timeout(const Duration(seconds: 8));
+      await ModelService.refreshModels();
 
-      final rows = response
-          .map<Map<String, dynamic>>(
-            (row) => Map<String, dynamic>.from(row as Map),
-          )
-          .toList(growable: false);
-
-      await ModelLocalStore.replaceModels(userId: userId, rows: rows);
-      final cachedModels = await ModelLocalStore.getModels(userId: userId);
-      _applyCachedModels(cachedModels);
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          errorMessage = null;
+        });
+      }
     } catch (error) {
       if (!mounted) {
         return;
@@ -250,26 +262,12 @@ class _ModelsPageState extends State<ModelsPage> {
 
   Future<void> deleteModel(_StoredModel storedModel) async {
     try {
-      await supabase.from('rc_models').delete().eq('id', storedModel.id);
-
-      try {
-        await StorageService.deleteModelPhoto(storedModel.model.photoUrl);
-      } catch (_) {
-        // La suppression du modèle reste validée même si
-        // un ancien fichier ne peut pas être effacé du Storage.
-      }
+      await ModelService.deleteModel(
+        storedModel.model.copyWith(id: storedModel.id),
+      );
 
       if (!mounted) {
         return;
-      }
-
-      setState(() {
-        models.removeWhere((item) => item.id == storedModel.id);
-      });
-
-      final user = supabase.auth.currentUser;
-      if (user != null) {
-        unawaited(_refreshModelsFromCloud(user.id));
       }
 
       ScaffoldMessenger.of(

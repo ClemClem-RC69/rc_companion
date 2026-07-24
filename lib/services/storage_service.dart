@@ -67,10 +67,11 @@ class StorageService {
     final contentType = _imageContentType(extension);
     final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-    final storagePath =
-        '${user.id}/$modelId/model_$timestamp.$extension';
+    final storagePath = '${user.id}/$modelId/model_$timestamp.$extension';
 
-    await _supabase.storage.from(_photoBucketName).uploadBinary(
+    await _supabase.storage
+        .from(_photoBucketName)
+        .uploadBinary(
           storagePath,
           bytes,
           fileOptions: FileOptions(
@@ -80,9 +81,7 @@ class StorageService {
           ),
         );
 
-    return _supabase.storage
-        .from(_photoBucketName)
-        .getPublicUrl(storagePath);
+    return _supabase.storage.from(_photoBucketName).getPublicUrl(storagePath);
   }
 
   static Future<void> deleteModelPhoto(String? photoUrl) async {
@@ -96,9 +95,7 @@ class StorageService {
       return;
     }
 
-    await _supabase.storage.from(_photoBucketName).remove([
-      storagePath,
-    ]);
+    await _supabase.storage.from(_photoBucketName).remove([storagePath]);
   }
 
   // ---------------------------------------------------------------------------
@@ -109,13 +106,7 @@ class StorageService {
     final result = await FilePicker.pickFiles(
       dialogTitle: 'Choisir un document',
       type: FileType.custom,
-      allowedExtensions: const [
-        'pdf',
-        'jpg',
-        'jpeg',
-        'png',
-        'webp',
-      ],
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
       allowMultiple: false,
       withData: true,
     );
@@ -128,9 +119,7 @@ class StorageService {
     final bytes = file.bytes;
 
     if (bytes == null || bytes.isEmpty) {
-      throw Exception(
-        'Impossible de lire le document sélectionné.',
-      );
+      throw Exception('Impossible de lire le document sélectionné.');
     }
 
     if (file.size > _maximumDocumentSize) {
@@ -142,9 +131,7 @@ class StorageService {
     final contentType = _documentContentType(file.name);
 
     if (contentType == null) {
-      throw Exception(
-        'Le fichier doit être un PDF, JPG, JPEG, PNG ou WEBP.',
-      );
+      throw Exception('Le fichier doit être un PDF, JPG, JPEG, PNG ou WEBP.');
     }
 
     return PickedModelDocument(
@@ -178,10 +165,11 @@ class StorageService {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final safeFilename = _safeDocumentFilename(document.name);
 
-    final storagePath =
-        '${user.id}/$modelId/${timestamp}_$safeFilename';
+    final storagePath = '${user.id}/$modelId/${timestamp}_$safeFilename';
 
-    await _supabase.storage.from(_documentBucketName).uploadBinary(
+    await _supabase.storage
+        .from(_documentBucketName)
+        .uploadBinary(
           storagePath,
           document.bytes,
           fileOptions: FileOptions(
@@ -206,24 +194,17 @@ class StorageService {
 
     return _supabase.storage
         .from(_documentBucketName)
-        .createSignedUrl(
-          cleanPath,
-          expiresInSeconds,
-        );
+        .createSignedUrl(cleanPath, expiresInSeconds);
   }
 
-  static Future<void> deleteModelDocument(
-    String storagePath,
-  ) async {
+  static Future<void> deleteModelDocument(String storagePath) async {
     final cleanPath = storagePath.trim();
 
     if (cleanPath.isEmpty) {
       return;
     }
 
-    await _supabase.storage.from(_documentBucketName).remove([
-      cleanPath,
-    ]);
+    await _supabase.storage.from(_documentBucketName).remove([cleanPath]);
   }
 
   // ---------------------------------------------------------------------------
@@ -301,11 +282,8 @@ class StorageService {
     }
   }
 
-  static String? _storagePathFromPublicPhotoUrl(
-    String photoUrl,
-  ) {
-    final marker =
-        '/storage/v1/object/public/$_photoBucketName/';
+  static String? _storagePathFromPublicPhotoUrl(String photoUrl) {
+    final marker = '/storage/v1/object/public/$_photoBucketName/';
 
     final markerIndex = photoUrl.indexOf(marker);
 
@@ -313,9 +291,7 @@ class StorageService {
       return null;
     }
 
-    final path = photoUrl.substring(
-      markerIndex + marker.length,
-    );
+    final path = photoUrl.substring(markerIndex + marker.length);
 
     if (path.isEmpty) {
       return null;

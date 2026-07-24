@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/radio.dart';
 import '../../models/rc_model.dart';
+import '../../services/model_service.dart';
 import '../../services/radio_service.dart';
 import '../../services/storage_service.dart';
 
@@ -336,10 +337,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
       if (weightKg == null || weightKg <= 0 || weightKg > 999.999) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Indique un poids valide en kg '
-              '(par exemple 8,7).',
-            ),
+            content: Text('Indique un poids valide en kg (par exemple 8,7).'),
           ),
         );
         return;
@@ -365,98 +363,37 @@ class _ModelFormPageState extends State<ModelFormPage> {
     });
 
     final savedBrand = brand.isEmpty ? 'Marque non renseignée' : brand;
-
-    final savedDiscipline = discipline;
-
     final savedBatteryCount = motorization == 'Électrique' ? batteryCount : 0;
-
     final savedMaxCells = motorization == 'Électrique'
         ? int.parse(maxCells.replaceAll('S', ''))
         : 0;
 
-    String? modelId = widget.modelId;
-    String? finalPhotoUrl = existingPhotoUrl;
-    bool createdNewModel = false;
-
-    final data = <String, dynamic>{
-      'user_id': user.id,
-      'name': name,
-      'brand': savedBrand,
-      'category': category,
-      'discipline': savedDiscipline,
-      'motorization': motorization,
-      'scale': scale,
-      'weight_kg': weightKg,
-      'acquisition_date': acquisitionDate?.toIso8601String().split('T').first,
-      'purchase_type': purchaseType,
-      'purchase_location': purchaseLocation.isEmpty ? null : purchaseLocation,
-      'battery_count': savedBatteryCount,
-      'max_cells': savedMaxCells,
-      'radio_id': selectedRadioId,
-    };
+    String? finalPhotoUrl = removeExistingPhoto ? null : existingPhotoUrl;
 
     try {
-      if (widget.isEditing) {
-        await supabase.from('rc_models').update(data).eq('id', modelId!);
-      } else {
-        final response = await supabase
-            .from('rc_models')
-            .insert(data)
-            .select('id')
-            .single();
-
-        modelId = response['id'] as String;
-        createdNewModel = true;
-      }
-
+      // Une nouvelle photo doit encore être envoyée au Storage et nécessite
+      // donc une connexion. Le reste de la fiche reste entièrement hors ligne.
       if (selectedPhoto != null) {
-        final newPhotoUrl = await StorageService.uploadModelPhoto(
+        final localId = widget.modelId ?? widget.existingModel?.id;
+        if (localId == null || localId.trim().isEmpty) {
+          throw StateError(
+            'Crée d’abord le modèle sans photo hors ligne, puis ajoute la photo '
+            'quand le réseau est disponible.',
+          );
+        }
+
+        finalPhotoUrl = await StorageService.uploadModelPhoto(
           photo: selectedPhoto!,
-          modelId: modelId!,
+          modelId: localId,
         );
-
-        await supabase
-            .from('rc_models')
-            .update({'photo_url': newPhotoUrl})
-            .eq('id', modelId);
-
-        final oldPhotoUrl = existingPhotoUrl;
-        finalPhotoUrl = newPhotoUrl;
-
-        if (oldPhotoUrl != null &&
-            oldPhotoUrl.trim().isNotEmpty &&
-            oldPhotoUrl != newPhotoUrl) {
-          try {
-            await StorageService.deleteModelPhoto(oldPhotoUrl);
-          } catch (_) {
-            // La nouvelle photo est bien enregistrée.
-            // Une éventuelle ancienne photo non supprimée ne bloque pas.
-          }
-        }
-      } else if (removeExistingPhoto) {
-        await supabase
-            .from('rc_models')
-            .update({'photo_url': null})
-            .eq('id', modelId!);
-
-        final oldPhotoUrl = existingPhotoUrl;
-        finalPhotoUrl = null;
-
-        if (oldPhotoUrl != null && oldPhotoUrl.trim().isNotEmpty) {
-          try {
-            await StorageService.deleteModelPhoto(oldPhotoUrl);
-          } catch (_) {
-            // La référence en base est supprimée même si le fichier
-            // n’a pas pu être effacé du Storage.
-          }
-        }
       }
 
       final model = RcModel(
+        id: widget.modelId ?? widget.existingModel?.id,
         name: name,
         brand: savedBrand,
         category: category,
-        discipline: savedDiscipline,
+        discipline: discipline,
         motorization: motorization,
         scale: scale,
         weightKg: weightKg,
@@ -469,20 +406,37 @@ class _ModelFormPageState extends State<ModelFormPage> {
         radioId: selectedRadioId,
       );
 
+      final savedModel = await ModelService.saveModel(model);
+
+      final oldPhotoUrl = existingPhotoUrl;
+      if (removeExistingPhoto &&
+          oldPhotoUrl != null &&
+          oldPhotoUrl.trim().isNotEmpty) {
+        try {
+          await StorageService.deleteModelPhoto(oldPhotoUrl);
+        } catch (_) {
+          // La suppression locale et en base reste enregistrée.
+        }
+      } else if (selectedPhoto != null &&
+          oldPhotoUrl != null &&
+          oldPhotoUrl.trim().isNotEmpty &&
+          oldPhotoUrl != finalPhotoUrl) {
+        try {
+          await StorageService.deleteModelPhoto(oldPhotoUrl);
+        } catch (_) {
+          // La nouvelle photo est déjà enregistrée.
+        }
+      }
+
       if (!mounted) {
         return;
       }
 
-      Navigator.pop(context, ModelFormResult(id: modelId!, model: model));
+      Navigator.pop(
+        context,
+        ModelFormResult(id: savedModel.id!, model: savedModel),
+      );
     } catch (error) {
-      if (createdNewModel && modelId != null) {
-        try {
-          await supabase.from('rc_models').delete().eq('id', modelId);
-        } catch (_) {
-          // On conserve l’erreur principale affichée à l’utilisateur.
-        }
-      }
-
       if (!mounted) {
         return;
       }
