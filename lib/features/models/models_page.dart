@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/rc_model.dart';
+import '../../services/model_local_store.dart';
 import '../../services/storage_service.dart';
 import 'model_detail_page.dart';
 import 'model_form_page.dart';
@@ -31,6 +34,10 @@ class _ModelsPageState extends State<ModelsPage> {
     final user = supabase.auth.currentUser;
 
     if (user == null) {
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
         isLoading = false;
         errorMessage = 'Aucun utilisateur connecté.';
@@ -38,58 +45,24 @@ class _ModelsPageState extends State<ModelsPage> {
       return;
     }
 
-    setState(() {
-      isLoading = true;
-      errorMessage = null;
-    });
+    if (mounted) {
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
+    }
 
     try {
-      final response = await supabase
-          .from('rc_models')
-          .select()
-          .eq('user_id', user.id)
-          .order('created_at', ascending: false);
+      final hasCache = await ModelLocalStore.hasModelCache(userId: user.id);
+      final cachedModels = await ModelLocalStore.getModels(userId: user.id);
 
-      final loadedModels = response.map<_StoredModel>((row) {
-        final data = Map<String, dynamic>.from(row);
-
-        final motorization = data['motorization'] as String? ?? 'Électrique';
-
-        final maxCellsValue = (data['max_cells'] as num?)?.toInt() ?? 0;
-
-        return _StoredModel(
-          id: data['id'] as String,
-          model: RcModel(
-            name: data['name'] as String? ?? '',
-            brand: data['brand'] as String? ?? 'Marque non renseignée',
-            category: data['category'] as String? ?? 'Voiture',
-            discipline: data['discipline'] as String? ?? '',
-            motorization: motorization,
-            scale: data['scale'] as String? ?? 'Autre',
-            weightKg: (data['weight_kg'] as num?)?.toDouble(),
-            acquisitionDate: data['acquisition_date'] == null
-                ? null
-                : DateTime.tryParse(data['acquisition_date'].toString()),
-            purchaseType: data['purchase_type'] as String?,
-            purchaseLocation: data['purchase_location'] as String?,
-            batteryCount: (data['battery_count'] as num?)?.toInt() ?? 0,
-            maxCells: motorization == 'Électrique'
-                ? '${maxCellsValue}S'
-                : 'Aucune',
-            photoUrl: data['photo_url'] as String?,
-            radioId: data['radio_id'] as String?,
-          ),
-        );
-      }).toList();
-
-      if (!mounted) {
+      if (hasCache) {
+        _applyCachedModels(cachedModels);
+        unawaited(_refreshModelsFromCloud(user.id));
         return;
       }
 
-      setState(() {
-        models = loadedModels;
-        isLoading = false;
-      });
+      await _refreshModelsFromCloud(user.id, showError: true);
     } catch (error) {
       if (!mounted) {
         return;
@@ -100,6 +73,84 @@ class _ModelsPageState extends State<ModelsPage> {
         errorMessage = 'Impossible de charger les modèles.\n$error';
       });
     }
+  }
+
+  void _applyCachedModels(List<RcModel> cachedModels) {
+    if (!mounted) {
+      return;
+    }
+
+    final loadedModels = cachedModels
+        .where((model) => model.id != null && model.id!.trim().isNotEmpty)
+        .map((model) => _StoredModel(id: model.id!, model: model))
+        .toList(growable: false)
+        .reversed
+        .toList(growable: false);
+
+    setState(() {
+      models = loadedModels;
+      isLoading = false;
+      errorMessage = null;
+    });
+  }
+
+  Future<void> _refreshModelsFromCloud(
+    String userId, {
+    bool showError = false,
+  }) async {
+    try {
+      final response = await supabase
+          .from('rc_models')
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 8));
+
+      final rows = response
+          .map<Map<String, dynamic>>(
+            (row) => Map<String, dynamic>.from(row as Map),
+          )
+          .toList(growable: false);
+
+      await ModelLocalStore.replaceModels(userId: userId, rows: rows);
+      final cachedModels = await ModelLocalStore.getModels(userId: userId);
+      _applyCachedModels(cachedModels);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      if (showError && models.isEmpty) {
+        setState(() {
+          isLoading = false;
+          errorMessage = 'Impossible de charger les modèles.\n$error';
+        });
+        return;
+      }
+
+      if (showError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Actualisation impossible. Les modèles locaux restent disponibles.',
+            ),
+          ),
+        );
+      }
+
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _refreshModelsManually() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    await _refreshModelsFromCloud(user.id, showError: true);
   }
 
   Future<void> addModel() async {
@@ -115,6 +166,11 @@ class _ModelsPageState extends State<ModelsPage> {
     setState(() {
       models.insert(0, _StoredModel(id: result.id, model: result.model));
     });
+
+    final user = supabase.auth.currentUser;
+    if (user != null) {
+      unawaited(_refreshModelsFromCloud(user.id));
+    }
 
     ScaffoldMessenger.of(
       context,
@@ -146,6 +202,11 @@ class _ModelsPageState extends State<ModelsPage> {
     setState(() {
       models[index] = _StoredModel(id: result.id, model: result.model);
     });
+
+    final user = supabase.auth.currentUser;
+    if (user != null) {
+      unawaited(_refreshModelsFromCloud(user.id));
+    }
 
     ScaffoldMessenger.of(
       context,
@@ -206,6 +267,11 @@ class _ModelsPageState extends State<ModelsPage> {
         models.removeWhere((item) => item.id == storedModel.id);
       });
 
+      final user = supabase.auth.currentUser;
+      if (user != null) {
+        unawaited(_refreshModelsFromCloud(user.id));
+      }
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Modèle supprimé')));
@@ -238,7 +304,7 @@ class _ModelsPageState extends State<ModelsPage> {
         actions: [
           IconButton(
             tooltip: 'Actualiser',
-            onPressed: isLoading ? null : loadModels,
+            onPressed: isLoading ? null : _refreshModelsManually,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -281,7 +347,7 @@ class _ModelsPageState extends State<ModelsPage> {
 
     if (models.isEmpty) {
       return RefreshIndicator(
-        onRefresh: loadModels,
+        onRefresh: _refreshModelsManually,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(24),
@@ -309,7 +375,7 @@ class _ModelsPageState extends State<ModelsPage> {
     }
 
     return RefreshIndicator(
-      onRefresh: loadModels,
+      onRefresh: _refreshModelsManually,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
         itemCount: models.length,

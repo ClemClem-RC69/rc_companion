@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -9,6 +11,7 @@ import '../../../models/battery.dart';
 import '../../../models/rc_model.dart';
 import '../../../models/rc_session.dart';
 import '../../../services/battery_service.dart';
+import '../../../services/session_local_store.dart';
 import '../../../services/session_service.dart';
 import '../../../services/supabase_service.dart';
 
@@ -32,11 +35,54 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
 
   bool _isLoading = true;
   String? _errorMessage;
+  StreamSubscription<List<Map<String, dynamic>>>? _sessionSubscription;
 
   @override
   void initState() {
     super.initState();
+    _startSessionLiveUpdates();
     _loadHistory();
+  }
+
+  @override
+  void dispose() {
+    _sessionSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _startSessionLiveUpdates() {
+    final user = SupabaseService.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _sessionSubscription = SessionLocalStore.watchSessionRows(userId: user.id)
+        .listen((_) {
+          unawaited(_refreshSessionsFromLocal());
+        });
+  }
+
+  Future<void> _refreshSessionsFromLocal() async {
+    try {
+      final batteries = await BatteryService.getCachedBatteries();
+      final sessions =
+          (await SessionService.getSessions(
+            models: [widget.model],
+            batteries: batteries,
+          )).where((session) => session.isClosed).toList(growable: false)..sort(
+            (first, second) => second.startedAt.compareTo(first.startedAt),
+          );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _sessions = sessions;
+      });
+    } catch (_) {
+      // L'historique déjà affiché reste disponible si une lecture locale échoue.
+    }
   }
 
   Future<void> _loadHistory() async {
@@ -52,20 +98,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         throw StateError('Aucun utilisateur connecté.');
       }
 
-      // Le recalcul à l’ouverture de l’historique garantit qu’une session
-      // ajoutée ou modifiée rétroactivement est bien prise en compte.
-      await _recalculateRevisionCounters(user.id);
-
-      final batteriesFuture = BatteryService.getBatteries();
-      final maintenanceFuture = SupabaseService.client
-          .from('maintenance_records')
-          .select()
-          .eq('user_id', user.id)
-          .eq('model_id', widget.modelId)
-          .order('maintenance_date', ascending: false);
-
-      final batteries = await batteriesFuture;
-
+      final batteries = await BatteryService.getCachedBatteries();
       final sessions =
           (await SessionService.getSessions(
             models: [widget.model],
@@ -74,14 +107,38 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
             (first, second) => second.startedAt.compareTo(first.startedAt),
           );
 
-      final rawMaintenances = await maintenanceFuture;
-      final maintenances = rawMaintenances
-          .map(
-            (raw) => _ModelMaintenanceRecord.fromMap(
-              Map<String, dynamic>.from(raw as Map),
-            ),
-          )
-          .toList(growable: false);
+      var maintenances = _maintenances;
+      final connectivity = await Connectivity().checkConnectivity();
+      final isOnline = connectivity.any(
+        (result) => result != ConnectivityResult.none,
+      );
+
+      if (isOnline) {
+        try {
+          // Les compteurs de révision restent synchronisés avec Supabase tant
+          // que Maintenance Offline n'est pas encore mise en place.
+          await _recalculateRevisionCounters(user.id);
+
+          final rawMaintenances = await SupabaseService.client
+              .from('maintenance_records')
+              .select()
+              .eq('user_id', user.id)
+              .eq('model_id', widget.modelId)
+              .order('maintenance_date', ascending: false)
+              .timeout(const Duration(seconds: 8));
+
+          maintenances = rawMaintenances
+              .map(
+                (raw) => _ModelMaintenanceRecord.fromMap(
+                  Map<String, dynamic>.from(raw as Map),
+                ),
+              )
+              .toList(growable: false);
+        } catch (_) {
+          // Les sessions locales restent affichées même si la partie
+          // Maintenance n'est momentanément pas joignable.
+        }
+      }
 
       if (!mounted) {
         return;
