@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../database/app_database.dart';
 import 'model_local_store.dart';
+import 'model_photo_file_store.dart';
 import 'storage_service.dart';
 import 'supabase_service.dart';
 
@@ -27,9 +28,45 @@ class ModelSyncService {
     required SyncQueueEntry entry,
     required Map<String, dynamic> payload,
   }) async {
+    final localPath = payload['photo_local_path']?.toString();
+    final pendingUpload = payload['photo_pending_upload'] == true;
+    final previousPhotoUrl = payload['_previous_photo_url']?.toString();
+    String? finalPhotoUrl = payload['photo_url']?.toString();
+
+    if (pendingUpload) {
+      if (localPath != null && localPath.trim().isNotEmpty) {
+        final bytes = await ModelPhotoFileStore.readBytes(localPath);
+        if (bytes == null || bytes.isEmpty) {
+          throw StateError('La photo locale du modèle est introuvable.');
+        }
+
+        finalPhotoUrl = await StorageService.uploadModelPhotoBytes(
+          bytes: bytes,
+          originalFilename: localPath,
+          modelId: entry.entityId,
+        );
+      } else {
+        finalPhotoUrl = null;
+      }
+
+      if (previousPhotoUrl != null &&
+          previousPhotoUrl.trim().isNotEmpty &&
+          previousPhotoUrl != finalPhotoUrl) {
+        try {
+          await StorageService.deleteModelPhoto(previousPhotoUrl);
+        } catch (_) {
+          // La nouvelle version du modèle reste prioritaire.
+        }
+      }
+    }
+
     final data = Map<String, dynamic>.from(payload)
+      ..remove('photo_local_path')
+      ..remove('photo_pending_upload')
+      ..remove('_previous_photo_url')
       ..['id'] = entry.entityId
       ..['user_id'] = entry.userId
+      ..['photo_url'] = finalPhotoUrl
       ..['updated_at'] = DateTime.now().toUtc().toIso8601String();
 
     final existing = await _client
@@ -60,6 +97,8 @@ class ModelSyncService {
       remoteRow = Map<String, dynamic>.from(result);
     }
 
+    remoteRow['photo_local_path'] = localPath;
+    remoteRow['photo_pending_upload'] = false;
     await ModelLocalStore.upsertRow(userId: entry.userId, row: remoteRow);
   }
 
@@ -81,5 +120,9 @@ class ModelSyncService {
         // La suppression de la ligne reste prioritaire.
       }
     }
+
+    await ModelPhotoFileStore.deletePhoto(
+      payload['photo_local_path']?.toString(),
+    );
   }
 }

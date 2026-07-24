@@ -4,6 +4,7 @@ import 'package:pdfrx/pdfrx.dart';
 import '../../models/model_document.dart';
 import '../../models/rc_model.dart';
 import '../../services/model_document_service.dart';
+import 'model_photo_widget.dart';
 import 'widgets/model_radio_controls_tab.dart';
 import 'widgets/model_radio_setup_tab.dart';
 import 'widgets/model_setup_tab.dart';
@@ -906,35 +907,22 @@ class _ModelPhotoHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final photoUrl = model.photoUrl;
-
     return Card(
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
         width: double.infinity,
         height: 280,
-        child: photoUrl != null && photoUrl.trim().isNotEmpty
-            ? Container(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                alignment: Alignment.center,
-                child: Image.network(
-                  photoUrl,
-                  width: double.infinity,
-                  height: double.infinity,
-                  fit: BoxFit.contain,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) {
-                      return child;
-                    }
-
-                    return const Center(child: CircularProgressIndicator());
-                  },
-                  errorBuilder: (_, __, ___) {
-                    return _EmptyModelPhoto(category: model.category);
-                  },
-                ),
-              )
-            : _EmptyModelPhoto(category: model.category),
+        child: Container(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          alignment: Alignment.center,
+          child: ModelPhotoWidget(
+            model: model,
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.contain,
+            fallback: _EmptyModelPhoto(category: model.category),
+          ),
+        ),
       ),
     );
   }

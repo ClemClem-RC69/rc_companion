@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/radio.dart';
 import '../../models/rc_model.dart';
+import '../../services/model_photo_file_store.dart';
 import '../../services/model_service.dart';
 import '../../services/radio_service.dart';
 import '../../services/storage_service.dart';
@@ -55,6 +56,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
   XFile? selectedPhoto;
   Uint8List? selectedPhotoBytes;
   String? existingPhotoUrl;
+  String? existingPhotoLocalPath;
   bool removeExistingPhoto = false;
 
   bool isPickingPhoto = false;
@@ -184,6 +186,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
       }
 
       existingPhotoUrl = model.photoUrl;
+      existingPhotoLocalPath = model.photoLocalPath;
     }
 
     loadRadios();
@@ -358,38 +361,44 @@ class _ModelFormPageState extends State<ModelFormPage> {
       return;
     }
 
-    setState(() {
-      isSaving = true;
-    });
+    setState(() => isSaving = true);
 
     final savedBrand = brand.isEmpty ? 'Marque non renseignée' : brand;
     final savedBatteryCount = motorization == 'Électrique' ? batteryCount : 0;
     final savedMaxCells = motorization == 'Électrique'
         ? int.parse(maxCells.replaceAll('S', ''))
         : 0;
+    final modelId =
+        widget.modelId ?? widget.existingModel?.id ?? ModelService.newModelId();
 
     String? finalPhotoUrl = removeExistingPhoto ? null : existingPhotoUrl;
+    String? finalPhotoLocalPath = removeExistingPhoto
+        ? null
+        : existingPhotoLocalPath;
+    var photoPendingUpload = widget.existingModel?.photoPendingUpload ?? false;
+    String? previousPhotoUrl;
 
     try {
-      // Une nouvelle photo doit encore être envoyée au Storage et nécessite
-      // donc une connexion. Le reste de la fiche reste entièrement hors ligne.
-      if (selectedPhoto != null) {
-        final localId = widget.modelId ?? widget.existingModel?.id;
-        if (localId == null || localId.trim().isEmpty) {
-          throw StateError(
-            'Crée d’abord le modèle sans photo hors ligne, puis ajoute la photo '
-            'quand le réseau est disponible.',
-          );
-        }
-
-        finalPhotoUrl = await StorageService.uploadModelPhoto(
-          photo: selectedPhoto!,
-          modelId: localId,
+      if (selectedPhotoBytes != null && selectedPhoto != null) {
+        finalPhotoLocalPath = await ModelPhotoFileStore.savePhoto(
+          userId: user.id,
+          modelId: modelId,
+          bytes: selectedPhotoBytes!,
+          originalFilename: selectedPhoto!.name,
         );
+        if (finalPhotoLocalPath == null) {
+          throw StateError('Impossible de conserver la photo localement.');
+        }
+        previousPhotoUrl = existingPhotoUrl;
+        photoPendingUpload = true;
+      } else if (removeExistingPhoto) {
+        previousPhotoUrl = existingPhotoUrl;
+        await ModelPhotoFileStore.deletePhoto(existingPhotoLocalPath);
+        photoPendingUpload = true;
       }
 
       final model = RcModel(
-        id: widget.modelId ?? widget.existingModel?.id,
+        id: modelId,
         name: name,
         brand: savedBrand,
         category: category,
@@ -403,30 +412,15 @@ class _ModelFormPageState extends State<ModelFormPage> {
         batteryCount: savedBatteryCount,
         maxCells: motorization == 'Électrique' ? '${savedMaxCells}S' : 'Aucune',
         photoUrl: finalPhotoUrl,
+        photoLocalPath: finalPhotoLocalPath,
+        photoPendingUpload: photoPendingUpload,
         radioId: selectedRadioId,
       );
 
-      final savedModel = await ModelService.saveModel(model);
-
-      final oldPhotoUrl = existingPhotoUrl;
-      if (removeExistingPhoto &&
-          oldPhotoUrl != null &&
-          oldPhotoUrl.trim().isNotEmpty) {
-        try {
-          await StorageService.deleteModelPhoto(oldPhotoUrl);
-        } catch (_) {
-          // La suppression locale et en base reste enregistrée.
-        }
-      } else if (selectedPhoto != null &&
-          oldPhotoUrl != null &&
-          oldPhotoUrl.trim().isNotEmpty &&
-          oldPhotoUrl != finalPhotoUrl) {
-        try {
-          await StorageService.deleteModelPhoto(oldPhotoUrl);
-        } catch (_) {
-          // La nouvelle photo est déjà enregistrée.
-        }
-      }
+      final savedModel = await ModelService.saveModel(
+        model,
+        previousPhotoUrl: previousPhotoUrl,
+      );
 
       if (!mounted) {
         return;
@@ -441,10 +435,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
         return;
       }
 
-      setState(() {
-        isSaving = false;
-      });
-
+      setState(() => isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -468,6 +459,26 @@ class _ModelFormPageState extends State<ModelFormPage> {
     }
 
     if (!removeExistingPhoto &&
+        existingPhotoLocalPath != null &&
+        existingPhotoLocalPath!.trim().isNotEmpty) {
+      return FutureBuilder<Uint8List?>(
+        future: ModelPhotoFileStore.readBytes(existingPhotoLocalPath),
+        builder: (context, snapshot) {
+          final bytes = snapshot.data;
+          if (bytes != null && bytes.isNotEmpty) {
+            return Image.memory(
+              bytes,
+              width: double.infinity,
+              height: 220,
+              fit: BoxFit.cover,
+            );
+          }
+          return const _EmptyPhotoPreview();
+        },
+      );
+    }
+
+    if (!removeExistingPhoto &&
         existingPhotoUrl != null &&
         existingPhotoUrl!.trim().isNotEmpty) {
       return Image.network(
@@ -475,9 +486,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
         width: double.infinity,
         height: 220,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) {
-          return const _EmptyPhotoPreview();
-        },
+        errorBuilder: (_, __, ___) => const _EmptyPhotoPreview(),
       );
     }
 
@@ -487,8 +496,10 @@ class _ModelFormPageState extends State<ModelFormPage> {
   bool get hasDisplayedPhoto {
     return selectedPhotoBytes != null ||
         (!removeExistingPhoto &&
-            existingPhotoUrl != null &&
-            existingPhotoUrl!.trim().isNotEmpty);
+            ((existingPhotoLocalPath != null &&
+                    existingPhotoLocalPath!.trim().isNotEmpty) ||
+                (existingPhotoUrl != null &&
+                    existingPhotoUrl!.trim().isNotEmpty)));
   }
 
   RcRadio? get selectedRadio {

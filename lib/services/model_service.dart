@@ -6,6 +6,8 @@ import '../database/app_database.dart';
 import '../models/rc_model.dart';
 import 'battery_sync_service.dart';
 import 'model_local_store.dart';
+import 'model_photo_file_store.dart';
+import 'storage_service.dart';
 import 'supabase_service.dart';
 
 class ModelService {
@@ -14,7 +16,12 @@ class ModelService {
   static final _client = SupabaseService.client;
   static final _database = AppDatabase.instance;
 
-  static Future<RcModel> saveModel(RcModel model) async {
+  static String newModelId() => _newUuid();
+
+  static Future<RcModel> saveModel(
+    RcModel model, {
+    String? previousPhotoUrl,
+  }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
       throw StateError('Aucun utilisateur connecté.');
@@ -25,6 +32,10 @@ class ModelService {
         : model.id!;
     final saved = model.copyWith(id: modelId);
     final row = ModelLocalStore.modelToRow(userId: user.id, model: saved);
+
+    if (previousPhotoUrl != null && previousPhotoUrl.trim().isNotEmpty) {
+      row['_previous_photo_url'] = previousPhotoUrl;
+    }
 
     await ModelLocalStore.upsertModel(userId: user.id, model: saved);
     await _database.replacePendingSyncOperation(
@@ -60,6 +71,7 @@ class ModelService {
         'id': modelId,
         'user_id': user.id,
         'photo_url': model.photoUrl,
+        'photo_local_path': model.photoLocalPath,
       }),
     );
 
@@ -79,13 +91,63 @@ class ModelService {
         .order('created_at', ascending: false)
         .timeout(const Duration(seconds: 8));
 
-    final rows = response
-        .map<Map<String, dynamic>>(
-          (row) => Map<String, dynamic>.from(row as Map),
-        )
-        .toList(growable: false);
+    final rows = <Map<String, dynamic>>[];
+
+    for (final raw in response) {
+      final row = Map<String, dynamic>.from(raw as Map);
+      final modelId = row['id']?.toString();
+      final photoUrl = row['photo_url']?.toString();
+
+      if (modelId != null && modelId.isNotEmpty) {
+        final existing = await ModelLocalStore.getModel(
+          userId: user.id,
+          modelId: modelId,
+        );
+
+        String? localPath;
+        final existingBytes = await ModelPhotoFileStore.readBytes(
+          existing?.photoLocalPath,
+        );
+        if (existingBytes != null &&
+            existingBytes.isNotEmpty &&
+            existing?.photoUrl == photoUrl) {
+          localPath = existing!.photoLocalPath;
+        } else if (photoUrl != null && photoUrl.trim().isNotEmpty) {
+          try {
+            final bytes = await StorageService.downloadModelPhotoBytes(
+              photoUrl,
+            );
+            if (bytes != null && bytes.isNotEmpty) {
+              localPath = await ModelPhotoFileStore.savePhoto(
+                userId: user.id,
+                modelId: modelId,
+                bytes: bytes,
+                originalFilename: _filenameFromUrl(photoUrl),
+              );
+            }
+          } catch (_) {
+            localPath = existing?.photoLocalPath;
+          }
+        } else {
+          await ModelPhotoFileStore.deletePhoto(existing?.photoLocalPath);
+        }
+
+        row['photo_local_path'] = localPath;
+        row['photo_pending_upload'] = false;
+      }
+
+      rows.add(row);
+    }
 
     await ModelLocalStore.replaceModels(userId: user.id, rows: rows);
+  }
+
+  static String _filenameFromUrl(String url) {
+    final uri = Uri.tryParse(url);
+    final last = uri?.pathSegments.isNotEmpty == true
+        ? uri!.pathSegments.last
+        : 'model.jpg';
+    return last.isEmpty ? 'model.jpg' : last;
   }
 
   static String _newUuid() {

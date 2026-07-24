@@ -51,22 +51,31 @@ class StorageService {
     required XFile photo,
     required String modelId,
   }) async {
+    return uploadModelPhotoBytes(
+      bytes: await photo.readAsBytes(),
+      originalFilename: photo.name,
+      modelId: modelId,
+    );
+  }
+
+  static Future<String> uploadModelPhotoBytes({
+    required Uint8List bytes,
+    required String originalFilename,
+    required String modelId,
+  }) async {
     final user = _supabase.auth.currentUser;
 
     if (user == null) {
       throw Exception('Aucun utilisateur connecté.');
     }
 
-    final bytes = await photo.readAsBytes();
-
     if (bytes.isEmpty) {
       throw Exception('Le fichier sélectionné est vide.');
     }
 
-    final extension = _imageFileExtension(photo.name);
+    final extension = _imageFileExtension(originalFilename);
     final contentType = _imageContentType(extension);
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-
     final storagePath = '${user.id}/$modelId/model_$timestamp.$extension';
 
     await _supabase.storage
@@ -82,6 +91,19 @@ class StorageService {
         );
 
     return _supabase.storage.from(_photoBucketName).getPublicUrl(storagePath);
+  }
+
+  static Future<Uint8List?> downloadModelPhotoBytes(String? photoUrl) async {
+    if (photoUrl == null || photoUrl.trim().isEmpty) {
+      return null;
+    }
+
+    final storagePath = _storagePathFromPublicPhotoUrl(photoUrl);
+    if (storagePath == null || storagePath.isEmpty) {
+      return null;
+    }
+
+    return _supabase.storage.from(_photoBucketName).download(storagePath);
   }
 
   static Future<void> deleteModelPhoto(String? photoUrl) async {

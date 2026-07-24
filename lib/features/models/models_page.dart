@@ -8,6 +8,7 @@ import '../../services/model_local_store.dart';
 import '../../services/model_service.dart';
 import 'model_detail_page.dart';
 import 'model_form_page.dart';
+import 'model_photo_widget.dart';
 
 class ModelsPage extends StatefulWidget {
   const ModelsPage({super.key});
@@ -517,39 +518,18 @@ class _ModelThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final photoUrl = model.photoUrl;
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
         width: 84,
         height: 84,
-        child: photoUrl != null && photoUrl.trim().isNotEmpty
-            ? Image.network(
-                photoUrl,
-                fit: BoxFit.contain,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) {
-                    return child;
-                  }
-
-                  return Container(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.surfaceContainerHighest,
-                    alignment: Alignment.center,
-                    child: const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  );
-                },
-                errorBuilder: (_, __, ___) {
-                  return _CategoryIcon(category: model.category);
-                },
-              )
-            : _CategoryIcon(category: model.category),
+        child: ModelPhotoWidget(
+          model: model,
+          width: 84,
+          height: 84,
+          fit: BoxFit.contain,
+          fallback: _CategoryIcon(category: model.category),
+        ),
       ),
     );
   }

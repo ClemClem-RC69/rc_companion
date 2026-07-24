@@ -205,6 +205,8 @@ class ModelLocalStore {
       'battery_count': model.batteryCount,
       'max_cells': maxCells,
       'photo_url': model.photoUrl,
+      'photo_local_path': model.photoLocalPath,
+      'photo_pending_upload': model.photoPendingUpload,
       'radio_id': model.radioId,
       'updated_at': now.toUtc().toIso8601String(),
     };
@@ -239,6 +241,8 @@ class ModelLocalStore {
           ? '0S'
           : '${(maxCellsValue as num).toInt()}S',
       photoUrl: json['photo_url'] as String?,
+      photoLocalPath: json['photo_local_path'] as String?,
+      photoPendingUpload: json['photo_pending_upload'] == true,
       acquisitionDate: json['acquisition_date'] == null
           ? null
           : DateTime.tryParse(json['acquisition_date'].toString()),
