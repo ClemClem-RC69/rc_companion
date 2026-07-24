@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../database/app_database.dart';
 import 'battery_local_store.dart';
+import 'session_sync_service.dart';
 import 'supabase_service.dart';
 
 class BatterySyncService {
@@ -88,6 +89,8 @@ class BatterySyncService {
         await _syncBattery(entry, payload);
       case 'battery_measurement':
         await _syncMeasurement(entry, payload);
+      case 'session':
+        await SessionSyncService.syncEntry(entry);
       default:
         throw StateError(
           'Type de synchronisation inconnu : ${entry.entityType}',
