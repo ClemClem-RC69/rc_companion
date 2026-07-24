@@ -8,6 +8,7 @@ import '../../pages/radios_page.dart';
 import '../../models/battery.dart';
 import '../../services/battery_local_store.dart';
 import '../../services/battery_service.dart';
+import '../../services/session_local_store.dart';
 import '../batteries/batteries_page.dart';
 import '../info/info_page.dart';
 import '../maintenance/maintenance_page.dart';
@@ -51,7 +52,9 @@ class _DashboardPageState extends State<DashboardPage>
 
   StreamSubscription<List<Battery>>? _batterySubscription;
   StreamSubscription? _measurementSubscription;
+  StreamSubscription<List<Map<String, dynamic>>>? _sessionSubscription;
   Timer? _batteryRefreshDebounce;
+  Timer? _sessionRefreshDebounce;
   Timer? _dashboardRefreshDebounce;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   RealtimeChannel? _dashboardRealtimeChannel;
@@ -61,6 +64,7 @@ class _DashboardPageState extends State<DashboardPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startBatteryLiveUpdates();
+    _startSessionLiveUpdates();
     _startDashboardRefreshTriggers();
     _loadDashboard();
   }
@@ -137,8 +141,88 @@ class _DashboardPageState extends State<DashboardPage>
     ).listen((_) => _scheduleBatteryMetricsRefresh());
   }
 
+  void _startSessionLiveUpdates() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _sessionSubscription = SessionLocalStore.watchSessionRows(
+      userId: user.id,
+    ).listen((rows) => _scheduleSessionMetricsRefresh(rows));
+  }
+
+  void _scheduleSessionMetricsRefresh(List<Map<String, dynamic>> rows) {
+    _sessionRefreshDebounce?.cancel();
+    _sessionRefreshDebounce = Timer(
+      const Duration(milliseconds: 80),
+      () => _applyLocalSessionMetrics(rows),
+    );
+  }
+
+  Future<void> _refreshSessionMetricsFromDrift() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final rows = await SessionLocalStore.getSessionRows(userId: user.id);
+    _applyLocalSessionMetrics(rows);
+  }
+
+  void _applyLocalSessionMetrics(List<Map<String, dynamic>> rows) {
+    if (!mounted) {
+      return;
+    }
+
+    var runMinutes = 0;
+    var packs = 0;
+    final valuesByDay = <DateTime, int>{};
+
+    for (final session in rows) {
+      final runs = (session['session_runs'] as List<dynamic>? ?? const []);
+      for (final rawRun in runs) {
+        final run = Map<String, dynamic>.from(rawRun as Map);
+        final duration = int.tryParse('${run['duration_minutes'] ?? 0}') ?? 0;
+        runMinutes += duration;
+        packs += 1;
+
+        final startedAt = DateTime.tryParse(
+          '${run['started_at'] ?? ''}',
+        )?.toLocal();
+        if (startedAt != null) {
+          final day = DateTime(startedAt.year, startedAt.month, startedAt.day);
+          valuesByDay.update(
+            day,
+            (value) => value + duration,
+            ifAbsent: () => duration,
+          );
+        }
+      }
+    }
+
+    final sortedDays = valuesByDay.keys.toList()..sort();
+    var cumulativeMinutes = 0.0;
+    final chart = <double>[];
+    for (final day in sortedDays) {
+      cumulativeMinutes += valuesByDay[day]!.toDouble();
+      chart.add(cumulativeMinutes);
+    }
+
+    final recent = rows.isEmpty ? null : rows.first;
+    setState(() {
+      sessionCount = rows.length;
+      lastSession = recent == null ? null : Map<String, dynamic>.from(recent);
+      totalRunMinutes = runMinutes;
+      totalPacks = packs;
+      chartValues = chart;
+      loading = false;
+    });
+  }
+
   void _scheduleBatteryMetricsRefresh() {
     _batteryRefreshDebounce?.cancel();
+    _sessionRefreshDebounce?.cancel();
     _batteryRefreshDebounce = Timer(
       const Duration(milliseconds: 80),
       _refreshBatteryMetricsFromDrift,
@@ -167,6 +251,7 @@ class _DashboardPageState extends State<DashboardPage>
     _dashboardRefreshDebounce?.cancel();
     _batterySubscription?.cancel();
     _measurementSubscription?.cancel();
+    _sessionSubscription?.cancel();
     _connectivitySubscription?.cancel();
 
     final channel = _dashboardRealtimeChannel;
@@ -189,6 +274,7 @@ class _DashboardPageState extends State<DashboardPage>
     }
 
     await _refreshBatteryMetricsFromDrift();
+    await _refreshSessionMetricsFromDrift();
     await _loadDashboard();
   }
 
@@ -206,6 +292,8 @@ class _DashboardPageState extends State<DashboardPage>
           loading = false;
         });
       }
+
+      await _refreshSessionMetricsFromDrift();
 
       final connectivity = await Connectivity().checkConnectivity();
       final isOffline =
@@ -325,7 +413,6 @@ class _DashboardPageState extends State<DashboardPage>
       if (!mounted) return;
       setState(() {
         modelCount = results[0];
-        sessionCount = results[1];
         maintenanceCount = results[2];
         lastSession = recent;
         lastModelCategory = category;
@@ -670,13 +757,23 @@ class _DashboardPageState extends State<DashboardPage>
                     color: const Color(0xFFE28A2B),
                   ),
                   const SizedBox(height: 13),
-                  OutlinedButton(
-                    onPressed: () => _open(const BatteriesPage()),
-                    child: const Text(
-                      'Voir mes batteries',
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.visible,
+                  Center(
+                    child: SizedBox(
+                      width: 180,
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: () => _open(const BatteriesPage()),
+                        style: OutlinedButton.styleFrom(
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        child: const Text(
+                          'Voir mes batteries',
+                          maxLines: 1,
+                          softWrap: false,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
                     ),
                   ),
                 ],

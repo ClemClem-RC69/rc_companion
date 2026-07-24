@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_state.dart';
@@ -5,6 +7,7 @@ import '../../models/battery.dart';
 import '../../models/rc_model.dart';
 import '../../models/rc_session.dart';
 import '../../services/battery_service.dart';
+import '../../services/model_local_store.dart';
 import '../../services/supabase_service.dart';
 import '../../services/session_service.dart';
 import '../batteries/battery_scanner_page.dart';
@@ -45,46 +48,77 @@ class _SessionsPageState extends State<SessionsPage> {
         throw StateError('Aucun utilisateur connecté.');
       }
 
-      final modelFuture = SupabaseService.client
+      final cachedModels = await ModelLocalStore.getModels(userId: user.id);
+      final hasModelCache = await ModelLocalStore.hasModelCache(
+        userId: user.id,
+      );
+      final loadedBatteries = await BatteryService.getBatteries();
+
+      if (hasModelCache) {
+        final loadedSessions = await SessionService.getSessions(
+          models: cachedModels,
+          batteries: loadedBatteries,
+        );
+
+        if (!mounted) {
+          return;
+        }
+
+        setState(() {
+          _availableModels = cachedModels;
+          _availableBatteries = loadedBatteries;
+          sessions
+            ..clear()
+            ..addAll(loadedSessions);
+          _isLoadingData = false;
+        });
+
+        unawaited(_refreshModelsAndSessions(user.id));
+        return;
+      }
+
+      await _refreshModelsAndSessions(user.id, showLoading: false);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _loadingError = error.toString();
+        _isLoadingData = false;
+      });
+    }
+  }
+
+  Future<void> _refreshModelsAndSessions(
+    String userId, {
+    bool showLoading = false,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isLoadingData = true;
+        _loadingError = null;
+      });
+    }
+
+    try {
+      final modelResponse = await SupabaseService.client
           .from('rc_models')
           .select()
-          .eq('user_id', user.id)
-          .order('created_at');
+          .eq('user_id', userId)
+          .order('created_at')
+          .timeout(const Duration(seconds: 8));
 
-      final batteriesFuture = BatteryService.getBatteries();
+      final modelRows = modelResponse
+          .map<Map<String, dynamic>>(
+            (row) => Map<String, dynamic>.from(row as Map),
+          )
+          .toList(growable: false);
 
-      final modelRows = await modelFuture;
-      final loadedBatteries = await batteriesFuture;
+      await ModelLocalStore.replaceModels(userId: userId, rows: modelRows);
 
-      final loadedModels = modelRows.map((row) {
-        final json = Map<String, dynamic>.from(row as Map);
-
-        final maxCellsValue = json['max_cells'];
-        final batteryCountValue = json['battery_count'];
-
-        return RcModel(
-          id: json['id'] as String?,
-          name: json['name'] as String? ?? 'Modèle sans nom',
-          brand: json['brand'] as String? ?? 'Marque non renseignée',
-          category: json['category'] as String? ?? '',
-          discipline: json['discipline'] as String? ?? '',
-          motorization: json['motorization'] as String? ?? 'Électrique',
-          scale: json['scale'] as String? ?? '',
-          weightKg: (json['weight_kg'] as num?)?.toDouble(),
-          batteryCount: (batteryCountValue as num?)?.toInt() ?? 0,
-          maxCells: maxCellsValue == null
-              ? 'Aucune'
-              : '${(maxCellsValue as num).toInt()}S',
-          photoUrl: json['photo_url'] as String?,
-          acquisitionDate: json['acquisition_date'] == null
-              ? null
-              : DateTime.tryParse(json['acquisition_date'].toString()),
-          purchaseType: json['purchase_type'] as String?,
-          purchaseLocation: json['purchase_location'] as String?,
-          radioId: json['radio_id'] as String?,
-        );
-      }).toList();
-
+      final loadedModels = await ModelLocalStore.getModels(userId: userId);
+      final loadedBatteries = await BatteryService.getBatteries();
       final loadedSessions = await SessionService.getSessions(
         models: loadedModels,
         batteries: loadedBatteries,
@@ -100,10 +134,11 @@ class _SessionsPageState extends State<SessionsPage> {
         sessions
           ..clear()
           ..addAll(loadedSessions);
+        _loadingError = null;
         _isLoadingData = false;
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || !showLoading) {
         return;
       }
 

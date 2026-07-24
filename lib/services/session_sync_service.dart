@@ -9,9 +9,6 @@ class SessionSyncService {
 
   static final _client = SupabaseService.client;
 
-  static const String _automaticMeasurementNotePrefix =
-      'Mesure automatique après roulage|session:';
-
   static Future<void> syncEntry(SyncQueueEntry entry) async {
     final payload = entry.payloadJson == null
         ? <String, dynamic>{}
@@ -76,7 +73,6 @@ class SessionSyncService {
     await _replaceRuns(
       userId: userId,
       sessionId: sessionId,
-      modelName: payload['model_name']?.toString() ?? '',
       rawRuns: (payload['session_runs'] as List<dynamic>? ?? const []),
     );
 
@@ -114,11 +110,6 @@ class SessionSyncService {
     required String userId,
     required String sessionId,
   }) async {
-    await _deleteAutomaticBatteryMeasurements(
-      userId: userId,
-      sessionId: sessionId,
-    );
-
     await _client
         .from('rc_sessions')
         .delete()
@@ -129,14 +120,8 @@ class SessionSyncService {
   static Future<void> _replaceRuns({
     required String userId,
     required String sessionId,
-    required String modelName,
     required List<dynamic> rawRuns,
   }) async {
-    await _deleteAutomaticBatteryMeasurements(
-      userId: userId,
-      sessionId: sessionId,
-    );
-
     await _client.from('session_runs').delete().eq('session_id', sessionId);
 
     for (final rawRun in rawRuns) {
@@ -202,36 +187,6 @@ class SessionSyncService {
                   )
                   .toList(growable: false),
             );
-
-        final batteryHistoryRows = measurements
-            .where(_isCompleteMeasurement)
-            .map(
-              (item) => {
-                'user_id': userId,
-                'battery_code': item['battery_code'],
-                'measured_at': item['measured_at'],
-                'measurement_type': 'Fin de session',
-                'charge_percent':
-                    ((item['remaining_capacity_percent'] as num).round()).clamp(
-                      0,
-                      100,
-                    ),
-                'cell_voltages': item['cell_voltages'] ?? const <double>[],
-                'cell_internal_resistances': const <double>[],
-                'battery_temperature_c': item['temperature_celsius'],
-                'notes': _automaticMeasurementNote(
-                  sessionId: sessionId,
-                  runStartedAt: run['started_at'].toString(),
-                  batteryCode: item['battery_code'].toString(),
-                  modelName: modelName,
-                ),
-              },
-            )
-            .toList(growable: false);
-
-        if (batteryHistoryRows.isNotEmpty) {
-          await _client.from('battery_measurements').insert(batteryHistoryRows);
-        }
       }
     }
   }
@@ -240,34 +195,5 @@ class SessionSyncService {
     return item['remaining_capacity_percent'] != null ||
         (item['cell_voltages'] is List &&
             (item['cell_voltages'] as List).isNotEmpty);
-  }
-
-  static bool _isCompleteMeasurement(Map<String, dynamic> item) {
-    return item['remaining_capacity_percent'] != null &&
-        item['cell_voltages'] is List &&
-        (item['cell_voltages'] as List).isNotEmpty;
-  }
-
-  static String _automaticMeasurementNote({
-    required String sessionId,
-    required String runStartedAt,
-    required String batteryCode,
-    required String modelName,
-  }) {
-    return '$_automaticMeasurementNotePrefix$sessionId'
-        '|model:$modelName'
-        '|run:$runStartedAt'
-        '|battery:$batteryCode';
-  }
-
-  static Future<void> _deleteAutomaticBatteryMeasurements({
-    required String userId,
-    required String sessionId,
-  }) async {
-    await _client
-        .from('battery_measurements')
-        .delete()
-        .eq('user_id', userId)
-        .like('notes', '$_automaticMeasurementNotePrefix$sessionId%');
   }
 }
