@@ -10,6 +10,8 @@ class RcModel {
     required this.maxCells,
     this.id,
     this.photoUrl,
+    this.photoLocalPath,
+    this.photoPendingUpload = false,
     this.weightKg,
     this.acquisitionDate,
     this.purchaseType,
@@ -36,6 +38,12 @@ class RcModel {
 
   /// URL de la photo stockée dans Supabase Storage.
   final String? photoUrl;
+
+  /// Chemin persistant de la copie locale utilisée hors ligne.
+  final String? photoLocalPath;
+
+  /// Indique que la copie locale doit encore être envoyée vers Supabase.
+  final bool photoPendingUpload;
 
   /// Poids du modèle en kilogrammes.
   final double? weightKg;
@@ -64,6 +72,8 @@ class RcModel {
     int? batteryCount,
     String? maxCells,
     String? photoUrl,
+    String? photoLocalPath,
+    bool? photoPendingUpload,
     double? weightKg,
     DateTime? acquisitionDate,
     String? purchaseType,
@@ -71,6 +81,7 @@ class RcModel {
     String? radioId,
     bool clearId = false,
     bool clearPhoto = false,
+    bool clearPhotoLocalPath = false,
     bool clearAcquisitionDate = false,
     bool clearPurchaseType = false,
     bool clearPurchaseLocation = false,
@@ -87,6 +98,10 @@ class RcModel {
       batteryCount: batteryCount ?? this.batteryCount,
       maxCells: maxCells ?? this.maxCells,
       photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
+      photoLocalPath: clearPhotoLocalPath
+          ? null
+          : (photoLocalPath ?? this.photoLocalPath),
+      photoPendingUpload: photoPendingUpload ?? this.photoPendingUpload,
       weightKg: weightKg ?? this.weightKg,
       acquisitionDate: clearAcquisitionDate
           ? null
@@ -103,7 +118,9 @@ class RcModel {
 
   bool get hasId => id != null && id!.trim().isNotEmpty;
 
-  bool get hasPhoto => photoUrl != null && photoUrl!.trim().isNotEmpty;
+  bool get hasPhoto =>
+      (photoLocalPath != null && photoLocalPath!.trim().isNotEmpty) ||
+      (photoUrl != null && photoUrl!.trim().isNotEmpty);
 
   bool get hasRadio => radioId != null && radioId!.trim().isNotEmpty;
 
