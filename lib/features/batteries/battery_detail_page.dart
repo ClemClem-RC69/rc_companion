@@ -89,8 +89,25 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
         return;
       }
 
+      final cachedBatteries = await BatteryService.getCachedBatteries();
+      Battery? refreshedBattery;
+
+      for (final cachedBattery in cachedBatteries) {
+        if (cachedBattery.id == battery.id) {
+          refreshedBattery = cachedBattery;
+          break;
+        }
+      }
+
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
         _measurements = measurements;
+        if (refreshedBattery != null) {
+          battery = refreshedBattery;
+        }
       });
     } catch (error) {
       if (!mounted) {
@@ -460,10 +477,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     final usesResistance = measurementType != BatteryMeasurement.endOfRunType;
 
     final chargeController = TextEditingController(
-      text:
-          initialMeasurement?.chargePercent.toString() ??
-          (usesResistance ? '100' : ''),
-    );
+  text: initialMeasurement?.chargePercent.toString() ?? '',
+);
     final temperatureController = TextEditingController(
       text: initialMeasurement?.batteryTemperature == null
           ? ''
@@ -689,6 +704,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                                 labelText: usesResistance
                                     ? 'Niveau de charge'
                                     : 'Capacité restante',
+                                    floatingLabelBehavior: FloatingLabelBehavior.always,
                                 border: const OutlineInputBorder(),
                                 suffixText: '%',
                                 isDense: true,
@@ -924,22 +940,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
 
     if (!mounted) {
       return;
-    }
-
-    if (measurementType == BatteryMeasurement.afterChargeType &&
-        afterChargeState != null) {
-      final updatedChargeState = afterChargeState == BatteryChargeState.storage
-          ? BatteryChargeState.storage
-          : measurement.chargePercent >= 95
-          ? BatteryChargeState.charged
-          : BatteryChargeState.partial;
-
-      setState(() {
-        battery = battery.copyWith(
-          chargeState: updatedChargeState,
-          chargePercent: measurement.chargePercent,
-        );
-      });
     }
 
     if (initialMeasurement != null) {

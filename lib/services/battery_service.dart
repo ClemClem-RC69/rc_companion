@@ -30,6 +30,17 @@ class BatteryService {
     return _refreshBatteriesFromCloud(user.id);
   }
 
+  static Future<List<Battery>> refreshBatteries() async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      return [];
+    }
+
+    await BatterySyncService.syncNow();
+    return _refreshBatteriesFromCloud(user.id);
+  }
+
   static Future<List<Battery>> getCachedBatteries() async {
     final user = _client.auth.currentUser;
 
@@ -519,7 +530,9 @@ class BatteryService {
         entityType: 'battery_measurement',
         entityId: duplicateEntityId,
         operation: 'delete',
-        payloadJson: jsonEncode({if (duplicate.id != null) 'id': duplicate.id}),
+        payloadJson: jsonEncode({
+          if (duplicate.id != null) 'id': duplicate.id,
+        }),
       );
     }
 

@@ -9,10 +9,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../models/battery.dart';
 
 class QrLabelPage extends StatefulWidget {
-  const QrLabelPage({
-    super.key,
-    required this.battery,
-  });
+  const QrLabelPage({super.key, required this.battery});
 
   final Battery battery;
 
@@ -21,6 +18,12 @@ class QrLabelPage extends StatefulWidget {
 }
 
 class _QrLabelPageState extends State<QrLabelPage> {
+  static const _labelFormat = PdfPageFormat(
+    50 * PdfPageFormat.mm,
+    30 * PdfPageFormat.mm,
+    marginAll: 2 * PdfPageFormat.mm,
+  );
+
   bool _isPrinting = false;
 
   Battery get battery => widget.battery;
@@ -28,22 +31,13 @@ class _QrLabelPageState extends State<QrLabelPage> {
   Future<Uint8List> _buildPdf(PdfPageFormat format) async {
     final document = pw.Document();
 
-    const labelFormat = PdfPageFormat(
-      50 * PdfPageFormat.mm,
-      30 * PdfPageFormat.mm,
-      marginAll: 2 * PdfPageFormat.mm,
-    );
-
     document.addPage(
       pw.Page(
-        pageFormat: labelFormat,
+        pageFormat: _labelFormat,
         build: (context) {
           return pw.Container(
             decoration: pw.BoxDecoration(
-              border: pw.Border.all(
-                color: PdfColors.black,
-                width: 0.8,
-              ),
+              border: pw.Border.all(color: PdfColors.black, width: 0.8),
               borderRadius: pw.BorderRadius.circular(5),
             ),
             padding: const pw.EdgeInsets.all(6),
@@ -74,9 +68,7 @@ class _QrLabelPageState extends State<QrLabelPage> {
                         pw.SizedBox(height: 3),
                         pw.Text(
                           'Paire ${battery.pairId}',
-                          style: const pw.TextStyle(
-                            fontSize: 7,
-                          ),
+                          style: const pw.TextStyle(fontSize: 7),
                         ),
                       ],
                     ],
@@ -102,20 +94,25 @@ class _QrLabelPageState extends State<QrLabelPage> {
     });
 
     try {
+      // Le PDF est entièrement généré avant l'ouverture de la feuille
+      // d'impression. Sur iPadOS, cela évite que la feuille native se
+      // referme pendant que le document est encore en cours de construction.
+      final pdfBytes = await _buildPdf(_labelFormat);
+
       await Printing.layoutPdf(
         name: 'Etiquette_${battery.id}.pdf',
-        onLayout: _buildPdf,
+        format: _labelFormat,
+        dynamicLayout: false,
+        onLayout: (_) async => pdfBytes,
       );
     } catch (error) {
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Impression impossible : $error'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Impression impossible : $error')));
     } finally {
       if (mounted) {
         setState(() {
@@ -128,9 +125,7 @@ class _QrLabelPageState extends State<QrLabelPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Étiquette QR Code'),
-      ),
+      appBar: AppBar(title: const Text('Étiquette QR Code')),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
@@ -190,9 +185,7 @@ class _QrLabelPageState extends State<QrLabelPage> {
             icon: _isPrinting
                 ? const SizedBox.square(
                     dimension: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.print),
             label: Text(

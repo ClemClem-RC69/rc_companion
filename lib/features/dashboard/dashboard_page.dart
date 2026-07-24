@@ -177,6 +177,21 @@ class _DashboardPageState extends State<DashboardPage>
     super.dispose();
   }
 
+  Future<void> _refreshDashboardManually() async {
+    if (mounted) {
+      setState(() => loading = true);
+    }
+
+    try {
+      await BatteryService.refreshBatteries();
+    } catch (_) {
+      // Hors ligne, le Dashboard continue d'utiliser le cache Drift.
+    }
+
+    await _refreshBatteryMetricsFromDrift();
+    await _loadDashboard();
+  }
+
   Future<void> _loadDashboard() async {
     try {
       final localBatteries = await BatteryService.getCachedBatteries();
@@ -451,6 +466,7 @@ class _DashboardPageState extends State<DashboardPage>
             child: _TopBar(
               desktop: desktop,
               name: name,
+              onRefresh: _refreshDashboardManually,
               onInfo: () => _open(const InfoPage()),
               onLogout: _logout,
             ),
@@ -872,12 +888,14 @@ class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.desktop,
     required this.name,
+    required this.onRefresh,
     required this.onInfo,
     required this.onLogout,
   });
 
   final bool desktop;
   final String name;
+  final Future<void> Function() onRefresh;
   final VoidCallback onInfo;
   final VoidCallback onLogout;
 
@@ -938,6 +956,11 @@ class _TopBar extends StatelessWidget {
               ),
             ),
           ],
+          IconButton(
+            tooltip: 'Actualiser le Dashboard',
+            onPressed: () => onRefresh(),
+            icon: const Icon(Icons.refresh_rounded),
+          ),
           IconButton(
             onPressed: onInfo,
             icon: const Icon(Icons.notifications_none_rounded),
