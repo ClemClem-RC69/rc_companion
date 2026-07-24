@@ -1,0 +1,161 @@
+import 'dart:convert';
+
+import 'package:drift/drift.dart';
+
+import '../database/app_database.dart';
+import '../models/model_document.dart';
+
+class ModelDocumentLocalStore {
+  ModelDocumentLocalStore._();
+
+  static final AppDatabase _database = AppDatabase.instance;
+
+  static String localKey({required String userId, required String documentId}) {
+    return '$userId::$documentId';
+  }
+
+  static Future<bool> hasCache({
+    required String userId,
+    required String modelId,
+  }) async {
+    final row =
+        await (_database.select(_database.localModelDocuments)
+              ..where(
+                (item) =>
+                    item.userId.equals(userId) & item.modelId.equals(modelId),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+
+    return row != null;
+  }
+
+  static Future<List<ModelDocument>> getDocuments({
+    required String userId,
+    required String modelId,
+  }) async {
+    final rows =
+        await (_database.select(_database.localModelDocuments)
+              ..where(
+                (item) =>
+                    item.userId.equals(userId) &
+                    item.modelId.equals(modelId) &
+                    item.isDeleted.equals(false),
+              )
+              ..orderBy([(item) => OrderingTerm.asc(item.createdAt)]))
+            .get();
+
+    return rows
+        .map(
+          (row) => ModelDocument.fromMap(
+            Map<String, dynamic>.from(jsonDecode(row.payloadJson) as Map),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  static Stream<List<ModelDocument>> watchDocuments({
+    required String userId,
+    required String modelId,
+  }) {
+    final query = _database.select(_database.localModelDocuments)
+      ..where(
+        (item) =>
+            item.userId.equals(userId) &
+            item.modelId.equals(modelId) &
+            item.isDeleted.equals(false),
+      )
+      ..orderBy([(item) => OrderingTerm.asc(item.createdAt)]);
+
+    return query.watch().map(
+      (rows) => rows
+          .map(
+            (row) => ModelDocument.fromMap(
+              Map<String, dynamic>.from(jsonDecode(row.payloadJson) as Map),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  static Future<void> replaceDocuments({
+    required String userId,
+    required String modelId,
+    required List<Map<String, dynamic>> rows,
+  }) async {
+    await _database.transaction(() async {
+      final pendingDeleteRows =
+          await (_database.select(_database.syncQueueEntries)..where(
+                (item) =>
+                    item.userId.equals(userId) &
+                    item.entityType.equals('model_document') &
+                    item.operation.equals('delete'),
+              ))
+              .get();
+
+      final pendingDeleteIds = pendingDeleteRows
+          .map((item) => item.entityId)
+          .toSet();
+
+      final pendingIds = await _database.getPendingEntityIds(
+        userId: userId,
+        entityType: 'model_document',
+      );
+
+      await (_database.delete(_database.localModelDocuments)..where(
+            (item) =>
+                item.userId.equals(userId) &
+                item.modelId.equals(modelId) &
+                item.documentId.isNotIn(pendingIds.toList()),
+          ))
+          .go();
+
+      for (final row in rows) {
+        final document = ModelDocument.fromMap(row);
+
+        if (document.id.isEmpty) {
+          continue;
+        }
+
+        if (pendingDeleteIds.contains(document.id)) {
+          continue;
+        }
+
+        if (pendingIds.contains(document.id)) {
+          continue;
+        }
+
+        await upsertDocument(userId: userId, document: document);
+      }
+    });
+  }
+
+  static Future<void> upsertDocument({
+    required String userId,
+    required ModelDocument document,
+    bool isDeleted = false,
+  }) async {
+    await _database
+        .into(_database.localModelDocuments)
+        .insert(
+          LocalModelDocumentsCompanion.insert(
+            localKey: localKey(userId: userId, documentId: document.id),
+            userId: userId,
+            modelId: document.modelId,
+            documentId: document.id,
+            payloadJson: jsonEncode(document.toMap()),
+            createdAt: Value(document.createdAt),
+            updatedAt: Value(DateTime.now()),
+            isDeleted: Value(isDeleted),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
+  static Future<void> markDeleted({
+    required String userId,
+    required ModelDocument document,
+  }) {
+    return upsertDocument(userId: userId, document: document, isDeleted: true);
+  }
+}

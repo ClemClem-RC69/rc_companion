@@ -2629,6 +2629,578 @@ class LocalModelSetupsCompanion extends UpdateCompanion<LocalModelSetup> {
   }
 }
 
+class $LocalModelDocumentsTable extends LocalModelDocuments
+    with TableInfo<$LocalModelDocumentsTable, LocalModelDocument> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalModelDocumentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _localKeyMeta = const VerificationMeta(
+    'localKey',
+  );
+  @override
+  late final GeneratedColumn<String> localKey = GeneratedColumn<String>(
+    'local_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _modelIdMeta = const VerificationMeta(
+    'modelId',
+  );
+  @override
+  late final GeneratedColumn<String> modelId = GeneratedColumn<String>(
+    'model_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _documentIdMeta = const VerificationMeta(
+    'documentId',
+  );
+  @override
+  late final GeneratedColumn<String> documentId = GeneratedColumn<String>(
+    'document_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _cachedAtMeta = const VerificationMeta(
+    'cachedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+    'cached_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    localKey,
+    userId,
+    modelId,
+    documentId,
+    payloadJson,
+    createdAt,
+    updatedAt,
+    cachedAt,
+    isDeleted,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_model_documents';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalModelDocument> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('local_key')) {
+      context.handle(
+        _localKeyMeta,
+        localKey.isAcceptableOrUnknown(data['local_key']!, _localKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localKeyMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('model_id')) {
+      context.handle(
+        _modelIdMeta,
+        modelId.isAcceptableOrUnknown(data['model_id']!, _modelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modelIdMeta);
+    }
+    if (data.containsKey('document_id')) {
+      context.handle(
+        _documentIdMeta,
+        documentId.isAcceptableOrUnknown(data['document_id']!, _documentIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_documentIdMeta);
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(
+        _cachedAtMeta,
+        cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta),
+      );
+    }
+    if (data.containsKey('is_deleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {localKey};
+  @override
+  LocalModelDocument map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalModelDocument(
+      localKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_key'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      modelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}model_id'],
+      )!,
+      documentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}document_id'],
+      )!,
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      ),
+      cachedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}cached_at'],
+      )!,
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalModelDocumentsTable createAlias(String alias) {
+    return $LocalModelDocumentsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalModelDocument extends DataClass
+    implements Insertable<LocalModelDocument> {
+  final String localKey;
+  final String userId;
+  final String modelId;
+  final String documentId;
+  final String payloadJson;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime cachedAt;
+  final bool isDeleted;
+  const LocalModelDocument({
+    required this.localKey,
+    required this.userId,
+    required this.modelId,
+    required this.documentId,
+    required this.payloadJson,
+    this.createdAt,
+    this.updatedAt,
+    required this.cachedAt,
+    required this.isDeleted,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['local_key'] = Variable<String>(localKey);
+    map['user_id'] = Variable<String>(userId);
+    map['model_id'] = Variable<String>(modelId);
+    map['document_id'] = Variable<String>(documentId);
+    map['payload_json'] = Variable<String>(payloadJson);
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<DateTime>(createdAt);
+    }
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    map['is_deleted'] = Variable<bool>(isDeleted);
+    return map;
+  }
+
+  LocalModelDocumentsCompanion toCompanion(bool nullToAbsent) {
+    return LocalModelDocumentsCompanion(
+      localKey: Value(localKey),
+      userId: Value(userId),
+      modelId: Value(modelId),
+      documentId: Value(documentId),
+      payloadJson: Value(payloadJson),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+      cachedAt: Value(cachedAt),
+      isDeleted: Value(isDeleted),
+    );
+  }
+
+  factory LocalModelDocument.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalModelDocument(
+      localKey: serializer.fromJson<String>(json['localKey']),
+      userId: serializer.fromJson<String>(json['userId']),
+      modelId: serializer.fromJson<String>(json['modelId']),
+      documentId: serializer.fromJson<String>(json['documentId']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      createdAt: serializer.fromJson<DateTime?>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'localKey': serializer.toJson<String>(localKey),
+      'userId': serializer.toJson<String>(userId),
+      'modelId': serializer.toJson<String>(modelId),
+      'documentId': serializer.toJson<String>(documentId),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'createdAt': serializer.toJson<DateTime?>(createdAt),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+      'isDeleted': serializer.toJson<bool>(isDeleted),
+    };
+  }
+
+  LocalModelDocument copyWith({
+    String? localKey,
+    String? userId,
+    String? modelId,
+    String? documentId,
+    String? payloadJson,
+    Value<DateTime?> createdAt = const Value.absent(),
+    Value<DateTime?> updatedAt = const Value.absent(),
+    DateTime? cachedAt,
+    bool? isDeleted,
+  }) => LocalModelDocument(
+    localKey: localKey ?? this.localKey,
+    userId: userId ?? this.userId,
+    modelId: modelId ?? this.modelId,
+    documentId: documentId ?? this.documentId,
+    payloadJson: payloadJson ?? this.payloadJson,
+    createdAt: createdAt.present ? createdAt.value : this.createdAt,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    cachedAt: cachedAt ?? this.cachedAt,
+    isDeleted: isDeleted ?? this.isDeleted,
+  );
+  LocalModelDocument copyWithCompanion(LocalModelDocumentsCompanion data) {
+    return LocalModelDocument(
+      localKey: data.localKey.present ? data.localKey.value : this.localKey,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      modelId: data.modelId.present ? data.modelId.value : this.modelId,
+      documentId: data.documentId.present
+          ? data.documentId.value
+          : this.documentId,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalModelDocument(')
+          ..write('localKey: $localKey, ')
+          ..write('userId: $userId, ')
+          ..write('modelId: $modelId, ')
+          ..write('documentId: $documentId, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    localKey,
+    userId,
+    modelId,
+    documentId,
+    payloadJson,
+    createdAt,
+    updatedAt,
+    cachedAt,
+    isDeleted,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalModelDocument &&
+          other.localKey == this.localKey &&
+          other.userId == this.userId &&
+          other.modelId == this.modelId &&
+          other.documentId == this.documentId &&
+          other.payloadJson == this.payloadJson &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.cachedAt == this.cachedAt &&
+          other.isDeleted == this.isDeleted);
+}
+
+class LocalModelDocumentsCompanion extends UpdateCompanion<LocalModelDocument> {
+  final Value<String> localKey;
+  final Value<String> userId;
+  final Value<String> modelId;
+  final Value<String> documentId;
+  final Value<String> payloadJson;
+  final Value<DateTime?> createdAt;
+  final Value<DateTime?> updatedAt;
+  final Value<DateTime> cachedAt;
+  final Value<bool> isDeleted;
+  final Value<int> rowid;
+  const LocalModelDocumentsCompanion({
+    this.localKey = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.modelId = const Value.absent(),
+    this.documentId = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalModelDocumentsCompanion.insert({
+    required String localKey,
+    required String userId,
+    required String modelId,
+    required String documentId,
+    required String payloadJson,
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : localKey = Value(localKey),
+       userId = Value(userId),
+       modelId = Value(modelId),
+       documentId = Value(documentId),
+       payloadJson = Value(payloadJson);
+  static Insertable<LocalModelDocument> custom({
+    Expression<String>? localKey,
+    Expression<String>? userId,
+    Expression<String>? modelId,
+    Expression<String>? documentId,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? cachedAt,
+    Expression<bool>? isDeleted,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (localKey != null) 'local_key': localKey,
+      if (userId != null) 'user_id': userId,
+      if (modelId != null) 'model_id': modelId,
+      if (documentId != null) 'document_id': documentId,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (cachedAt != null) 'cached_at': cachedAt,
+      if (isDeleted != null) 'is_deleted': isDeleted,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalModelDocumentsCompanion copyWith({
+    Value<String>? localKey,
+    Value<String>? userId,
+    Value<String>? modelId,
+    Value<String>? documentId,
+    Value<String>? payloadJson,
+    Value<DateTime?>? createdAt,
+    Value<DateTime?>? updatedAt,
+    Value<DateTime>? cachedAt,
+    Value<bool>? isDeleted,
+    Value<int>? rowid,
+  }) {
+    return LocalModelDocumentsCompanion(
+      localKey: localKey ?? this.localKey,
+      userId: userId ?? this.userId,
+      modelId: modelId ?? this.modelId,
+      documentId: documentId ?? this.documentId,
+      payloadJson: payloadJson ?? this.payloadJson,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      cachedAt: cachedAt ?? this.cachedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (localKey.present) {
+      map['local_key'] = Variable<String>(localKey.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (modelId.present) {
+      map['model_id'] = Variable<String>(modelId.value);
+    }
+    if (documentId.present) {
+      map['document_id'] = Variable<String>(documentId.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalModelDocumentsCompanion(')
+          ..write('localKey: $localKey, ')
+          ..write('userId: $userId, ')
+          ..write('modelId: $modelId, ')
+          ..write('documentId: $documentId, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncQueueEntriesTable extends SyncQueueEntries
     with TableInfo<$SyncQueueEntriesTable, SyncQueueEntry> {
   @override
@@ -3720,6 +4292,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $LocalModelSetupsTable localModelSetups = $LocalModelSetupsTable(
     this,
   );
+  late final $LocalModelDocumentsTable localModelDocuments =
+      $LocalModelDocumentsTable(this);
   late final $SyncQueueEntriesTable syncQueueEntries = $SyncQueueEntriesTable(
     this,
   );
@@ -3736,6 +4310,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localSessions,
     localModels,
     localModelSetups,
+    localModelDocuments,
     syncQueueEntries,
     localSyncStates,
   ];
@@ -5071,6 +5646,302 @@ typedef $$LocalModelSetupsTableProcessedTableManager =
       LocalModelSetup,
       PrefetchHooks Function()
     >;
+typedef $$LocalModelDocumentsTableCreateCompanionBuilder =
+    LocalModelDocumentsCompanion Function({
+      required String localKey,
+      required String userId,
+      required String modelId,
+      required String documentId,
+      required String payloadJson,
+      Value<DateTime?> createdAt,
+      Value<DateTime?> updatedAt,
+      Value<DateTime> cachedAt,
+      Value<bool> isDeleted,
+      Value<int> rowid,
+    });
+typedef $$LocalModelDocumentsTableUpdateCompanionBuilder =
+    LocalModelDocumentsCompanion Function({
+      Value<String> localKey,
+      Value<String> userId,
+      Value<String> modelId,
+      Value<String> documentId,
+      Value<String> payloadJson,
+      Value<DateTime?> createdAt,
+      Value<DateTime?> updatedAt,
+      Value<DateTime> cachedAt,
+      Value<bool> isDeleted,
+      Value<int> rowid,
+    });
+
+class $$LocalModelDocumentsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalModelDocumentsTable> {
+  $$LocalModelDocumentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get localKey => $composableBuilder(
+    column: $table.localKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get documentId => $composableBuilder(
+    column: $table.documentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+    column: $table.cachedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalModelDocumentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalModelDocumentsTable> {
+  $$LocalModelDocumentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get localKey => $composableBuilder(
+    column: $table.localKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get documentId => $composableBuilder(
+    column: $table.documentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+    column: $table.cachedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalModelDocumentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalModelDocumentsTable> {
+  $$LocalModelDocumentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get localKey =>
+      $composableBuilder(column: $table.localKey, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get modelId =>
+      $composableBuilder(column: $table.modelId, builder: (column) => column);
+
+  GeneratedColumn<String> get documentId => $composableBuilder(
+    column: $table.documentId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+}
+
+class $$LocalModelDocumentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalModelDocumentsTable,
+          LocalModelDocument,
+          $$LocalModelDocumentsTableFilterComposer,
+          $$LocalModelDocumentsTableOrderingComposer,
+          $$LocalModelDocumentsTableAnnotationComposer,
+          $$LocalModelDocumentsTableCreateCompanionBuilder,
+          $$LocalModelDocumentsTableUpdateCompanionBuilder,
+          (
+            LocalModelDocument,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalModelDocumentsTable,
+              LocalModelDocument
+            >,
+          ),
+          LocalModelDocument,
+          PrefetchHooks Function()
+        > {
+  $$LocalModelDocumentsTableTableManager(
+    _$AppDatabase db,
+    $LocalModelDocumentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalModelDocumentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalModelDocumentsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LocalModelDocumentsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> localKey = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> modelId = const Value.absent(),
+                Value<String> documentId = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<DateTime?> createdAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime> cachedAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalModelDocumentsCompanion(
+                localKey: localKey,
+                userId: userId,
+                modelId: modelId,
+                documentId: documentId,
+                payloadJson: payloadJson,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                cachedAt: cachedAt,
+                isDeleted: isDeleted,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String localKey,
+                required String userId,
+                required String modelId,
+                required String documentId,
+                required String payloadJson,
+                Value<DateTime?> createdAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime> cachedAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalModelDocumentsCompanion.insert(
+                localKey: localKey,
+                userId: userId,
+                modelId: modelId,
+                documentId: documentId,
+                payloadJson: payloadJson,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                cachedAt: cachedAt,
+                isDeleted: isDeleted,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalModelDocumentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalModelDocumentsTable,
+      LocalModelDocument,
+      $$LocalModelDocumentsTableFilterComposer,
+      $$LocalModelDocumentsTableOrderingComposer,
+      $$LocalModelDocumentsTableAnnotationComposer,
+      $$LocalModelDocumentsTableCreateCompanionBuilder,
+      $$LocalModelDocumentsTableUpdateCompanionBuilder,
+      (
+        LocalModelDocument,
+        BaseReferences<
+          _$AppDatabase,
+          $LocalModelDocumentsTable,
+          LocalModelDocument
+        >,
+      ),
+      LocalModelDocument,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncQueueEntriesTableCreateCompanionBuilder =
     SyncQueueEntriesCompanion Function({
       Value<int> id,
@@ -5624,6 +6495,8 @@ class $AppDatabaseManager {
       $$LocalModelsTableTableManager(_db, _db.localModels);
   $$LocalModelSetupsTableTableManager get localModelSetups =>
       $$LocalModelSetupsTableTableManager(_db, _db.localModelSetups);
+  $$LocalModelDocumentsTableTableManager get localModelDocuments =>
+      $$LocalModelDocumentsTableTableManager(_db, _db.localModelDocuments);
   $$SyncQueueEntriesTableTableManager get syncQueueEntries =>
       $$SyncQueueEntriesTableTableManager(_db, _db.syncQueueEntries);
   $$LocalSyncStatesTableTableManager get localSyncStates =>

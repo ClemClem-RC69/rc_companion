@@ -65,7 +65,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       }
 
       setState(() {
-        documents = result;
+        documents = List<ModelDocument>.of(result);
         isLoadingDocuments = false;
       });
     } catch (error) {
@@ -136,7 +136,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       }
 
       setState(() {
-        documents.add(document);
+        documents = <ModelDocument>[...documents, document];
         isAddingDocument = false;
       });
 
@@ -420,7 +420,9 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       }
 
       setState(() {
-        documents.removeWhere((item) => item.id == document.id);
+        documents = documents
+            .where((item) => item.id != document.id)
+            .toList(growable: true);
       });
 
       ScaffoldMessenger.of(

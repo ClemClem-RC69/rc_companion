@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../database/app_database.dart';
 import 'battery_local_store.dart';
+import 'model_document_sync_service.dart';
 import 'model_setup_sync_service.dart';
 import 'model_sync_service.dart';
 import 'session_sync_service.dart';
@@ -97,6 +98,8 @@ class BatterySyncService {
         await ModelSetupSyncService.syncEntry(entry);
       case 'model':
         await ModelSyncService.syncEntry(entry);
+      case 'model_document':
+        await ModelDocumentSyncService.syncEntry(entry);
       default:
         throw StateError(
           'Type de synchronisation inconnu : ${entry.entityType}',
