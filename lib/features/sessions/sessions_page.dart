@@ -1335,23 +1335,32 @@ class _SessionsPageState extends State<SessionsPage> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Wrap(
-                      spacing: 4,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () => _editSessionGeneral(session),
-                          icon: const Icon(Icons.edit_outlined),
-                          label: const Text('Modifier'),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _deleteClosedSession(session),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Theme.of(
-                              context,
-                            ).colorScheme.error,
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_horiz),
+                      onSelected: (value) {
+                        switch (value) {
+                          case 'edit':
+                            _editSessionGeneral(session);
+                            break;
+                          case 'delete':
+                            _deleteClosedSession(session);
+                            break;
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: ListTile(
+                            leading: Icon(Icons.edit_outlined),
+                            title: Text('Modifier'),
                           ),
-                          icon: const Icon(Icons.delete_outline),
-                          label: const Text('Supprimer'),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: ListTile(
+                            leading: Icon(Icons.delete_outline),
+                            title: Text('Supprimer'),
+                          ),
                         ),
                       ],
                     ),
