@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -13,6 +12,8 @@ import '../../../models/rc_session.dart';
 import '../../../services/battery_service.dart';
 import '../../../services/session_local_store.dart';
 import '../../../services/session_service.dart';
+import '../../../services/maintenance_local_store.dart';
+import '../../../services/maintenance_service.dart';
 import '../../../services/supabase_service.dart';
 
 class ModelHistoryTab extends StatefulWidget {
@@ -36,17 +37,20 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
   bool _isLoading = true;
   String? _errorMessage;
   StreamSubscription<List<Map<String, dynamic>>>? _sessionSubscription;
+  StreamSubscription<List<Map<String, dynamic>>>? _maintenanceSubscription;
 
   @override
   void initState() {
     super.initState();
     _startSessionLiveUpdates();
+    _startMaintenanceLiveUpdates();
     _loadHistory();
   }
 
   @override
   void dispose() {
     _sessionSubscription?.cancel();
+    _maintenanceSubscription?.cancel();
     super.dispose();
   }
 
@@ -60,6 +64,58 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         .listen((_) {
           unawaited(_refreshSessionsFromLocal());
         });
+  }
+
+  void _startMaintenanceLiveUpdates() {
+    final user = SupabaseService.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _maintenanceSubscription =
+        MaintenanceLocalStore.watchRecords(userId: user.id).listen((rows) {
+          final maintenances =
+              rows
+                  .where((row) => row['model_id']?.toString() == widget.modelId)
+                  .map(
+                    (row) => _ModelMaintenanceRecord.fromMap(
+                      Map<String, dynamic>.from(row),
+                    ),
+                  )
+                  .toList(growable: false)
+                ..sort((a, b) => b.date.compareTo(a.date));
+
+          if (!mounted) {
+            return;
+          }
+
+          setState(() {
+            _maintenances = maintenances;
+          });
+        });
+  }
+
+  Future<void> _refreshMaintenancesFromLocal() async {
+    final rows = await MaintenanceService.getRecords();
+
+    final maintenances =
+        rows
+            .where((row) => row['model_id']?.toString() == widget.modelId)
+            .map(
+              (row) => _ModelMaintenanceRecord.fromMap(
+                Map<String, dynamic>.from(row),
+              ),
+            )
+            .toList(growable: false)
+          ..sort((a, b) => b.date.compareTo(a.date));
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _maintenances = maintenances;
+    });
   }
 
   Future<void> _refreshSessionsFromLocal() async {
@@ -107,38 +163,17 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
             (first, second) => second.startedAt.compareTo(first.startedAt),
           );
 
-      var maintenances = _maintenances;
-      final connectivity = await Connectivity().checkConnectivity();
-      final isOnline = connectivity.any(
-        (result) => result != ConnectivityResult.none,
-      );
-
-      if (isOnline) {
-        try {
-          // Les compteurs de révision restent synchronisés avec Supabase tant
-          // que Maintenance Offline n'est pas encore mise en place.
-          await _recalculateRevisionCounters(user.id);
-
-          final rawMaintenances = await SupabaseService.client
-              .from('maintenance_records')
-              .select()
-              .eq('user_id', user.id)
-              .eq('model_id', widget.modelId)
-              .order('maintenance_date', ascending: false)
-              .timeout(const Duration(seconds: 8));
-
-          maintenances = rawMaintenances
+      final maintenanceRows = await MaintenanceService.getRecords();
+      final maintenances =
+          maintenanceRows
+              .where((row) => row['model_id']?.toString() == widget.modelId)
               .map(
-                (raw) => _ModelMaintenanceRecord.fromMap(
-                  Map<String, dynamic>.from(raw as Map),
+                (row) => _ModelMaintenanceRecord.fromMap(
+                  Map<String, dynamic>.from(row),
                 ),
               )
-              .toList(growable: false);
-        } catch (_) {
-          // Les sessions locales restent affichées même si la partie
-          // Maintenance n'est momentanément pas joignable.
-        }
-      }
+              .toList(growable: false)
+            ..sort((a, b) => b.date.compareTo(a.date));
 
       if (!mounted) {
         return;
@@ -162,107 +197,6 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
           _isLoading = false;
         });
       }
-    }
-  }
-
-  Future<void> _recalculateRevisionCounters(String userId) async {
-    final revisionRows = await SupabaseService.client
-        .from('maintenance_records')
-        .select('id, maintenance_date')
-        .eq('user_id', userId)
-        .eq('model_id', widget.modelId)
-        .eq('record_type', 'REVISION')
-        .order('maintenance_date');
-
-    if (revisionRows.isEmpty) {
-      return;
-    }
-
-    final sessionRows = await SupabaseService.client
-        .from('rc_sessions')
-        .select('''
-          id,
-          started_at,
-          session_runs (
-            started_at,
-            ended_at,
-            duration_minutes
-          )
-        ''')
-        .eq('user_id', userId)
-        .eq('model_id', widget.modelId)
-        .order('started_at');
-
-    final runs = <_HistoryRunStat>[];
-
-    for (final rawSession in sessionRows) {
-      final session = Map<String, dynamic>.from(rawSession as Map);
-      final rawRuns = session['session_runs'] as List<dynamic>? ?? const [];
-
-      for (final rawRun in rawRuns) {
-        final run = Map<String, dynamic>.from(rawRun as Map);
-        final startedAt = DateTime.tryParse(
-          run['started_at']?.toString() ?? '',
-        )?.toLocal();
-
-        if (startedAt == null) {
-          continue;
-        }
-
-        int? durationMinutes = (run['duration_minutes'] as num?)?.toInt();
-
-        if (durationMinutes == null) {
-          final endedAt = DateTime.tryParse(
-            run['ended_at']?.toString() ?? '',
-          )?.toLocal();
-
-          if (endedAt != null) {
-            durationMinutes = endedAt.difference(startedAt).inMinutes;
-          }
-        }
-
-        runs.add(
-          _HistoryRunStat(
-            startedAt: startedAt,
-            durationMinutes: durationMinutes,
-          ),
-        );
-      }
-    }
-
-    DateTime? previousRevisionDate;
-
-    for (final rawRevision in revisionRows) {
-      final revision = Map<String, dynamic>.from(rawRevision as Map);
-      final revisionDate = DateTime.parse(
-        revision['maintenance_date'].toString(),
-      ).toLocal();
-
-      final eligibleRuns = runs
-          .where((run) {
-            final afterPrevious =
-                previousRevisionDate == null ||
-                run.startedAt.isAfter(previousRevisionDate);
-            final beforeOrAtRevision = !run.startedAt.isAfter(revisionDate);
-            return afterPrevious && beforeOrAtRevision;
-          })
-          .toList(growable: false);
-
-      final packs = eligibleRuns.length;
-      final knownMinutes = eligibleRuns
-          .where((run) => run.durationMinutes != null)
-          .fold<int>(0, (total, run) => total + run.durationMinutes!);
-
-      await SupabaseService.client
-          .from('maintenance_records')
-          .update({
-            'packs_since_last_revision': packs,
-            'runtime_minutes_since_last_revision': knownMinutes,
-          })
-          .eq('id', revision['id'])
-          .eq('user_id', userId);
-
-      previousRevisionDate = revisionDate;
     }
   }
 
@@ -1544,16 +1478,6 @@ class _ModelMaintenanceRecord {
           (row['runtime_minutes_since_last_revision'] as num?)?.toInt(),
     );
   }
-}
-
-class _HistoryRunStat {
-  const _HistoryRunStat({
-    required this.startedAt,
-    required this.durationMinutes,
-  });
-
-  final DateTime startedAt;
-  final int? durationMinutes;
 }
 
 class _SummaryValue extends StatelessWidget {
