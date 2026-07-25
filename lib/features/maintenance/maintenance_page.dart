@@ -236,7 +236,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       );
 
       if (draft.type == _MaintenanceType.revision) {
-        await _synchronizeCurrentSetupFromRevision(draft);
+        await _rebuildCurrentSetupFromHistory(modelId);
         await _recalculateRevisionCounters(modelId);
       }
 
@@ -282,13 +282,6 @@ class _MaintenancePageState extends State<MaintenancePage> {
         runtimeMinutesSinceLastRevision: record.runtimeMinutesSinceLastRevision,
       );
 
-      if (draft.type == _MaintenanceType.revision) {
-        await _synchronizeCurrentSetupFromRevision(
-          draft,
-          editedRecordId: record.id,
-        );
-      }
-
       final affectedModelIds = <String>{};
 
       if (record.type == _MaintenanceType.revision) {
@@ -300,6 +293,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       }
 
       for (final affectedModelId in affectedModelIds) {
+        await _rebuildCurrentSetupFromHistory(affectedModelId);
         await _recalculateRevisionCounters(affectedModelId);
       }
 
@@ -314,92 +308,131 @@ class _MaintenancePageState extends State<MaintenancePage> {
     }
   }
 
-  Future<void> _synchronizeCurrentSetupFromRevision(
-    _MaintenanceDraft draft, {
-    String? editedRecordId,
-  }) async {
-    final modelId = draft.model.id;
-
-    if (modelId == null || modelId.isEmpty) {
-      return;
-    }
-
-    // Une révision rétroactive reste dans l'historique, mais ne doit pas
-    // écraser un setup plus récent déjà enregistré.
+  Future<void> _rebuildCurrentSetupFromHistory(String modelId) async {
     final user = SupabaseService.client.auth.currentUser;
 
-    if (user == null) {
+    if (user == null || modelId.isEmpty) {
       return;
     }
 
-    final localRows = await MaintenanceService.getRecords();
+    // Lecture strictement locale : aucun rafraîchissement Supabase ne doit
+    // pouvoir réinjecter une ancienne révision pendant la reconstruction.
+    final maintenanceRows = await MaintenanceService.getLocalRecords();
+    final setup = await ModelSetupService.getLocalSetup(modelId);
 
-    final hasLaterRevision = localRows.any((row) {
-      final rowId = row['id']?.toString();
-      final rowModelId = row['model_id']?.toString();
-      final rowType = row['record_type']?.toString();
-      final rowDate = DateTime.tryParse(
-        row['maintenance_date']?.toString() ?? '',
-      )?.toLocal();
+    final revisions =
+        maintenanceRows
+            .where(
+              (row) =>
+                  row['model_id']?.toString() == modelId &&
+                  row['record_type']?.toString() == 'REVISION',
+            )
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false)
+          ..sort((a, b) {
+            final aDate =
+                DateTime.tryParse(a['maintenance_date']?.toString() ?? '') ??
+                DateTime(1900);
+            final bDate =
+                DateTime.tryParse(b['maintenance_date']?.toString() ?? '') ??
+                DateTime(1900);
+            final dateComparison = aDate.compareTo(bDate);
 
-      return rowModelId == modelId &&
-          rowType == 'REVISION' &&
-          rowDate != null &&
-          rowDate.isAfter(draft.date) &&
-          (editedRecordId == null || rowId != editedRecordId);
-    });
+            if (dateComparison != 0) {
+              return dateComparison;
+            }
 
-    if (hasLaterRevision) {
-      return;
-    }
+            final aCreated =
+                DateTime.tryParse(a['created_at']?.toString() ?? '') ??
+                DateTime(1900);
+            final bCreated =
+                DateTime.tryParse(b['created_at']?.toString() ?? '') ??
+                DateTime(1900);
+            final createdComparison = aCreated.compareTo(bCreated);
 
-    final updates = <String, String>{};
+            if (createdComparison != 0) {
+              return createdComparison;
+            }
 
-    void addFluid(String sourceKey, String setupKey) {
-      final value = draft.fluids[sourceKey]?.trim() ?? '';
+            return (a['id']?.toString() ?? '').compareTo(
+              b['id']?.toString() ?? '',
+            );
+          });
 
-      if (value.isNotEmpty) {
-        updates[setupKey] = _withCstSuffix(value);
+    final enabledFields = List<String>.from(setup.enabledFields);
+    final currentValues = Map<String, String>.from(setup.originalValues);
+
+    for (final revision in revisions) {
+      final rawData = revision['data'];
+      final data = rawData is Map
+          ? Map<String, dynamic>.from(rawData)
+          : const <String, dynamic>{};
+
+      final rawFluids = data['fluids'];
+      if (rawFluids is Map) {
+        final fluids = rawFluids.map(
+          (key, value) => MapEntry(key.toString(), value.toString()),
+        );
+
+        void applyFluid(String sourceKey, String setupKey) {
+          final value = fluids[sourceKey]?.trim() ?? '';
+
+          if (value.isEmpty) {
+            return;
+          }
+
+          currentValues[setupKey] = _withCstSuffix(value);
+
+          if (!enabledFields.contains(setupKey)) {
+            enabledFields.add(setupKey);
+          }
+        }
+
+        applyFluid('diffFront', 'front_diff_oil');
+        applyFluid('diffCenter', 'center_diff_oil');
+        applyFluid('diffRear', 'rear_diff_oil');
+        applyFluid('shockFront', 'front_shock_oil');
+        applyFluid('shockRear', 'rear_shock_oil');
+      }
+
+      final rawSetupChanges = data['setupChanges'];
+      if (rawSetupChanges is List) {
+        for (final rawChange in rawSetupChanges) {
+          if (rawChange is! Map) {
+            continue;
+          }
+
+          final change = Map<String, dynamic>.from(rawChange);
+          final fieldKey = change['fieldKey']?.toString().trim() ?? '';
+          final newValue = change['newValue']?.toString().trim() ?? '';
+
+          if (fieldKey.isEmpty || newValue.isEmpty) {
+            continue;
+          }
+
+          currentValues[fieldKey] = newValue;
+
+          if (!enabledFields.contains(fieldKey)) {
+            enabledFields.add(fieldKey);
+          }
+        }
       }
     }
 
-    addFluid('diffFront', 'front_diff_oil');
-    addFluid('diffCenter', 'center_diff_oil');
-    addFluid('diffRear', 'rear_diff_oil');
-    addFluid('shockFront', 'front_shock_oil');
-    addFluid('shockRear', 'rear_shock_oil');
-
-    for (final change in draft.setupChanges) {
-      final fieldKey = change['fieldKey']?.trim() ?? '';
-      final newValue = change['newValue']?.trim() ?? '';
-
-      if (fieldKey.isNotEmpty && newValue.isNotEmpty) {
-        updates[fieldKey] = newValue;
+    // Les champs d'origine doivent rester visibles même si toutes les
+    // révisions qui les modifiaient ont été supprimées.
+    for (final fieldKey in setup.originalValues.keys) {
+      if (!enabledFields.contains(fieldKey)) {
+        enabledFields.add(fieldKey);
       }
     }
 
-    if (updates.isEmpty) {
-      return;
-    }
-
-    final currentSetup = await ModelSetupService.getSetup(modelId);
-    final enabledFields = List<String>.from(currentSetup.enabledFields);
-    final currentValues = Map<String, String>.from(currentSetup.currentValues);
-
-    for (final entry in updates.entries) {
-      currentValues[entry.key] = entry.value;
-
-      if (!enabledFields.contains(entry.key)) {
-        enabledFields.add(entry.key);
-      }
-    }
-
-    final updatedSetup = currentSetup.copyWith(
-      enabledFields: enabledFields,
-      currentValues: currentValues,
+    await ModelSetupService.saveSetup(
+      setup.copyWith(
+        enabledFields: enabledFields,
+        currentValues: currentValues,
+      ),
     );
-
-    await ModelSetupService.saveSetup(updatedSetup);
   }
 
   static String _withCstSuffix(String value) {
@@ -419,7 +452,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       return;
     }
 
-    final maintenanceRows = await MaintenanceService.getRecords();
+    final maintenanceRows = await MaintenanceService.getLocalRecords();
 
     final revisions =
         maintenanceRows
@@ -568,6 +601,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       await MaintenanceService.deleteRecord(maintenanceId: record.id);
 
       if (record.type == _MaintenanceType.revision) {
+        await _rebuildCurrentSetupFromHistory(record.modelId);
         await _recalculateRevisionCounters(record.modelId);
       }
 

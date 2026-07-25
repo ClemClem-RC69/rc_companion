@@ -13,6 +13,15 @@ class MaintenanceService {
   static final _client = SupabaseService.client;
   static final _database = AppDatabase.instance;
 
+  static Future<List<Map<String, dynamic>>> getLocalRecords() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return const [];
+    }
+
+    return MaintenanceLocalStore.getRecords(userId: user.id);
+  }
+
   static Future<List<Map<String, dynamic>>> getRecords() async {
     final user = _client.auth.currentUser;
     if (user == null) {

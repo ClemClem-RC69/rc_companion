@@ -13,6 +13,20 @@ class ModelSetupService {
   static final _client = SupabaseService.client;
   static final _database = AppDatabase.instance;
 
+  static Future<ModelSetup> getLocalSetup(String modelId) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw Exception('Aucun utilisateur connecté.');
+    }
+
+    final cached = await ModelSetupLocalStore.getSetup(
+      userId: user.id,
+      modelId: modelId,
+    );
+
+    return cached ?? ModelSetup.empty(modelId);
+  }
+
   static Future<ModelSetup> getSetup(String modelId) async {
     final user = _client.auth.currentUser;
     if (user == null) {
