@@ -208,7 +208,7 @@ class _AuthPageState extends State<AuthPage> {
                           if (isLoginMode) ...[
                             _field(
                               controller: identifierController,
-                              label: 'Email ou pseudo',
+                              label: 'Adresse e-mail',
                               icon: Icons.person_outline_rounded,
                               inputAction: TextInputAction.next,
                               autofillHints: const [
