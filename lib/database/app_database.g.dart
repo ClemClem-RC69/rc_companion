@@ -3201,6 +3201,1141 @@ class LocalModelDocumentsCompanion extends UpdateCompanion<LocalModelDocument> {
   }
 }
 
+class $LocalRadiosTable extends LocalRadios
+    with TableInfo<$LocalRadiosTable, LocalRadio> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalRadiosTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _localKeyMeta = const VerificationMeta(
+    'localKey',
+  );
+  @override
+  late final GeneratedColumn<String> localKey = GeneratedColumn<String>(
+    'local_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _radioIdMeta = const VerificationMeta(
+    'radioId',
+  );
+  @override
+  late final GeneratedColumn<String> radioId = GeneratedColumn<String>(
+    'radio_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _brandMeta = const VerificationMeta('brand');
+  @override
+  late final GeneratedColumn<String> brand = GeneratedColumn<String>(
+    'brand',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _modelMeta = const VerificationMeta('model');
+  @override
+  late final GeneratedColumn<String> model = GeneratedColumn<String>(
+    'model',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _cachedAtMeta = const VerificationMeta(
+    'cachedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+    'cached_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    localKey,
+    userId,
+    radioId,
+    brand,
+    model,
+    payloadJson,
+    createdAt,
+    updatedAt,
+    cachedAt,
+    isDeleted,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_radios';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalRadio> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('local_key')) {
+      context.handle(
+        _localKeyMeta,
+        localKey.isAcceptableOrUnknown(data['local_key']!, _localKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localKeyMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('radio_id')) {
+      context.handle(
+        _radioIdMeta,
+        radioId.isAcceptableOrUnknown(data['radio_id']!, _radioIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_radioIdMeta);
+    }
+    if (data.containsKey('brand')) {
+      context.handle(
+        _brandMeta,
+        brand.isAcceptableOrUnknown(data['brand']!, _brandMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_brandMeta);
+    }
+    if (data.containsKey('model')) {
+      context.handle(
+        _modelMeta,
+        model.isAcceptableOrUnknown(data['model']!, _modelMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modelMeta);
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(
+        _cachedAtMeta,
+        cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta),
+      );
+    }
+    if (data.containsKey('is_deleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {localKey};
+  @override
+  LocalRadio map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalRadio(
+      localKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_key'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      radioId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}radio_id'],
+      )!,
+      brand: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}brand'],
+      )!,
+      model: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}model'],
+      )!,
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      ),
+      cachedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}cached_at'],
+      )!,
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalRadiosTable createAlias(String alias) {
+    return $LocalRadiosTable(attachedDatabase, alias);
+  }
+}
+
+class LocalRadio extends DataClass implements Insertable<LocalRadio> {
+  final String localKey;
+  final String userId;
+  final String radioId;
+  final String brand;
+  final String model;
+  final String payloadJson;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime cachedAt;
+  final bool isDeleted;
+  const LocalRadio({
+    required this.localKey,
+    required this.userId,
+    required this.radioId,
+    required this.brand,
+    required this.model,
+    required this.payloadJson,
+    this.createdAt,
+    this.updatedAt,
+    required this.cachedAt,
+    required this.isDeleted,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['local_key'] = Variable<String>(localKey);
+    map['user_id'] = Variable<String>(userId);
+    map['radio_id'] = Variable<String>(radioId);
+    map['brand'] = Variable<String>(brand);
+    map['model'] = Variable<String>(model);
+    map['payload_json'] = Variable<String>(payloadJson);
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<DateTime>(createdAt);
+    }
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    map['is_deleted'] = Variable<bool>(isDeleted);
+    return map;
+  }
+
+  LocalRadiosCompanion toCompanion(bool nullToAbsent) {
+    return LocalRadiosCompanion(
+      localKey: Value(localKey),
+      userId: Value(userId),
+      radioId: Value(radioId),
+      brand: Value(brand),
+      model: Value(model),
+      payloadJson: Value(payloadJson),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+      cachedAt: Value(cachedAt),
+      isDeleted: Value(isDeleted),
+    );
+  }
+
+  factory LocalRadio.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalRadio(
+      localKey: serializer.fromJson<String>(json['localKey']),
+      userId: serializer.fromJson<String>(json['userId']),
+      radioId: serializer.fromJson<String>(json['radioId']),
+      brand: serializer.fromJson<String>(json['brand']),
+      model: serializer.fromJson<String>(json['model']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      createdAt: serializer.fromJson<DateTime?>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'localKey': serializer.toJson<String>(localKey),
+      'userId': serializer.toJson<String>(userId),
+      'radioId': serializer.toJson<String>(radioId),
+      'brand': serializer.toJson<String>(brand),
+      'model': serializer.toJson<String>(model),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'createdAt': serializer.toJson<DateTime?>(createdAt),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+      'isDeleted': serializer.toJson<bool>(isDeleted),
+    };
+  }
+
+  LocalRadio copyWith({
+    String? localKey,
+    String? userId,
+    String? radioId,
+    String? brand,
+    String? model,
+    String? payloadJson,
+    Value<DateTime?> createdAt = const Value.absent(),
+    Value<DateTime?> updatedAt = const Value.absent(),
+    DateTime? cachedAt,
+    bool? isDeleted,
+  }) => LocalRadio(
+    localKey: localKey ?? this.localKey,
+    userId: userId ?? this.userId,
+    radioId: radioId ?? this.radioId,
+    brand: brand ?? this.brand,
+    model: model ?? this.model,
+    payloadJson: payloadJson ?? this.payloadJson,
+    createdAt: createdAt.present ? createdAt.value : this.createdAt,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    cachedAt: cachedAt ?? this.cachedAt,
+    isDeleted: isDeleted ?? this.isDeleted,
+  );
+  LocalRadio copyWithCompanion(LocalRadiosCompanion data) {
+    return LocalRadio(
+      localKey: data.localKey.present ? data.localKey.value : this.localKey,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      radioId: data.radioId.present ? data.radioId.value : this.radioId,
+      brand: data.brand.present ? data.brand.value : this.brand,
+      model: data.model.present ? data.model.value : this.model,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalRadio(')
+          ..write('localKey: $localKey, ')
+          ..write('userId: $userId, ')
+          ..write('radioId: $radioId, ')
+          ..write('brand: $brand, ')
+          ..write('model: $model, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    localKey,
+    userId,
+    radioId,
+    brand,
+    model,
+    payloadJson,
+    createdAt,
+    updatedAt,
+    cachedAt,
+    isDeleted,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalRadio &&
+          other.localKey == this.localKey &&
+          other.userId == this.userId &&
+          other.radioId == this.radioId &&
+          other.brand == this.brand &&
+          other.model == this.model &&
+          other.payloadJson == this.payloadJson &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.cachedAt == this.cachedAt &&
+          other.isDeleted == this.isDeleted);
+}
+
+class LocalRadiosCompanion extends UpdateCompanion<LocalRadio> {
+  final Value<String> localKey;
+  final Value<String> userId;
+  final Value<String> radioId;
+  final Value<String> brand;
+  final Value<String> model;
+  final Value<String> payloadJson;
+  final Value<DateTime?> createdAt;
+  final Value<DateTime?> updatedAt;
+  final Value<DateTime> cachedAt;
+  final Value<bool> isDeleted;
+  final Value<int> rowid;
+  const LocalRadiosCompanion({
+    this.localKey = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.radioId = const Value.absent(),
+    this.brand = const Value.absent(),
+    this.model = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalRadiosCompanion.insert({
+    required String localKey,
+    required String userId,
+    required String radioId,
+    required String brand,
+    required String model,
+    required String payloadJson,
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : localKey = Value(localKey),
+       userId = Value(userId),
+       radioId = Value(radioId),
+       brand = Value(brand),
+       model = Value(model),
+       payloadJson = Value(payloadJson);
+  static Insertable<LocalRadio> custom({
+    Expression<String>? localKey,
+    Expression<String>? userId,
+    Expression<String>? radioId,
+    Expression<String>? brand,
+    Expression<String>? model,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? cachedAt,
+    Expression<bool>? isDeleted,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (localKey != null) 'local_key': localKey,
+      if (userId != null) 'user_id': userId,
+      if (radioId != null) 'radio_id': radioId,
+      if (brand != null) 'brand': brand,
+      if (model != null) 'model': model,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (cachedAt != null) 'cached_at': cachedAt,
+      if (isDeleted != null) 'is_deleted': isDeleted,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalRadiosCompanion copyWith({
+    Value<String>? localKey,
+    Value<String>? userId,
+    Value<String>? radioId,
+    Value<String>? brand,
+    Value<String>? model,
+    Value<String>? payloadJson,
+    Value<DateTime?>? createdAt,
+    Value<DateTime?>? updatedAt,
+    Value<DateTime>? cachedAt,
+    Value<bool>? isDeleted,
+    Value<int>? rowid,
+  }) {
+    return LocalRadiosCompanion(
+      localKey: localKey ?? this.localKey,
+      userId: userId ?? this.userId,
+      radioId: radioId ?? this.radioId,
+      brand: brand ?? this.brand,
+      model: model ?? this.model,
+      payloadJson: payloadJson ?? this.payloadJson,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      cachedAt: cachedAt ?? this.cachedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (localKey.present) {
+      map['local_key'] = Variable<String>(localKey.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (radioId.present) {
+      map['radio_id'] = Variable<String>(radioId.value);
+    }
+    if (brand.present) {
+      map['brand'] = Variable<String>(brand.value);
+    }
+    if (model.present) {
+      map['model'] = Variable<String>(model.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalRadiosCompanion(')
+          ..write('localKey: $localKey, ')
+          ..write('userId: $userId, ')
+          ..write('radioId: $radioId, ')
+          ..write('brand: $brand, ')
+          ..write('model: $model, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LocalModelRadioSetupsTable extends LocalModelRadioSetups
+    with TableInfo<$LocalModelRadioSetupsTable, LocalModelRadioSetup> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalModelRadioSetupsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _localKeyMeta = const VerificationMeta(
+    'localKey',
+  );
+  @override
+  late final GeneratedColumn<String> localKey = GeneratedColumn<String>(
+    'local_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _modelIdMeta = const VerificationMeta(
+    'modelId',
+  );
+  @override
+  late final GeneratedColumn<String> modelId = GeneratedColumn<String>(
+    'model_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _radioIdMeta = const VerificationMeta(
+    'radioId',
+  );
+  @override
+  late final GeneratedColumn<String> radioId = GeneratedColumn<String>(
+    'radio_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _cachedAtMeta = const VerificationMeta(
+    'cachedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+    'cached_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    localKey,
+    userId,
+    modelId,
+    radioId,
+    payloadJson,
+    updatedAt,
+    cachedAt,
+    isDeleted,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_model_radio_setups';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalModelRadioSetup> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('local_key')) {
+      context.handle(
+        _localKeyMeta,
+        localKey.isAcceptableOrUnknown(data['local_key']!, _localKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localKeyMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('model_id')) {
+      context.handle(
+        _modelIdMeta,
+        modelId.isAcceptableOrUnknown(data['model_id']!, _modelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modelIdMeta);
+    }
+    if (data.containsKey('radio_id')) {
+      context.handle(
+        _radioIdMeta,
+        radioId.isAcceptableOrUnknown(data['radio_id']!, _radioIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_radioIdMeta);
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(
+        _cachedAtMeta,
+        cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta),
+      );
+    }
+    if (data.containsKey('is_deleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {localKey};
+  @override
+  LocalModelRadioSetup map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalModelRadioSetup(
+      localKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_key'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      modelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}model_id'],
+      )!,
+      radioId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}radio_id'],
+      )!,
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      ),
+      cachedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}cached_at'],
+      )!,
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalModelRadioSetupsTable createAlias(String alias) {
+    return $LocalModelRadioSetupsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalModelRadioSetup extends DataClass
+    implements Insertable<LocalModelRadioSetup> {
+  final String localKey;
+  final String userId;
+  final String modelId;
+  final String radioId;
+  final String payloadJson;
+  final DateTime? updatedAt;
+  final DateTime cachedAt;
+  final bool isDeleted;
+  const LocalModelRadioSetup({
+    required this.localKey,
+    required this.userId,
+    required this.modelId,
+    required this.radioId,
+    required this.payloadJson,
+    this.updatedAt,
+    required this.cachedAt,
+    required this.isDeleted,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['local_key'] = Variable<String>(localKey);
+    map['user_id'] = Variable<String>(userId);
+    map['model_id'] = Variable<String>(modelId);
+    map['radio_id'] = Variable<String>(radioId);
+    map['payload_json'] = Variable<String>(payloadJson);
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    map['is_deleted'] = Variable<bool>(isDeleted);
+    return map;
+  }
+
+  LocalModelRadioSetupsCompanion toCompanion(bool nullToAbsent) {
+    return LocalModelRadioSetupsCompanion(
+      localKey: Value(localKey),
+      userId: Value(userId),
+      modelId: Value(modelId),
+      radioId: Value(radioId),
+      payloadJson: Value(payloadJson),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+      cachedAt: Value(cachedAt),
+      isDeleted: Value(isDeleted),
+    );
+  }
+
+  factory LocalModelRadioSetup.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalModelRadioSetup(
+      localKey: serializer.fromJson<String>(json['localKey']),
+      userId: serializer.fromJson<String>(json['userId']),
+      modelId: serializer.fromJson<String>(json['modelId']),
+      radioId: serializer.fromJson<String>(json['radioId']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'localKey': serializer.toJson<String>(localKey),
+      'userId': serializer.toJson<String>(userId),
+      'modelId': serializer.toJson<String>(modelId),
+      'radioId': serializer.toJson<String>(radioId),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+      'isDeleted': serializer.toJson<bool>(isDeleted),
+    };
+  }
+
+  LocalModelRadioSetup copyWith({
+    String? localKey,
+    String? userId,
+    String? modelId,
+    String? radioId,
+    String? payloadJson,
+    Value<DateTime?> updatedAt = const Value.absent(),
+    DateTime? cachedAt,
+    bool? isDeleted,
+  }) => LocalModelRadioSetup(
+    localKey: localKey ?? this.localKey,
+    userId: userId ?? this.userId,
+    modelId: modelId ?? this.modelId,
+    radioId: radioId ?? this.radioId,
+    payloadJson: payloadJson ?? this.payloadJson,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    cachedAt: cachedAt ?? this.cachedAt,
+    isDeleted: isDeleted ?? this.isDeleted,
+  );
+  LocalModelRadioSetup copyWithCompanion(LocalModelRadioSetupsCompanion data) {
+    return LocalModelRadioSetup(
+      localKey: data.localKey.present ? data.localKey.value : this.localKey,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      modelId: data.modelId.present ? data.modelId.value : this.modelId,
+      radioId: data.radioId.present ? data.radioId.value : this.radioId,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalModelRadioSetup(')
+          ..write('localKey: $localKey, ')
+          ..write('userId: $userId, ')
+          ..write('modelId: $modelId, ')
+          ..write('radioId: $radioId, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    localKey,
+    userId,
+    modelId,
+    radioId,
+    payloadJson,
+    updatedAt,
+    cachedAt,
+    isDeleted,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalModelRadioSetup &&
+          other.localKey == this.localKey &&
+          other.userId == this.userId &&
+          other.modelId == this.modelId &&
+          other.radioId == this.radioId &&
+          other.payloadJson == this.payloadJson &&
+          other.updatedAt == this.updatedAt &&
+          other.cachedAt == this.cachedAt &&
+          other.isDeleted == this.isDeleted);
+}
+
+class LocalModelRadioSetupsCompanion
+    extends UpdateCompanion<LocalModelRadioSetup> {
+  final Value<String> localKey;
+  final Value<String> userId;
+  final Value<String> modelId;
+  final Value<String> radioId;
+  final Value<String> payloadJson;
+  final Value<DateTime?> updatedAt;
+  final Value<DateTime> cachedAt;
+  final Value<bool> isDeleted;
+  final Value<int> rowid;
+  const LocalModelRadioSetupsCompanion({
+    this.localKey = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.modelId = const Value.absent(),
+    this.radioId = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalModelRadioSetupsCompanion.insert({
+    required String localKey,
+    required String userId,
+    required String modelId,
+    required String radioId,
+    required String payloadJson,
+    this.updatedAt = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : localKey = Value(localKey),
+       userId = Value(userId),
+       modelId = Value(modelId),
+       radioId = Value(radioId),
+       payloadJson = Value(payloadJson);
+  static Insertable<LocalModelRadioSetup> custom({
+    Expression<String>? localKey,
+    Expression<String>? userId,
+    Expression<String>? modelId,
+    Expression<String>? radioId,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? cachedAt,
+    Expression<bool>? isDeleted,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (localKey != null) 'local_key': localKey,
+      if (userId != null) 'user_id': userId,
+      if (modelId != null) 'model_id': modelId,
+      if (radioId != null) 'radio_id': radioId,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (cachedAt != null) 'cached_at': cachedAt,
+      if (isDeleted != null) 'is_deleted': isDeleted,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalModelRadioSetupsCompanion copyWith({
+    Value<String>? localKey,
+    Value<String>? userId,
+    Value<String>? modelId,
+    Value<String>? radioId,
+    Value<String>? payloadJson,
+    Value<DateTime?>? updatedAt,
+    Value<DateTime>? cachedAt,
+    Value<bool>? isDeleted,
+    Value<int>? rowid,
+  }) {
+    return LocalModelRadioSetupsCompanion(
+      localKey: localKey ?? this.localKey,
+      userId: userId ?? this.userId,
+      modelId: modelId ?? this.modelId,
+      radioId: radioId ?? this.radioId,
+      payloadJson: payloadJson ?? this.payloadJson,
+      updatedAt: updatedAt ?? this.updatedAt,
+      cachedAt: cachedAt ?? this.cachedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (localKey.present) {
+      map['local_key'] = Variable<String>(localKey.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (modelId.present) {
+      map['model_id'] = Variable<String>(modelId.value);
+    }
+    if (radioId.present) {
+      map['radio_id'] = Variable<String>(radioId.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalModelRadioSetupsCompanion(')
+          ..write('localKey: $localKey, ')
+          ..write('userId: $userId, ')
+          ..write('modelId: $modelId, ')
+          ..write('radioId: $radioId, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncQueueEntriesTable extends SyncQueueEntries
     with TableInfo<$SyncQueueEntriesTable, SyncQueueEntry> {
   @override
@@ -4294,6 +5429,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $LocalModelDocumentsTable localModelDocuments =
       $LocalModelDocumentsTable(this);
+  late final $LocalRadiosTable localRadios = $LocalRadiosTable(this);
+  late final $LocalModelRadioSetupsTable localModelRadioSetups =
+      $LocalModelRadioSetupsTable(this);
   late final $SyncQueueEntriesTable syncQueueEntries = $SyncQueueEntriesTable(
     this,
   );
@@ -4311,6 +5449,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localModels,
     localModelSetups,
     localModelDocuments,
+    localRadios,
+    localModelRadioSetups,
     syncQueueEntries,
     localSyncStates,
   ];
@@ -5942,6 +7082,581 @@ typedef $$LocalModelDocumentsTableProcessedTableManager =
       LocalModelDocument,
       PrefetchHooks Function()
     >;
+typedef $$LocalRadiosTableCreateCompanionBuilder =
+    LocalRadiosCompanion Function({
+      required String localKey,
+      required String userId,
+      required String radioId,
+      required String brand,
+      required String model,
+      required String payloadJson,
+      Value<DateTime?> createdAt,
+      Value<DateTime?> updatedAt,
+      Value<DateTime> cachedAt,
+      Value<bool> isDeleted,
+      Value<int> rowid,
+    });
+typedef $$LocalRadiosTableUpdateCompanionBuilder =
+    LocalRadiosCompanion Function({
+      Value<String> localKey,
+      Value<String> userId,
+      Value<String> radioId,
+      Value<String> brand,
+      Value<String> model,
+      Value<String> payloadJson,
+      Value<DateTime?> createdAt,
+      Value<DateTime?> updatedAt,
+      Value<DateTime> cachedAt,
+      Value<bool> isDeleted,
+      Value<int> rowid,
+    });
+
+class $$LocalRadiosTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalRadiosTable> {
+  $$LocalRadiosTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get localKey => $composableBuilder(
+    column: $table.localKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get radioId => $composableBuilder(
+    column: $table.radioId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get brand => $composableBuilder(
+    column: $table.brand,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get model => $composableBuilder(
+    column: $table.model,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+    column: $table.cachedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalRadiosTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalRadiosTable> {
+  $$LocalRadiosTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get localKey => $composableBuilder(
+    column: $table.localKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get radioId => $composableBuilder(
+    column: $table.radioId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get brand => $composableBuilder(
+    column: $table.brand,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get model => $composableBuilder(
+    column: $table.model,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+    column: $table.cachedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalRadiosTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalRadiosTable> {
+  $$LocalRadiosTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get localKey =>
+      $composableBuilder(column: $table.localKey, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get radioId =>
+      $composableBuilder(column: $table.radioId, builder: (column) => column);
+
+  GeneratedColumn<String> get brand =>
+      $composableBuilder(column: $table.brand, builder: (column) => column);
+
+  GeneratedColumn<String> get model =>
+      $composableBuilder(column: $table.model, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+}
+
+class $$LocalRadiosTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalRadiosTable,
+          LocalRadio,
+          $$LocalRadiosTableFilterComposer,
+          $$LocalRadiosTableOrderingComposer,
+          $$LocalRadiosTableAnnotationComposer,
+          $$LocalRadiosTableCreateCompanionBuilder,
+          $$LocalRadiosTableUpdateCompanionBuilder,
+          (
+            LocalRadio,
+            BaseReferences<_$AppDatabase, $LocalRadiosTable, LocalRadio>,
+          ),
+          LocalRadio,
+          PrefetchHooks Function()
+        > {
+  $$LocalRadiosTableTableManager(_$AppDatabase db, $LocalRadiosTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalRadiosTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalRadiosTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalRadiosTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> localKey = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> radioId = const Value.absent(),
+                Value<String> brand = const Value.absent(),
+                Value<String> model = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<DateTime?> createdAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime> cachedAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalRadiosCompanion(
+                localKey: localKey,
+                userId: userId,
+                radioId: radioId,
+                brand: brand,
+                model: model,
+                payloadJson: payloadJson,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                cachedAt: cachedAt,
+                isDeleted: isDeleted,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String localKey,
+                required String userId,
+                required String radioId,
+                required String brand,
+                required String model,
+                required String payloadJson,
+                Value<DateTime?> createdAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime> cachedAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalRadiosCompanion.insert(
+                localKey: localKey,
+                userId: userId,
+                radioId: radioId,
+                brand: brand,
+                model: model,
+                payloadJson: payloadJson,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                cachedAt: cachedAt,
+                isDeleted: isDeleted,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalRadiosTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalRadiosTable,
+      LocalRadio,
+      $$LocalRadiosTableFilterComposer,
+      $$LocalRadiosTableOrderingComposer,
+      $$LocalRadiosTableAnnotationComposer,
+      $$LocalRadiosTableCreateCompanionBuilder,
+      $$LocalRadiosTableUpdateCompanionBuilder,
+      (
+        LocalRadio,
+        BaseReferences<_$AppDatabase, $LocalRadiosTable, LocalRadio>,
+      ),
+      LocalRadio,
+      PrefetchHooks Function()
+    >;
+typedef $$LocalModelRadioSetupsTableCreateCompanionBuilder =
+    LocalModelRadioSetupsCompanion Function({
+      required String localKey,
+      required String userId,
+      required String modelId,
+      required String radioId,
+      required String payloadJson,
+      Value<DateTime?> updatedAt,
+      Value<DateTime> cachedAt,
+      Value<bool> isDeleted,
+      Value<int> rowid,
+    });
+typedef $$LocalModelRadioSetupsTableUpdateCompanionBuilder =
+    LocalModelRadioSetupsCompanion Function({
+      Value<String> localKey,
+      Value<String> userId,
+      Value<String> modelId,
+      Value<String> radioId,
+      Value<String> payloadJson,
+      Value<DateTime?> updatedAt,
+      Value<DateTime> cachedAt,
+      Value<bool> isDeleted,
+      Value<int> rowid,
+    });
+
+class $$LocalModelRadioSetupsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalModelRadioSetupsTable> {
+  $$LocalModelRadioSetupsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get localKey => $composableBuilder(
+    column: $table.localKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get radioId => $composableBuilder(
+    column: $table.radioId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+    column: $table.cachedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalModelRadioSetupsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalModelRadioSetupsTable> {
+  $$LocalModelRadioSetupsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get localKey => $composableBuilder(
+    column: $table.localKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get radioId => $composableBuilder(
+    column: $table.radioId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+    column: $table.cachedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalModelRadioSetupsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalModelRadioSetupsTable> {
+  $$LocalModelRadioSetupsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get localKey =>
+      $composableBuilder(column: $table.localKey, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get modelId =>
+      $composableBuilder(column: $table.modelId, builder: (column) => column);
+
+  GeneratedColumn<String> get radioId =>
+      $composableBuilder(column: $table.radioId, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+}
+
+class $$LocalModelRadioSetupsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalModelRadioSetupsTable,
+          LocalModelRadioSetup,
+          $$LocalModelRadioSetupsTableFilterComposer,
+          $$LocalModelRadioSetupsTableOrderingComposer,
+          $$LocalModelRadioSetupsTableAnnotationComposer,
+          $$LocalModelRadioSetupsTableCreateCompanionBuilder,
+          $$LocalModelRadioSetupsTableUpdateCompanionBuilder,
+          (
+            LocalModelRadioSetup,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalModelRadioSetupsTable,
+              LocalModelRadioSetup
+            >,
+          ),
+          LocalModelRadioSetup,
+          PrefetchHooks Function()
+        > {
+  $$LocalModelRadioSetupsTableTableManager(
+    _$AppDatabase db,
+    $LocalModelRadioSetupsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalModelRadioSetupsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LocalModelRadioSetupsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LocalModelRadioSetupsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> localKey = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> modelId = const Value.absent(),
+                Value<String> radioId = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime> cachedAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalModelRadioSetupsCompanion(
+                localKey: localKey,
+                userId: userId,
+                modelId: modelId,
+                radioId: radioId,
+                payloadJson: payloadJson,
+                updatedAt: updatedAt,
+                cachedAt: cachedAt,
+                isDeleted: isDeleted,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String localKey,
+                required String userId,
+                required String modelId,
+                required String radioId,
+                required String payloadJson,
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime> cachedAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalModelRadioSetupsCompanion.insert(
+                localKey: localKey,
+                userId: userId,
+                modelId: modelId,
+                radioId: radioId,
+                payloadJson: payloadJson,
+                updatedAt: updatedAt,
+                cachedAt: cachedAt,
+                isDeleted: isDeleted,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalModelRadioSetupsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalModelRadioSetupsTable,
+      LocalModelRadioSetup,
+      $$LocalModelRadioSetupsTableFilterComposer,
+      $$LocalModelRadioSetupsTableOrderingComposer,
+      $$LocalModelRadioSetupsTableAnnotationComposer,
+      $$LocalModelRadioSetupsTableCreateCompanionBuilder,
+      $$LocalModelRadioSetupsTableUpdateCompanionBuilder,
+      (
+        LocalModelRadioSetup,
+        BaseReferences<
+          _$AppDatabase,
+          $LocalModelRadioSetupsTable,
+          LocalModelRadioSetup
+        >,
+      ),
+      LocalModelRadioSetup,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncQueueEntriesTableCreateCompanionBuilder =
     SyncQueueEntriesCompanion Function({
       Value<int> id,
@@ -6497,6 +8212,10 @@ class $AppDatabaseManager {
       $$LocalModelSetupsTableTableManager(_db, _db.localModelSetups);
   $$LocalModelDocumentsTableTableManager get localModelDocuments =>
       $$LocalModelDocumentsTableTableManager(_db, _db.localModelDocuments);
+  $$LocalRadiosTableTableManager get localRadios =>
+      $$LocalRadiosTableTableManager(_db, _db.localRadios);
+  $$LocalModelRadioSetupsTableTableManager get localModelRadioSetups =>
+      $$LocalModelRadioSetupsTableTableManager(_db, _db.localModelRadioSetups);
   $$SyncQueueEntriesTableTableManager get syncQueueEntries =>
       $$SyncQueueEntriesTableTableManager(_db, _db.syncQueueEntries);
   $$LocalSyncStatesTableTableManager get localSyncStates =>

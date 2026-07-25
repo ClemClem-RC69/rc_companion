@@ -88,6 +88,36 @@ class LocalModelDocuments extends Table {
   Set<Column<Object>> get primaryKey => {localKey};
 }
 
+class LocalRadios extends Table {
+  TextColumn get localKey => text()();
+  TextColumn get userId => text()();
+  TextColumn get radioId => text()();
+  TextColumn get brand => text()();
+  TextColumn get model => text()();
+  TextColumn get payloadJson => text()();
+  DateTimeColumn get createdAt => dateTime().nullable()();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+  DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {localKey};
+}
+
+class LocalModelRadioSetups extends Table {
+  TextColumn get localKey => text()();
+  TextColumn get userId => text()();
+  TextColumn get modelId => text()();
+  TextColumn get radioId => text()();
+  TextColumn get payloadJson => text()();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+  DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {localKey};
+}
+
 class SyncQueueEntries extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get userId => text()();
@@ -121,6 +151,8 @@ class LocalSyncStates extends Table {
     LocalModels,
     LocalModelSetups,
     LocalModelDocuments,
+    LocalRadios,
+    LocalModelRadioSetups,
     SyncQueueEntries,
     LocalSyncStates,
   ],
@@ -141,7 +173,7 @@ final class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration {
@@ -165,6 +197,12 @@ final class AppDatabase extends _$AppDatabase {
         }
         if (from < 6) {
           await migrator.createTable(localModelDocuments);
+        }
+        if (from < 7) {
+          await migrator.createTable(localRadios);
+        }
+        if (from < 8) {
+          await migrator.createTable(localModelRadioSetups);
         }
       },
       beforeOpen: (details) async {
