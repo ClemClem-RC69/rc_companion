@@ -8,6 +8,7 @@ import '../../services/battery_service.dart';
 import '../../services/supabase_service.dart';
 import 'battery_detail_page.dart';
 import 'battery_scanner_page.dart';
+import 'qr_label_page.dart';
 
 class BatteriesPage extends StatefulWidget {
   const BatteriesPage({super.key});
@@ -291,6 +292,22 @@ class _BatteriesPageState extends State<BatteriesPage> {
     await _loadBatteries();
   }
 
+  Future<void> _openQrLabelSheet() async {
+    if (_batteries.isEmpty) {
+      return;
+    }
+
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QrLabelPage(
+          battery: _batteries.first,
+          availableBatteries: _batteries,
+        ),
+      ),
+    );
+  }
+
   Future<void> _dissolvePair(Battery battery) async {
     final pairId = battery.pairId;
 
@@ -562,6 +579,11 @@ class _BatteriesPageState extends State<BatteriesPage> {
                   label: const Text('Créer une paire'),
                 ),
                 scannerButton,
+                OutlinedButton.icon(
+                  onPressed: _batteries.isEmpty ? null : _openQrLabelSheet,
+                  icon: const Icon(Icons.print),
+                  label: const Text('Imprimer les QR Codes'),
+                ),
               ],
             );
           }
@@ -580,6 +602,12 @@ class _BatteriesPageState extends State<BatteriesPage> {
                 label: const Text('Créer une paire'),
               ),
               const Spacer(),
+              OutlinedButton.icon(
+                onPressed: _batteries.isEmpty ? null : _openQrLabelSheet,
+                icon: const Icon(Icons.print),
+                label: const Text('Imprimer les QR Codes'),
+              ),
+              const SizedBox(width: 10),
               scannerButton,
             ],
           );
