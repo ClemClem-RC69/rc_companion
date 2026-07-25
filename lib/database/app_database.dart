@@ -273,6 +273,17 @@ final class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<void> releasePendingSyncOperations({required String userId}) async {
+    await (update(
+      syncQueueEntries,
+    )..where((row) => row.userId.equals(userId))).write(
+      const SyncQueueEntriesCompanion(
+        isProcessing: Value(false),
+        nextAttemptAt: Value(null),
+      ),
+    );
+  }
+
   Future<void> setSyncOperationProcessing({
     required int id,
     required bool value,

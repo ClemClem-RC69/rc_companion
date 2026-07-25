@@ -18,6 +18,7 @@ class BatterySyncService {
 
   static StreamSubscription<List<ConnectivityResult>>? _subscription;
   static Timer? _retryTimer;
+  static DateTime? _retryDueAt;
   static bool _running = false;
   static bool _rerunRequested = false;
 
@@ -27,11 +28,11 @@ class BatterySyncService {
     _subscription = Connectivity().onConnectivityChanged.listen((results) {
       final online = results.any((result) => result != ConnectivityResult.none);
       if (online) {
-        unawaited(syncNow());
+        unawaited(_resumeAndSync());
       }
     });
 
-    unawaited(syncNow());
+    unawaited(_resumeAndSync());
   }
 
   static Future<void> dispose() async {
@@ -39,6 +40,17 @@ class BatterySyncService {
     _subscription = null;
     _retryTimer?.cancel();
     _retryTimer = null;
+    _retryDueAt = null;
+  }
+
+  static Future<void> _resumeAndSync() async {
+    final user = SupabaseService.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    await _database.releasePendingSyncOperations(userId: user.id);
+    await syncNow();
   }
 
   static Future<void> syncNow() async {
@@ -60,6 +72,7 @@ class BatterySyncService {
 
     _retryTimer?.cancel();
     _retryTimer = null;
+    _retryDueAt = null;
     _running = true;
 
     try {
@@ -86,17 +99,15 @@ class BatterySyncService {
             await _execute(entry);
             await _database.deleteSyncOperation(entry.id);
           } catch (error) {
-            final delayMinutes = (entry.attemptCount + 1).clamp(1, 30);
+            final delay = _retryDelayFor(entry.attemptCount + 1);
 
             await _database.markSyncOperationFailed(
               id: entry.id,
               error: error,
-              nextAttemptAt: DateTime.now().add(
-                Duration(minutes: delayMinutes),
-              ),
+              nextAttemptAt: DateTime.now().add(delay),
             );
 
-            _scheduleRetry(Duration(minutes: delayMinutes));
+            _scheduleRetry(delay);
           }
         }
 
@@ -113,15 +124,33 @@ class BatterySyncService {
     }
   }
 
-  static void _scheduleRetry(Duration delay) {
-    final currentTimer = _retryTimer;
+  static Duration _retryDelayFor(int attemptNumber) {
+    if (attemptNumber <= 1) {
+      return const Duration(seconds: 5);
+    }
+    if (attemptNumber == 2) {
+      return const Duration(seconds: 15);
+    }
+    return const Duration(seconds: 30);
+  }
 
-    if (currentTimer != null && currentTimer.isActive) {
+  static void _scheduleRetry(Duration delay) {
+    final dueAt = DateTime.now().add(delay);
+    final currentTimer = _retryTimer;
+    final currentDueAt = _retryDueAt;
+
+    if (currentTimer != null &&
+        currentTimer.isActive &&
+        currentDueAt != null &&
+        !dueAt.isBefore(currentDueAt)) {
       return;
     }
 
+    currentTimer?.cancel();
+    _retryDueAt = dueAt;
     _retryTimer = Timer(delay, () {
       _retryTimer = null;
+      _retryDueAt = null;
       unawaited(syncNow());
     });
   }

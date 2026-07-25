@@ -158,8 +158,25 @@ class _DashboardPageState extends State<DashboardPage>
         return;
       }
 
+      final currentModelId = lastSession?['model_id']?.toString().trim();
+      String? currentCategory;
+      if (currentModelId != null && currentModelId.isNotEmpty) {
+        for (final model in models) {
+          if (model.id?.trim() == currentModelId) {
+            final category = model.category.trim();
+            if (category.isNotEmpty) {
+              currentCategory = category;
+            }
+            break;
+          }
+        }
+      }
+
       setState(() {
         modelCount = models.length;
+        if (currentCategory != null) {
+          lastModelCategory = currentCategory!;
+        }
         loading = false;
       });
     });
@@ -194,7 +211,9 @@ class _DashboardPageState extends State<DashboardPage>
     _applyLocalSessionMetrics(rows);
   }
 
-  void _applyLocalSessionMetrics(List<Map<String, dynamic>> rows) {
+  Future<void> _applyLocalSessionMetrics(
+    List<Map<String, dynamic>> rows,
+  ) async {
     if (!mounted) {
       return;
     }
@@ -233,10 +252,30 @@ class _DashboardPageState extends State<DashboardPage>
       chart.add(cumulativeMinutes);
     }
 
-    final recent = rows.isEmpty ? null : rows.first;
+    final recent = rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+    var category = 'Voiture';
+
+    final user = Supabase.instance.client.auth.currentUser;
+    final modelId = recent?['model_id']?.toString().trim();
+    if (user != null && modelId != null && modelId.isNotEmpty) {
+      final model = await ModelLocalStore.getModel(
+        userId: user.id,
+        modelId: modelId,
+      );
+      final localCategory = model?.category.trim();
+      if (localCategory != null && localCategory.isNotEmpty) {
+        category = localCategory;
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
       sessionCount = rows.length;
-      lastSession = recent == null ? null : Map<String, dynamic>.from(recent);
+      lastSession = recent;
+      lastModelCategory = category;
       totalRunMinutes = runMinutes;
       totalPacks = packs;
       chartValues = chart;
@@ -354,106 +393,13 @@ class _DashboardPageState extends State<DashboardPage>
         _countRows(client, 'maintenance_records'),
       ]).timeout(const Duration(seconds: 4));
 
-      Map<String, dynamic>? recent;
-      String category = 'Voiture';
-      int runMinutes = 0;
-      int packs = 0;
-      final valuesByDay = <DateTime, int>{};
-
-      try {
-        final sessions = await client
-            .from('rc_sessions')
-            .select(
-              'id, model_id, model_name, started_at, ended_at, location, breakages',
-            )
-            .order('started_at', ascending: false)
-            .limit(30);
-
-        if (sessions.isNotEmpty) {
-          recent = Map<String, dynamic>.from(sessions.first);
-
-          final modelId = recent['model_id']?.toString();
-          if (modelId != null && modelId.isNotEmpty) {
-            final models = await client
-                .from('rc_models')
-                .select('category')
-                .eq('id', modelId)
-                .limit(1);
-            if (models.isNotEmpty) {
-              category =
-                  models.first['category']?.toString().trim() ?? 'Voiture';
-            }
-          }
-
-          final sessionIds = sessions
-              .map((row) => row['id']?.toString())
-              .whereType<String>()
-              .where((id) => id.isNotEmpty)
-              .toList();
-
-          if (sessionIds.isNotEmpty) {
-            final runs = await client
-                .from('session_runs')
-                .select('session_id, started_at, duration_minutes')
-                .inFilter('session_id', sessionIds);
-
-            for (final raw in runs) {
-              final row = Map<String, dynamic>.from(raw);
-              final duration =
-                  int.tryParse('${row['duration_minutes'] ?? 0}') ?? 0;
-              runMinutes += duration;
-              packs += 1;
-
-              final startedAt = DateTime.tryParse(
-                '${row['started_at'] ?? ''}',
-              )?.toLocal();
-              if (startedAt != null) {
-                final day = DateTime(
-                  startedAt.year,
-                  startedAt.month,
-                  startedAt.day,
-                );
-                valuesByDay.update(
-                  day,
-                  (value) => value + duration,
-                  ifAbsent: () => duration,
-                );
-              }
-            }
-
-            final recentId = recent['id']?.toString();
-            if (recentId != null) {
-              final recentRuns = await client
-                  .from('session_runs')
-                  .select('duration_minutes')
-                  .eq('session_id', recentId);
-              recent['dashboard_duration_minutes'] = recentRuns.fold<int>(
-                0,
-                (sum, row) =>
-                    sum +
-                    (int.tryParse('${row['duration_minutes'] ?? 0}') ?? 0),
-              );
-            }
-          }
-        }
-      } catch (_) {}
-
-      final sortedDays = valuesByDay.keys.toList()..sort();
-      var cumulativeMinutes = 0.0;
-      final chart = <double>[];
-      for (final day in sortedDays) {
-        cumulativeMinutes += valuesByDay[day]!.toDouble();
-        chart.add(cumulativeMinutes);
-      }
+      // Les sessions, roulages et la catégorie du dernier modèle restent
+      // exclusivement issus du cache Drift afin d'éviter qu'une réponse
+      // Supabase plus ancienne ne remplace l'état local affiché.
 
       if (!mounted) return;
       setState(() {
         maintenanceCount = results[2];
-        lastSession = recent;
-        lastModelCategory = category;
-        totalRunMinutes = runMinutes;
-        totalPacks = packs;
-        chartValues = chart;
         loading = false;
       });
     } catch (_) {
