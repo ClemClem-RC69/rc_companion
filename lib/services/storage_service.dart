@@ -34,7 +34,8 @@ class StorageService {
   static const String _photoBucketName = 'model-photos';
   static const String _documentBucketName = 'model-documents';
 
-  static const int _maximumDocumentSize = 20 * 1024 * 1024;
+  static const int _maximumPdfSize = 200 * 1024 * 1024;
+  static const int _maximumImageSize = 50 * 1024 * 1024;
 
   // ---------------------------------------------------------------------------
   // PHOTOS DES MODÈLES
@@ -141,16 +142,22 @@ class StorageService {
 
     final file = result.files.single;
 
-    if (file.size > _maximumDocumentSize) {
-      throw Exception(
-        'Le document dépasse la taille maximale autorisée de 20 Mo.',
-      );
-    }
-
     final contentType = _documentContentType(file.name);
 
     if (contentType == null) {
-      throw Exception('Le fichier doit être un PDF, JPG, JPEG, PNG ou WEBP.');
+      throw Exception('Formats autorisés : PDF, JPG, JPEG, PNG et WEBP.');
+    }
+
+    final maximumSize = contentType == 'application/pdf'
+        ? _maximumPdfSize
+        : _maximumImageSize;
+
+    if (file.size > maximumSize) {
+      throw Exception(
+        contentType == 'application/pdf'
+            ? 'Le PDF dépasse la taille maximale autorisée de 200 Mo.'
+            : 'Les images sont limitées à 50 Mo.',
+      );
     }
 
     final path = file.path?.trim();
@@ -208,9 +215,15 @@ class StorageService {
       throw Exception('Le document sélectionné est vide.');
     }
 
-    if (bytes.length > _maximumDocumentSize) {
+    final maximumSize = contentType == 'application/pdf'
+        ? _maximumPdfSize
+        : _maximumImageSize;
+
+    if (bytes.length > maximumSize) {
       throw Exception(
-        'Le document dépasse la taille maximale autorisée de 20 Mo.',
+        contentType == 'application/pdf'
+            ? 'Le PDF dépasse la taille maximale autorisée de 200 Mo.'
+            : 'Les images sont limitées à 50 Mo.',
       );
     }
 
