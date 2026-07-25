@@ -127,8 +127,7 @@ class StorageService {
   static Future<PickedModelDocument?> pickModelDocument() async {
     final result = await FilePicker.pickFiles(
       dialogTitle: 'Choisir un document',
-      type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+      type: FileType.any,
       allowMultiple: false,
       withData: true,
     );
@@ -167,6 +166,20 @@ class StorageService {
   static Future<String> uploadModelDocument({
     required PickedModelDocument document,
     required String modelId,
+  }) {
+    return uploadModelDocumentBytes(
+      bytes: document.bytes,
+      originalFilename: document.name,
+      contentType: document.contentType,
+      modelId: modelId,
+    );
+  }
+
+  static Future<String> uploadModelDocumentBytes({
+    required Uint8List bytes,
+    required String originalFilename,
+    required String contentType,
+    required String modelId,
   }) async {
     final user = _supabase.auth.currentUser;
 
@@ -174,34 +187,45 @@ class StorageService {
       throw Exception('Aucun utilisateur connecté.');
     }
 
-    if (document.bytes.isEmpty) {
+    if (bytes.isEmpty) {
       throw Exception('Le document sélectionné est vide.');
     }
 
-    if (document.size > _maximumDocumentSize) {
+    if (bytes.length > _maximumDocumentSize) {
       throw Exception(
         'Le document dépasse la taille maximale autorisée de 20 Mo.',
       );
     }
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final safeFilename = _safeDocumentFilename(document.name);
-
+    final safeFilename = _safeDocumentFilename(originalFilename);
     final storagePath = '${user.id}/$modelId/${timestamp}_$safeFilename';
 
     await _supabase.storage
         .from(_documentBucketName)
         .uploadBinary(
           storagePath,
-          document.bytes,
+          bytes,
           fileOptions: FileOptions(
             cacheControl: '3600',
             upsert: false,
-            contentType: document.contentType,
+            contentType: contentType,
           ),
         );
 
     return storagePath;
+  }
+
+  static Future<Uint8List> downloadModelDocumentBytes(
+    String storagePath,
+  ) async {
+    final cleanPath = storagePath.trim();
+
+    if (cleanPath.isEmpty) {
+      throw Exception('Chemin du document invalide.');
+    }
+
+    return _supabase.storage.from(_documentBucketName).download(cleanPath);
   }
 
   static Future<String> createModelDocumentSignedUrl(
@@ -258,11 +282,83 @@ class StorageService {
       safeName = 'document.pdf';
     }
 
-    safeName = safeName
-        .replaceAll(RegExp(r'[^\wÀ-ÿ.\-]+'), '_')
-        .replaceAll(RegExp(r'_+'), '_');
+    safeName = _removeDocumentFilenameAccents(safeName)
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
 
-    return safeName;
+    return safeName.isEmpty ? 'document.pdf' : safeName;
+  }
+
+  static String _removeDocumentFilenameAccents(String value) {
+    const replacements = <String, String>{
+      'à': 'a',
+      'á': 'a',
+      'â': 'a',
+      'ä': 'a',
+      'ã': 'a',
+      'å': 'a',
+      'À': 'A',
+      'Á': 'A',
+      'Â': 'A',
+      'Ä': 'A',
+      'Ã': 'A',
+      'Å': 'A',
+      'ç': 'c',
+      'Ç': 'C',
+      'è': 'e',
+      'é': 'e',
+      'ê': 'e',
+      'ë': 'e',
+      'È': 'E',
+      'É': 'E',
+      'Ê': 'E',
+      'Ë': 'E',
+      'ì': 'i',
+      'í': 'i',
+      'î': 'i',
+      'ï': 'i',
+      'Ì': 'I',
+      'Í': 'I',
+      'Î': 'I',
+      'Ï': 'I',
+      'ñ': 'n',
+      'Ñ': 'N',
+      'ò': 'o',
+      'ó': 'o',
+      'ô': 'o',
+      'ö': 'o',
+      'õ': 'o',
+      'Ò': 'O',
+      'Ó': 'O',
+      'Ô': 'O',
+      'Ö': 'O',
+      'Õ': 'O',
+      'ù': 'u',
+      'ú': 'u',
+      'û': 'u',
+      'ü': 'u',
+      'Ù': 'U',
+      'Ú': 'U',
+      'Û': 'U',
+      'Ü': 'U',
+      'ý': 'y',
+      'ÿ': 'y',
+      'Ý': 'Y',
+      'œ': 'oe',
+      'Œ': 'OE',
+      'æ': 'ae',
+      'Æ': 'AE',
+    };
+
+    final buffer = StringBuffer();
+
+    for (final rune in value.runes) {
+      final character = String.fromCharCode(rune);
+      buffer.write(replacements[character] ?? character);
+    }
+
+    return buffer.toString();
   }
 
   static String _extensionFromFilename(String filename) {

@@ -7,6 +7,8 @@ class ModelDocument {
     required this.documentType,
     required this.storagePath,
     required this.createdAt,
+    this.localPath,
+    this.pendingUpload = false,
   });
 
   final String id;
@@ -16,6 +18,10 @@ class ModelDocument {
   final String documentName;
   final String storagePath;
   final DateTime createdAt;
+  final String? localPath;
+  final bool pendingUpload;
+
+  bool get hasLocalFile => localPath != null && localPath!.trim().isNotEmpty;
 
   ModelDocument copyWith({
     String? id,
@@ -25,6 +31,9 @@ class ModelDocument {
     String? documentType,
     String? storagePath,
     DateTime? createdAt,
+    String? localPath,
+    bool clearLocalPath = false,
+    bool? pendingUpload,
   }) {
     return ModelDocument(
       id: id ?? this.id,
@@ -34,6 +43,8 @@ class ModelDocument {
       documentType: documentType ?? this.documentType,
       storagePath: storagePath ?? this.storagePath,
       createdAt: createdAt ?? this.createdAt,
+      localPath: clearLocalPath ? null : localPath ?? this.localPath,
+      pendingUpload: pendingUpload ?? this.pendingUpload,
     );
   }
 
@@ -48,10 +59,26 @@ class ModelDocument {
       createdAt:
           DateTime.tryParse(map['created_at']?.toString() ?? '') ??
           DateTime.now(),
+      localPath: map['local_path']?.toString(),
+      pendingUpload: map['pending_upload'] == true,
     );
   }
 
   Map<String, dynamic> toMap() {
+    return <String, dynamic>{
+      'id': id,
+      'user_id': userId,
+      'model_id': modelId,
+      'document_name': documentName,
+      'document_type': documentType,
+      'storage_path': storagePath,
+      'created_at': createdAt.toUtc().toIso8601String(),
+      'local_path': localPath,
+      'pending_upload': pendingUpload,
+    };
+  }
+
+  Map<String, dynamic> toRemoteMap() {
     return <String, dynamic>{
       'id': id,
       'user_id': userId,

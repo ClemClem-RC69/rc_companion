@@ -17,7 +17,9 @@ class BatterySyncService {
   static final AppDatabase _database = AppDatabase.instance;
 
   static StreamSubscription<List<ConnectivityResult>>? _subscription;
+  static Timer? _retryTimer;
   static bool _running = false;
+  static bool _rerunRequested = false;
 
   static Future<void> initialize() async {
     await _subscription?.cancel();
@@ -35,10 +37,13 @@ class BatterySyncService {
   static Future<void> dispose() async {
     await _subscription?.cancel();
     _subscription = null;
+    _retryTimer?.cancel();
+    _retryTimer = null;
   }
 
   static Future<void> syncNow() async {
     if (_running) {
+      _rerunRequested = true;
       return;
     }
 
@@ -53,33 +58,72 @@ class BatterySyncService {
       return;
     }
 
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _running = true;
 
     try {
-      final entries = await _database.getPendingSyncOperations();
+      while (true) {
+        _rerunRequested = false;
 
-      for (final entry in entries) {
-        if (entry.userId != user.id) {
-          continue;
+        final entries = await _database.getPendingSyncOperations();
+
+        if (entries.isEmpty) {
+          if (_rerunRequested) {
+            continue;
+          }
+          break;
         }
 
-        await _database.setSyncOperationProcessing(id: entry.id, value: true);
+        for (final entry in entries) {
+          if (entry.userId != user.id) {
+            continue;
+          }
 
-        try {
-          await _execute(entry);
-          await _database.deleteSyncOperation(entry.id);
-        } catch (error) {
-          final delayMinutes = (entry.attemptCount + 1).clamp(1, 30);
-          await _database.markSyncOperationFailed(
-            id: entry.id,
-            error: error,
-            nextAttemptAt: DateTime.now().add(Duration(minutes: delayMinutes)),
-          );
+          await _database.setSyncOperationProcessing(id: entry.id, value: true);
+
+          try {
+            await _execute(entry);
+            await _database.deleteSyncOperation(entry.id);
+          } catch (error) {
+            final delayMinutes = (entry.attemptCount + 1).clamp(1, 30);
+
+            await _database.markSyncOperationFailed(
+              id: entry.id,
+              error: error,
+              nextAttemptAt: DateTime.now().add(
+                Duration(minutes: delayMinutes),
+              ),
+            );
+
+            _scheduleRetry(Duration(minutes: delayMinutes));
+          }
         }
+
+        // Reboucle pour traiter les opérations ajoutées pendant une
+        // synchronisation déjà en cours.
       }
     } finally {
       _running = false;
+
+      if (_rerunRequested) {
+        _rerunRequested = false;
+        unawaited(syncNow());
+      }
     }
+  }
+
+  static void _scheduleRetry(Duration delay) {
+    final currentTimer = _retryTimer;
+
+    if (currentTimer != null && currentTimer.isActive) {
+      return;
+    }
+
+    _retryTimer = Timer(delay, () {
+      _retryTimer = null;
+      unawaited(syncNow());
+    });
   }
 
   static Future<void> _execute(SyncQueueEntry entry) async {

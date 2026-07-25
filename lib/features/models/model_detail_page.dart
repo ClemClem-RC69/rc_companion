@@ -1,8 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../../models/model_document.dart';
 import '../../models/rc_model.dart';
+import '../../services/model_document_file_store.dart';
 import '../../services/model_document_service.dart';
 import 'model_photo_widget.dart';
 import 'widgets/model_radio_controls_tab.dart';
@@ -334,37 +337,36 @@ class _ModelDetailPageState extends State<ModelDetailPage>
 
   Future<void> openDocument(ModelDocument document) async {
     try {
-      final signedUrl = await ModelDocumentService.openDocument(document);
+      final localPath = await ModelDocumentService.openDocument(document);
+      final detectedFormat = await _detectDocumentFormat(document, localPath);
 
       if (!mounted) {
         return;
       }
 
-      if (_isImageDocument(document)) {
+      if (detectedFormat == 'image') {
         await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => ModelImagePage(
               title: document.documentName,
-              signedUrl: signedUrl,
+              localPath: localPath,
             ),
           ),
         );
-
         return;
       }
 
-      if (_isPdfDocument(document)) {
+      if (detectedFormat == 'pdf') {
         await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => ModelPdfPage(
               title: document.documentName,
-              signedUrl: signedUrl,
+              localPath: localPath,
             ),
           ),
         );
-
         return;
       }
 
@@ -378,6 +380,62 @@ class _ModelDetailPageState extends State<ModelDetailPage>
         SnackBar(content: Text('Impossible d’ouvrir le document : $error')),
       );
     }
+  }
+
+  Future<String?> _detectDocumentFormat(
+    ModelDocument document,
+    String localPath,
+  ) async {
+    if (_isPdfDocument(document)) {
+      return 'pdf';
+    }
+
+    if (_isImageDocument(document)) {
+      return 'image';
+    }
+
+    final bytes = await ModelDocumentFileStore.readBytes(localPath);
+
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x25 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x44 &&
+        bytes[3] == 0x46) {
+      return 'pdf';
+    }
+
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
+      return 'image';
+    }
+
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47 &&
+        bytes[4] == 0x0D &&
+        bytes[5] == 0x0A &&
+        bytes[6] == 0x1A &&
+        bytes[7] == 0x0A) {
+      return 'image';
+    }
+
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50) {
+      return 'image';
+    }
+
+    return null;
   }
 
   Future<void> confirmDeleteDocument(ModelDocument document) async {
@@ -837,10 +895,10 @@ class _InformationTab extends StatelessWidget {
 }
 
 class ModelPdfPage extends StatelessWidget {
-  const ModelPdfPage({super.key, required this.title, required this.signedUrl});
+  const ModelPdfPage({super.key, required this.title, required this.localPath});
 
   final String title;
-  final String signedUrl;
+  final String localPath;
 
   @override
   Widget build(BuildContext context) {
@@ -848,7 +906,7 @@ class ModelPdfPage extends StatelessWidget {
       appBar: AppBar(
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
-      body: PdfViewer.uri(Uri.parse(signedUrl)),
+      body: PdfViewer.file(localPath),
     );
   }
 }
@@ -857,11 +915,11 @@ class ModelImagePage extends StatelessWidget {
   const ModelImagePage({
     super.key,
     required this.title,
-    required this.signedUrl,
+    required this.localPath,
   });
 
   final String title;
-  final String signedUrl;
+  final String localPath;
 
   @override
   Widget build(BuildContext context) {
@@ -874,28 +932,29 @@ class ModelImagePage extends StatelessWidget {
         height: double.infinity,
         color: Colors.black,
         alignment: Alignment.center,
-        child: InteractiveViewer(
-          minScale: 0.5,
-          maxScale: 6,
-          child: Image.network(
-            signedUrl,
-            fit: BoxFit.contain,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) {
-                return child;
-              }
-
-              return const Center(child: CircularProgressIndicator());
-            },
-            errorBuilder: (_, __, ___) {
+        child: FutureBuilder<Uint8List>(
+          future: ModelDocumentFileStore.readBytes(localPath),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
               return const Center(
                 child: Text(
                   'Impossible d’afficher cette image.',
                   style: TextStyle(color: Colors.white),
                 ),
               );
-            },
-          ),
+            }
+
+            final bytes = snapshot.data;
+            if (bytes == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            return InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 6,
+              child: Image.memory(bytes, fit: BoxFit.contain),
+            );
+          },
         ),
       ),
     );

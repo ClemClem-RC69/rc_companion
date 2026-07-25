@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import '../database/app_database.dart';
 import '../models/model_document.dart';
 import 'battery_sync_service.dart';
+import 'model_document_file_store.dart';
 import 'model_document_local_store.dart';
 import 'storage_service.dart';
 import 'supabase_service.dart';
@@ -34,7 +36,14 @@ class ModelDocumentService {
       return cached;
     }
 
-    return _refreshDocumentsFromCloud(userId: user.id, modelId: modelId);
+    try {
+      return await _refreshDocumentsFromCloud(
+        userId: user.id,
+        modelId: modelId,
+      );
+    } catch (_) {
+      return cached;
+    }
   }
 
   static Stream<List<ModelDocument>> watchDocuments(String modelId) {
@@ -63,42 +72,41 @@ class ModelDocumentService {
       throw StateError('Aucun utilisateur connecté.');
     }
 
-    // V1A : le fichier doit encore être envoyé immédiatement au Storage.
-    // L’ajout complet hors ligne sera traité dans Documents Offline V1B.
-    final storagePath = await StorageService.uploadModelDocument(
-      document: picked,
+    final documentId = _newUuid();
+    final localPath = await ModelDocumentFileStore.saveBytes(
+      userId: user.id,
       modelId: modelId,
+      documentId: documentId,
+      originalFilename: picked.name,
+      bytes: picked.bytes,
     );
 
-    try {
-      final response = await _client
-          .from('model_documents')
-          .insert({
-            'user_id': user.id,
-            'model_id': modelId,
-            'document_name': picked.name,
-            'document_type': documentType,
-            'storage_path': storagePath,
-          })
-          .select()
-          .single();
+    final document = ModelDocument(
+      id: documentId,
+      userId: user.id,
+      modelId: modelId,
+      documentName: picked.name,
+      documentType: documentType,
+      storagePath: '',
+      createdAt: DateTime.now(),
+      localPath: localPath,
+      pendingUpload: true,
+    );
 
-      final document = ModelDocument.fromMap(
-        Map<String, dynamic>.from(response),
-      );
+    await ModelDocumentLocalStore.upsertDocument(
+      userId: user.id,
+      document: document,
+    );
+    await _database.replacePendingSyncOperation(
+      userId: user.id,
+      entityType: 'model_document',
+      entityId: document.id,
+      operation: 'upsert',
+      payloadJson: jsonEncode(document.toMap()),
+    );
 
-      await ModelDocumentLocalStore.upsertDocument(
-        userId: user.id,
-        document: document,
-      );
-
-      return document;
-    } catch (error) {
-      try {
-        await StorageService.deleteModelDocument(storagePath);
-      } catch (_) {}
-      rethrow;
-    }
+    unawaited(BatterySyncService.syncNow());
+    return document;
   }
 
   static Future<ModelDocument> renameDocument({
@@ -151,11 +159,48 @@ class ModelDocumentService {
       payloadJson: jsonEncode(document.toMap()),
     );
 
+    await ModelDocumentFileStore.delete(document.localPath);
     unawaited(BatterySyncService.syncNow());
   }
 
-  static Future<String> openDocument(ModelDocument document) {
-    return StorageService.createModelDocumentSignedUrl(document.storagePath);
+  static Future<String> openDocument(ModelDocument document) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw StateError('Aucun utilisateur connecté.');
+    }
+
+    if (await ModelDocumentFileStore.exists(document.localPath)) {
+      return document.localPath!;
+    }
+
+    if (document.storagePath.trim().isEmpty) {
+      throw StateError(
+        'Le fichier local est introuvable et le document n’est pas encore '
+        'synchronisé.',
+      );
+    }
+
+    final bytes = await StorageService.downloadModelDocumentBytes(
+      document.storagePath,
+    );
+    final localPath = await ModelDocumentFileStore.saveBytes(
+      userId: user.id,
+      modelId: document.modelId,
+      documentId: document.id,
+      originalFilename: document.documentName,
+      bytes: bytes,
+    );
+
+    final cached = document.copyWith(
+      localPath: localPath,
+      pendingUpload: false,
+    );
+    await ModelDocumentLocalStore.upsertDocument(
+      userId: user.id,
+      document: cached,
+    );
+
+    return localPath;
   }
 
   static Future<void> _refreshDocumentsSilently({
@@ -163,7 +208,11 @@ class ModelDocumentService {
     required String modelId,
   }) async {
     try {
-      await _refreshDocumentsFromCloud(userId: userId, modelId: modelId);
+      final documents = await _refreshDocumentsFromCloud(
+        userId: userId,
+        modelId: modelId,
+      );
+      unawaited(_cacheRemoteFiles(userId: userId, documents: documents));
     } catch (_) {
       // Le cache local reste disponible hors ligne.
     }
@@ -193,6 +242,60 @@ class ModelDocumentService {
       rows: rows,
     );
 
-    return rows.map(ModelDocument.fromMap).toList(growable: false);
+    final documents = await ModelDocumentLocalStore.getDocuments(
+      userId: userId,
+      modelId: modelId,
+    );
+    unawaited(_cacheRemoteFiles(userId: userId, documents: documents));
+    return documents;
+  }
+
+  static Future<void> _cacheRemoteFiles({
+    required String userId,
+    required List<ModelDocument> documents,
+  }) async {
+    for (final document in documents) {
+      if (await ModelDocumentFileStore.exists(document.localPath)) {
+        continue;
+      }
+      if (document.storagePath.trim().isEmpty || document.pendingUpload) {
+        continue;
+      }
+
+      try {
+        final bytes = await StorageService.downloadModelDocumentBytes(
+          document.storagePath,
+        );
+        final localPath = await ModelDocumentFileStore.saveBytes(
+          userId: userId,
+          modelId: document.modelId,
+          documentId: document.id,
+          originalFilename: document.documentName,
+          bytes: bytes,
+        );
+        await ModelDocumentLocalStore.upsertDocument(
+          userId: userId,
+          document: document.copyWith(localPath: localPath),
+        );
+      } catch (_) {
+        // Un document non téléchargé reste ouvrable dès que le réseau revient.
+      }
+    }
+  }
+
+  static String _newUuid() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    String hex(int value) => value.toRadixString(16).padLeft(2, '0');
+
+    final value = bytes.map(hex).join();
+    return '${value.substring(0, 8)}-'
+        '${value.substring(8, 12)}-'
+        '${value.substring(12, 16)}-'
+        '${value.substring(16, 20)}-'
+        '${value.substring(20)}';
   }
 }

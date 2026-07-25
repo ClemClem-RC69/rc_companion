@@ -54,6 +54,29 @@ class ModelDocumentLocalStore {
         .toList(growable: false);
   }
 
+  static Future<ModelDocument?> getDocument({
+    required String userId,
+    required String documentId,
+  }) async {
+    final row =
+        await (_database.select(_database.localModelDocuments)
+              ..where(
+                (item) =>
+                    item.userId.equals(userId) &
+                    item.documentId.equals(documentId),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+
+    if (row == null) {
+      return null;
+    }
+
+    return ModelDocument.fromMap(
+      Map<String, dynamic>.from(jsonDecode(row.payloadJson) as Map),
+    );
+  }
+
   static Stream<List<ModelDocument>> watchDocuments({
     required String userId,
     required String modelId,
@@ -111,21 +134,31 @@ class ModelDocumentLocalStore {
           .go();
 
       for (final row in rows) {
-        final document = ModelDocument.fromMap(row);
+        final remoteDocument = ModelDocument.fromMap(row);
 
-        if (document.id.isEmpty) {
+        if (remoteDocument.id.isEmpty) {
           continue;
         }
 
-        if (pendingDeleteIds.contains(document.id)) {
+        if (pendingDeleteIds.contains(remoteDocument.id)) {
           continue;
         }
 
-        if (pendingIds.contains(document.id)) {
+        if (pendingIds.contains(remoteDocument.id)) {
           continue;
         }
 
-        await upsertDocument(userId: userId, document: document);
+        final existing = await getDocument(
+          userId: userId,
+          documentId: remoteDocument.id,
+        );
+
+        final merged = remoteDocument.copyWith(
+          localPath: existing?.localPath,
+          pendingUpload: false,
+        );
+
+        await upsertDocument(userId: userId, document: merged);
       }
     });
   }
