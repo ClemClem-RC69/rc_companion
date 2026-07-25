@@ -118,6 +118,23 @@ class LocalModelRadioSetups extends Table {
   Set<Column<Object>> get primaryKey => {localKey};
 }
 
+class LocalMaintenanceRecords extends Table {
+  TextColumn get localKey => text()();
+  TextColumn get userId => text()();
+  TextColumn get maintenanceId => text()();
+  TextColumn get modelId => text()();
+  TextColumn get recordType => text()();
+  DateTimeColumn get maintenanceDate => dateTime()();
+  TextColumn get payloadJson => text()();
+  DateTimeColumn get createdAt => dateTime().nullable()();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+  DateTimeColumn get cachedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column<Object>> get primaryKey => {localKey};
+}
+
 class SyncQueueEntries extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get userId => text()();
@@ -153,6 +170,7 @@ class LocalSyncStates extends Table {
     LocalModelDocuments,
     LocalRadios,
     LocalModelRadioSetups,
+    LocalMaintenanceRecords,
     SyncQueueEntries,
     LocalSyncStates,
   ],
@@ -173,7 +191,7 @@ final class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration {
@@ -203,6 +221,9 @@ final class AppDatabase extends _$AppDatabase {
         }
         if (from < 8) {
           await migrator.createTable(localModelRadioSetups);
+        }
+        if (from < 9) {
+          await migrator.createTable(localMaintenanceRecords);
         }
       },
       beforeOpen: (details) async {

@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../database/app_database.dart';
 import 'battery_local_store.dart';
+import 'maintenance_sync_service.dart';
 import 'model_document_sync_service.dart';
 import 'model_radio_setup_sync_service.dart';
 import 'model_setup_sync_service.dart';
@@ -169,6 +170,8 @@ class BatterySyncService {
         await _syncMeasurement(entry, payload);
       case 'session':
         await SessionSyncService.syncEntry(entry);
+      case 'maintenance':
+        await MaintenanceSyncService.syncEntry(entry);
       case 'model_setup':
         await ModelSetupSyncService.syncEntry(entry);
       case 'model_radio_setup':

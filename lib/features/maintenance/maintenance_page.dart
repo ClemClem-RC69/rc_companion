@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 
-import '../../models/model_setup.dart';
+import '../../database/app_database.dart';
 import '../../models/rc_model.dart';
+import '../../services/maintenance_service.dart';
 import '../../services/model_setup_service.dart';
 import '../../services/supabase_service.dart';
 
@@ -16,6 +21,7 @@ class MaintenancePage extends StatefulWidget {
 }
 
 class _MaintenancePageState extends State<MaintenancePage> {
+  final AppDatabase _database = AppDatabase.instance;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -30,7 +36,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
     _loadData();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool refreshRemote = true}) async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -43,45 +49,29 @@ class _MaintenancePageState extends State<MaintenancePage> {
         throw StateError('Aucun utilisateur connecté.');
       }
 
-      final modelRows = await SupabaseService.client
-          .from('rc_models')
-          .select()
-          .eq('user_id', user.id)
-          .order('name');
+      final localModelRows =
+          await (_database.select(_database.localModels)
+                ..where(
+                  (row) =>
+                      row.userId.equals(user.id) & row.isDeleted.equals(false),
+                )
+                ..orderBy([(row) => OrderingTerm.asc(row.modelId)]))
+              .get();
 
-      final recordRows = await SupabaseService.client
-          .from('maintenance_records')
-          .select()
-          .eq('user_id', user.id)
-          .order('maintenance_date', ascending: false);
-
-      final models = modelRows
-          .map((raw) {
-            final row = Map<String, dynamic>.from(raw as Map);
-
-            return RcModel(
-              id: row['id'] as String?,
-              name: row['name'] as String? ?? 'Modèle sans nom',
-              brand: row['brand'] as String? ?? 'Marque non renseignée',
-              category: row['category'] as String? ?? '',
-              discipline: row['discipline'] as String? ?? '',
-              motorization: row['motorization'] as String? ?? 'Électrique',
-              scale: row['scale'] as String? ?? '',
-              batteryCount: (row['battery_count'] as num?)?.toInt() ?? 0,
-              maxCells: row['max_cells'] == null
-                  ? 'Aucune'
-                  : '${(row['max_cells'] as num).toInt()}S',
-              photoUrl: row['photo_url'] as String?,
-              weightKg: (row['weight_kg'] as num?)?.toDouble(),
-              acquisitionDate: row['acquisition_date'] == null
-                  ? null
-                  : DateTime.tryParse(row['acquisition_date'].toString()),
-              purchaseType: row['purchase_type'] as String?,
-              purchaseLocation: row['purchase_location'] as String?,
-              radioId: row['radio_id'] as String?,
+      final models =
+          localModelRows
+              .map((localRow) {
+                final row = Map<String, dynamic>.from(
+                  jsonDecode(localRow.payloadJson) as Map,
+                );
+                return _rcModelFromMap(row);
+              })
+              .toList(growable: false)
+            ..sort(
+              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
             );
-          })
-          .toList(growable: false);
+
+      final recordRows = await MaintenanceService.getRecords();
 
       final modelById = <String, RcModel>{
         for (final model in models)
@@ -89,10 +79,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       };
 
       final records = recordRows
-          .map((raw) {
-            final row = Map<String, dynamic>.from(raw as Map);
-            return _MaintenanceRecord.fromMap(row, modelById);
-          })
+          .map((row) => _MaintenanceRecord.fromMap(row, modelById))
           .toList(growable: false);
 
       if (!mounted) {
@@ -116,6 +103,30 @@ class _MaintenancePageState extends State<MaintenancePage> {
         _isLoading = false;
       });
     }
+  }
+
+  static RcModel _rcModelFromMap(Map<String, dynamic> row) {
+    return RcModel(
+      id: row['id'] as String?,
+      name: row['name'] as String? ?? 'Modèle sans nom',
+      brand: row['brand'] as String? ?? 'Marque non renseignée',
+      category: row['category'] as String? ?? '',
+      discipline: row['discipline'] as String? ?? '',
+      motorization: row['motorization'] as String? ?? 'Électrique',
+      scale: row['scale'] as String? ?? '',
+      batteryCount: (row['battery_count'] as num?)?.toInt() ?? 0,
+      maxCells: row['max_cells'] == null
+          ? 'Aucune'
+          : '${(row['max_cells'] as num).toInt()}S',
+      photoUrl: row['photo_url'] as String?,
+      weightKg: (row['weight_kg'] as num?)?.toDouble(),
+      acquisitionDate: row['acquisition_date'] == null
+          ? null
+          : DateTime.tryParse(row['acquisition_date'].toString()),
+      purchaseType: row['purchase_type'] as String?,
+      purchaseLocation: row['purchase_location'] as String?,
+      radioId: row['radio_id'] as String?,
+    );
   }
 
   void _openInitialRecordIfNeeded() {
@@ -209,17 +220,20 @@ class _MaintenancePageState extends State<MaintenancePage> {
     }
 
     try {
-      final payload = <String, dynamic>{
-        'user_id': user.id,
-        'model_id': modelId,
-        'maintenance_date': draft.date.toUtc().toIso8601String(),
-        'record_type': draft.type.databaseValue,
-        'title': draft.title.trim(),
-        'notes': draft.notes.trim(),
-        'data': draft.data,
-      };
-
-      await SupabaseService.client.from('maintenance_records').insert(payload);
+      await MaintenanceService.createRecord(
+        modelId: modelId,
+        maintenanceDate: draft.date,
+        recordType: draft.type.databaseValue,
+        title: draft.title.trim(),
+        notes: draft.notes.trim(),
+        data: draft.data,
+        packsSinceLastRevision: draft.type == _MaintenanceType.revision
+            ? 0
+            : null,
+        runtimeMinutesSinceLastRevision: draft.type == _MaintenanceType.revision
+            ? 0
+            : null,
+      );
 
       if (draft.type == _MaintenanceType.revision) {
         await _synchronizeCurrentSetupFromRevision(draft);
@@ -231,7 +245,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       }
 
       _showMessage('${draft.type.label} enregistrée.');
-      await _loadData();
+      await _loadData(refreshRemote: false);
     } catch (error) {
       _showMessage('Enregistrement impossible : $error');
     }
@@ -256,18 +270,17 @@ class _MaintenancePageState extends State<MaintenancePage> {
     }
 
     try {
-      await SupabaseService.client
-          .from('maintenance_records')
-          .update({
-            'model_id': modelId,
-            'maintenance_date': draft.date.toUtc().toIso8601String(),
-            'record_type': draft.type.databaseValue,
-            'title': draft.title.trim(),
-            'notes': draft.notes.trim(),
-            'data': draft.data,
-          })
-          .eq('id', record.id)
-          .eq('user_id', user.id);
+      await MaintenanceService.updateRecord(
+        maintenanceId: record.id,
+        modelId: modelId,
+        maintenanceDate: draft.date,
+        recordType: draft.type.databaseValue,
+        title: draft.title.trim(),
+        notes: draft.notes.trim(),
+        data: draft.data,
+        packsSinceLastRevision: record.packsSinceLastRevision,
+        runtimeMinutesSinceLastRevision: record.runtimeMinutesSinceLastRevision,
+      );
 
       if (draft.type == _MaintenanceType.revision) {
         await _synchronizeCurrentSetupFromRevision(
@@ -295,7 +308,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       }
 
       _showMessage('${draft.type.label} modifiée.');
-      await _loadData();
+      await _loadData(refreshRemote: false);
     } catch (error) {
       _showMessage('Modification impossible : $error');
     }
@@ -313,18 +326,28 @@ class _MaintenancePageState extends State<MaintenancePage> {
 
     // Une révision rétroactive reste dans l'historique, mais ne doit pas
     // écraser un setup plus récent déjà enregistré.
-    var laterQuery = SupabaseService.client
-        .from('maintenance_records')
-        .select('id')
-        .eq('model_id', modelId)
-        .eq('record_type', 'REVISION')
-        .gt('maintenance_date', draft.date.toUtc().toIso8601String());
+    final user = SupabaseService.client.auth.currentUser;
 
-    final laterRows = await laterQuery.limit(1);
+    if (user == null) {
+      return;
+    }
 
-    final hasLaterRevision = laterRows.any(
-      (row) => editedRecordId == null || row['id'] != editedRecordId,
-    );
+    final localRows = await MaintenanceService.getRecords();
+
+    final hasLaterRevision = localRows.any((row) {
+      final rowId = row['id']?.toString();
+      final rowModelId = row['model_id']?.toString();
+      final rowType = row['record_type']?.toString();
+      final rowDate = DateTime.tryParse(
+        row['maintenance_date']?.toString() ?? '',
+      )?.toLocal();
+
+      return rowModelId == modelId &&
+          rowType == 'REVISION' &&
+          rowDate != null &&
+          rowDate.isAfter(draft.date) &&
+          (editedRecordId == null || rowId != editedRecordId);
+    });
 
     if (hasLaterRevision) {
       return;
@@ -396,38 +419,52 @@ class _MaintenancePageState extends State<MaintenancePage> {
       return;
     }
 
-    final revisionRows = await SupabaseService.client
-        .from('maintenance_records')
-        .select('id, maintenance_date')
-        .eq('user_id', user.id)
-        .eq('model_id', modelId)
-        .eq('record_type', 'REVISION')
-        .order('maintenance_date');
+    final maintenanceRows = await MaintenanceService.getRecords();
 
-    final sessionRows = await SupabaseService.client
-        .from('rc_sessions')
-        .select('''
-          id,
-          model_id,
-          started_at,
-          session_runs (
-            started_at,
-            ended_at,
-            duration_minutes
-          )
-        ''')
-        .eq('user_id', user.id)
-        .eq('model_id', modelId)
-        .order('started_at');
+    final revisions =
+        maintenanceRows
+            .where(
+              (row) =>
+                  row['model_id']?.toString() == modelId &&
+                  row['record_type']?.toString() == 'REVISION',
+            )
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false)
+          ..sort((a, b) {
+            final aDate =
+                DateTime.tryParse(a['maintenance_date']?.toString() ?? '') ??
+                DateTime(1900);
+            final bDate =
+                DateTime.tryParse(b['maintenance_date']?.toString() ?? '') ??
+                DateTime(1900);
+            return aDate.compareTo(bDate);
+          });
+
+    final sessionRows =
+        await (_database.select(_database.localSessions)..where(
+              (row) => row.userId.equals(user.id) & row.isDeleted.equals(false),
+            ))
+            .get();
 
     final runs = <_RunStat>[];
 
-    for (final rawSession in sessionRows) {
-      final session = Map<String, dynamic>.from(rawSession as Map);
+    for (final localSession in sessionRows) {
+      final session = Map<String, dynamic>.from(
+        jsonDecode(localSession.payloadJson) as Map,
+      );
+
+      if (session['model_id']?.toString() != modelId) {
+        continue;
+      }
+
       final rawRuns = session['session_runs'] as List<dynamic>? ?? const [];
 
       for (final rawRun in rawRuns) {
-        final run = Map<String, dynamic>.from(rawRun as Map);
+        if (rawRun is! Map) {
+          continue;
+        }
+
+        final run = Map<String, dynamic>.from(rawRun);
         final startedAt = DateTime.tryParse(
           run['started_at']?.toString() ?? '',
         )?.toLocal();
@@ -456,8 +493,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
 
     DateTime? previousRevisionDate;
 
-    for (final rawRevision in revisionRows) {
-      final revision = Map<String, dynamic>.from(rawRevision as Map);
+    for (final revision in revisions) {
       final revisionDate = DateTime.parse(
         revision['maintenance_date'].toString(),
       ).toLocal();
@@ -477,14 +513,15 @@ class _MaintenancePageState extends State<MaintenancePage> {
           .where((run) => run.durationMinutes != null)
           .fold<int>(0, (total, run) => total + run.durationMinutes!);
 
-      await SupabaseService.client
-          .from('maintenance_records')
-          .update({
-            'packs_since_last_revision': packs,
-            'runtime_minutes_since_last_revision': knownMinutes,
-          })
-          .eq('id', revision['id'])
-          .eq('user_id', user.id);
+      final maintenanceId = revision['id']?.toString();
+
+      if (maintenanceId != null && maintenanceId.isNotEmpty) {
+        await MaintenanceService.updateCounters(
+          maintenanceId: maintenanceId,
+          packsSinceLastRevision: packs,
+          runtimeMinutesSinceLastRevision: knownMinutes,
+        );
+      }
 
       previousRevisionDate = revisionDate;
     }
@@ -528,11 +565,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
     }
 
     try {
-      await SupabaseService.client
-          .from('maintenance_records')
-          .delete()
-          .eq('id', record.id)
-          .eq('user_id', user.id);
+      await MaintenanceService.deleteRecord(maintenanceId: record.id);
 
       if (record.type == _MaintenanceType.revision) {
         await _recalculateRevisionCounters(record.modelId);
@@ -543,7 +576,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       }
 
       _showMessage('Maintenance supprimée.');
-      await _loadData();
+      await _loadData(refreshRemote: false);
     } catch (error) {
       _showMessage('Suppression impossible : $error');
     }

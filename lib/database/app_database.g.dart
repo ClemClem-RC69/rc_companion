@@ -4336,6 +4336,688 @@ class LocalModelRadioSetupsCompanion
   }
 }
 
+class $LocalMaintenanceRecordsTable extends LocalMaintenanceRecords
+    with TableInfo<$LocalMaintenanceRecordsTable, LocalMaintenanceRecord> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalMaintenanceRecordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _localKeyMeta = const VerificationMeta(
+    'localKey',
+  );
+  @override
+  late final GeneratedColumn<String> localKey = GeneratedColumn<String>(
+    'local_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _maintenanceIdMeta = const VerificationMeta(
+    'maintenanceId',
+  );
+  @override
+  late final GeneratedColumn<String> maintenanceId = GeneratedColumn<String>(
+    'maintenance_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _modelIdMeta = const VerificationMeta(
+    'modelId',
+  );
+  @override
+  late final GeneratedColumn<String> modelId = GeneratedColumn<String>(
+    'model_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _recordTypeMeta = const VerificationMeta(
+    'recordType',
+  );
+  @override
+  late final GeneratedColumn<String> recordType = GeneratedColumn<String>(
+    'record_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _maintenanceDateMeta = const VerificationMeta(
+    'maintenanceDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> maintenanceDate =
+      GeneratedColumn<DateTime>(
+        'maintenance_date',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _cachedAtMeta = const VerificationMeta(
+    'cachedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+    'cached_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    localKey,
+    userId,
+    maintenanceId,
+    modelId,
+    recordType,
+    maintenanceDate,
+    payloadJson,
+    createdAt,
+    updatedAt,
+    cachedAt,
+    isDeleted,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_maintenance_records';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalMaintenanceRecord> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('local_key')) {
+      context.handle(
+        _localKeyMeta,
+        localKey.isAcceptableOrUnknown(data['local_key']!, _localKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localKeyMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('maintenance_id')) {
+      context.handle(
+        _maintenanceIdMeta,
+        maintenanceId.isAcceptableOrUnknown(
+          data['maintenance_id']!,
+          _maintenanceIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_maintenanceIdMeta);
+    }
+    if (data.containsKey('model_id')) {
+      context.handle(
+        _modelIdMeta,
+        modelId.isAcceptableOrUnknown(data['model_id']!, _modelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modelIdMeta);
+    }
+    if (data.containsKey('record_type')) {
+      context.handle(
+        _recordTypeMeta,
+        recordType.isAcceptableOrUnknown(data['record_type']!, _recordTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordTypeMeta);
+    }
+    if (data.containsKey('maintenance_date')) {
+      context.handle(
+        _maintenanceDateMeta,
+        maintenanceDate.isAcceptableOrUnknown(
+          data['maintenance_date']!,
+          _maintenanceDateMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_maintenanceDateMeta);
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(
+        _cachedAtMeta,
+        cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta),
+      );
+    }
+    if (data.containsKey('is_deleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {localKey};
+  @override
+  LocalMaintenanceRecord map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalMaintenanceRecord(
+      localKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_key'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      maintenanceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}maintenance_id'],
+      )!,
+      modelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}model_id'],
+      )!,
+      recordType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}record_type'],
+      )!,
+      maintenanceDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}maintenance_date'],
+      )!,
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      ),
+      cachedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}cached_at'],
+      )!,
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalMaintenanceRecordsTable createAlias(String alias) {
+    return $LocalMaintenanceRecordsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalMaintenanceRecord extends DataClass
+    implements Insertable<LocalMaintenanceRecord> {
+  final String localKey;
+  final String userId;
+  final String maintenanceId;
+  final String modelId;
+  final String recordType;
+  final DateTime maintenanceDate;
+  final String payloadJson;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime cachedAt;
+  final bool isDeleted;
+  const LocalMaintenanceRecord({
+    required this.localKey,
+    required this.userId,
+    required this.maintenanceId,
+    required this.modelId,
+    required this.recordType,
+    required this.maintenanceDate,
+    required this.payloadJson,
+    this.createdAt,
+    this.updatedAt,
+    required this.cachedAt,
+    required this.isDeleted,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['local_key'] = Variable<String>(localKey);
+    map['user_id'] = Variable<String>(userId);
+    map['maintenance_id'] = Variable<String>(maintenanceId);
+    map['model_id'] = Variable<String>(modelId);
+    map['record_type'] = Variable<String>(recordType);
+    map['maintenance_date'] = Variable<DateTime>(maintenanceDate);
+    map['payload_json'] = Variable<String>(payloadJson);
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<DateTime>(createdAt);
+    }
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    map['is_deleted'] = Variable<bool>(isDeleted);
+    return map;
+  }
+
+  LocalMaintenanceRecordsCompanion toCompanion(bool nullToAbsent) {
+    return LocalMaintenanceRecordsCompanion(
+      localKey: Value(localKey),
+      userId: Value(userId),
+      maintenanceId: Value(maintenanceId),
+      modelId: Value(modelId),
+      recordType: Value(recordType),
+      maintenanceDate: Value(maintenanceDate),
+      payloadJson: Value(payloadJson),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+      cachedAt: Value(cachedAt),
+      isDeleted: Value(isDeleted),
+    );
+  }
+
+  factory LocalMaintenanceRecord.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalMaintenanceRecord(
+      localKey: serializer.fromJson<String>(json['localKey']),
+      userId: serializer.fromJson<String>(json['userId']),
+      maintenanceId: serializer.fromJson<String>(json['maintenanceId']),
+      modelId: serializer.fromJson<String>(json['modelId']),
+      recordType: serializer.fromJson<String>(json['recordType']),
+      maintenanceDate: serializer.fromJson<DateTime>(json['maintenanceDate']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      createdAt: serializer.fromJson<DateTime?>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'localKey': serializer.toJson<String>(localKey),
+      'userId': serializer.toJson<String>(userId),
+      'maintenanceId': serializer.toJson<String>(maintenanceId),
+      'modelId': serializer.toJson<String>(modelId),
+      'recordType': serializer.toJson<String>(recordType),
+      'maintenanceDate': serializer.toJson<DateTime>(maintenanceDate),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'createdAt': serializer.toJson<DateTime?>(createdAt),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+      'isDeleted': serializer.toJson<bool>(isDeleted),
+    };
+  }
+
+  LocalMaintenanceRecord copyWith({
+    String? localKey,
+    String? userId,
+    String? maintenanceId,
+    String? modelId,
+    String? recordType,
+    DateTime? maintenanceDate,
+    String? payloadJson,
+    Value<DateTime?> createdAt = const Value.absent(),
+    Value<DateTime?> updatedAt = const Value.absent(),
+    DateTime? cachedAt,
+    bool? isDeleted,
+  }) => LocalMaintenanceRecord(
+    localKey: localKey ?? this.localKey,
+    userId: userId ?? this.userId,
+    maintenanceId: maintenanceId ?? this.maintenanceId,
+    modelId: modelId ?? this.modelId,
+    recordType: recordType ?? this.recordType,
+    maintenanceDate: maintenanceDate ?? this.maintenanceDate,
+    payloadJson: payloadJson ?? this.payloadJson,
+    createdAt: createdAt.present ? createdAt.value : this.createdAt,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    cachedAt: cachedAt ?? this.cachedAt,
+    isDeleted: isDeleted ?? this.isDeleted,
+  );
+  LocalMaintenanceRecord copyWithCompanion(
+    LocalMaintenanceRecordsCompanion data,
+  ) {
+    return LocalMaintenanceRecord(
+      localKey: data.localKey.present ? data.localKey.value : this.localKey,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      maintenanceId: data.maintenanceId.present
+          ? data.maintenanceId.value
+          : this.maintenanceId,
+      modelId: data.modelId.present ? data.modelId.value : this.modelId,
+      recordType: data.recordType.present
+          ? data.recordType.value
+          : this.recordType,
+      maintenanceDate: data.maintenanceDate.present
+          ? data.maintenanceDate.value
+          : this.maintenanceDate,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalMaintenanceRecord(')
+          ..write('localKey: $localKey, ')
+          ..write('userId: $userId, ')
+          ..write('maintenanceId: $maintenanceId, ')
+          ..write('modelId: $modelId, ')
+          ..write('recordType: $recordType, ')
+          ..write('maintenanceDate: $maintenanceDate, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    localKey,
+    userId,
+    maintenanceId,
+    modelId,
+    recordType,
+    maintenanceDate,
+    payloadJson,
+    createdAt,
+    updatedAt,
+    cachedAt,
+    isDeleted,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalMaintenanceRecord &&
+          other.localKey == this.localKey &&
+          other.userId == this.userId &&
+          other.maintenanceId == this.maintenanceId &&
+          other.modelId == this.modelId &&
+          other.recordType == this.recordType &&
+          other.maintenanceDate == this.maintenanceDate &&
+          other.payloadJson == this.payloadJson &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.cachedAt == this.cachedAt &&
+          other.isDeleted == this.isDeleted);
+}
+
+class LocalMaintenanceRecordsCompanion
+    extends UpdateCompanion<LocalMaintenanceRecord> {
+  final Value<String> localKey;
+  final Value<String> userId;
+  final Value<String> maintenanceId;
+  final Value<String> modelId;
+  final Value<String> recordType;
+  final Value<DateTime> maintenanceDate;
+  final Value<String> payloadJson;
+  final Value<DateTime?> createdAt;
+  final Value<DateTime?> updatedAt;
+  final Value<DateTime> cachedAt;
+  final Value<bool> isDeleted;
+  final Value<int> rowid;
+  const LocalMaintenanceRecordsCompanion({
+    this.localKey = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.maintenanceId = const Value.absent(),
+    this.modelId = const Value.absent(),
+    this.recordType = const Value.absent(),
+    this.maintenanceDate = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalMaintenanceRecordsCompanion.insert({
+    required String localKey,
+    required String userId,
+    required String maintenanceId,
+    required String modelId,
+    required String recordType,
+    required DateTime maintenanceDate,
+    required String payloadJson,
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : localKey = Value(localKey),
+       userId = Value(userId),
+       maintenanceId = Value(maintenanceId),
+       modelId = Value(modelId),
+       recordType = Value(recordType),
+       maintenanceDate = Value(maintenanceDate),
+       payloadJson = Value(payloadJson);
+  static Insertable<LocalMaintenanceRecord> custom({
+    Expression<String>? localKey,
+    Expression<String>? userId,
+    Expression<String>? maintenanceId,
+    Expression<String>? modelId,
+    Expression<String>? recordType,
+    Expression<DateTime>? maintenanceDate,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? cachedAt,
+    Expression<bool>? isDeleted,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (localKey != null) 'local_key': localKey,
+      if (userId != null) 'user_id': userId,
+      if (maintenanceId != null) 'maintenance_id': maintenanceId,
+      if (modelId != null) 'model_id': modelId,
+      if (recordType != null) 'record_type': recordType,
+      if (maintenanceDate != null) 'maintenance_date': maintenanceDate,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (cachedAt != null) 'cached_at': cachedAt,
+      if (isDeleted != null) 'is_deleted': isDeleted,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalMaintenanceRecordsCompanion copyWith({
+    Value<String>? localKey,
+    Value<String>? userId,
+    Value<String>? maintenanceId,
+    Value<String>? modelId,
+    Value<String>? recordType,
+    Value<DateTime>? maintenanceDate,
+    Value<String>? payloadJson,
+    Value<DateTime?>? createdAt,
+    Value<DateTime?>? updatedAt,
+    Value<DateTime>? cachedAt,
+    Value<bool>? isDeleted,
+    Value<int>? rowid,
+  }) {
+    return LocalMaintenanceRecordsCompanion(
+      localKey: localKey ?? this.localKey,
+      userId: userId ?? this.userId,
+      maintenanceId: maintenanceId ?? this.maintenanceId,
+      modelId: modelId ?? this.modelId,
+      recordType: recordType ?? this.recordType,
+      maintenanceDate: maintenanceDate ?? this.maintenanceDate,
+      payloadJson: payloadJson ?? this.payloadJson,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      cachedAt: cachedAt ?? this.cachedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (localKey.present) {
+      map['local_key'] = Variable<String>(localKey.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (maintenanceId.present) {
+      map['maintenance_id'] = Variable<String>(maintenanceId.value);
+    }
+    if (modelId.present) {
+      map['model_id'] = Variable<String>(modelId.value);
+    }
+    if (recordType.present) {
+      map['record_type'] = Variable<String>(recordType.value);
+    }
+    if (maintenanceDate.present) {
+      map['maintenance_date'] = Variable<DateTime>(maintenanceDate.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalMaintenanceRecordsCompanion(')
+          ..write('localKey: $localKey, ')
+          ..write('userId: $userId, ')
+          ..write('maintenanceId: $maintenanceId, ')
+          ..write('modelId: $modelId, ')
+          ..write('recordType: $recordType, ')
+          ..write('maintenanceDate: $maintenanceDate, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncQueueEntriesTable extends SyncQueueEntries
     with TableInfo<$SyncQueueEntriesTable, SyncQueueEntry> {
   @override
@@ -5432,6 +6114,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $LocalRadiosTable localRadios = $LocalRadiosTable(this);
   late final $LocalModelRadioSetupsTable localModelRadioSetups =
       $LocalModelRadioSetupsTable(this);
+  late final $LocalMaintenanceRecordsTable localMaintenanceRecords =
+      $LocalMaintenanceRecordsTable(this);
   late final $SyncQueueEntriesTable syncQueueEntries = $SyncQueueEntriesTable(
     this,
   );
@@ -5451,6 +6135,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localModelDocuments,
     localRadios,
     localModelRadioSetups,
+    localMaintenanceRecords,
     syncQueueEntries,
     localSyncStates,
   ];
@@ -7657,6 +8342,347 @@ typedef $$LocalModelRadioSetupsTableProcessedTableManager =
       LocalModelRadioSetup,
       PrefetchHooks Function()
     >;
+typedef $$LocalMaintenanceRecordsTableCreateCompanionBuilder =
+    LocalMaintenanceRecordsCompanion Function({
+      required String localKey,
+      required String userId,
+      required String maintenanceId,
+      required String modelId,
+      required String recordType,
+      required DateTime maintenanceDate,
+      required String payloadJson,
+      Value<DateTime?> createdAt,
+      Value<DateTime?> updatedAt,
+      Value<DateTime> cachedAt,
+      Value<bool> isDeleted,
+      Value<int> rowid,
+    });
+typedef $$LocalMaintenanceRecordsTableUpdateCompanionBuilder =
+    LocalMaintenanceRecordsCompanion Function({
+      Value<String> localKey,
+      Value<String> userId,
+      Value<String> maintenanceId,
+      Value<String> modelId,
+      Value<String> recordType,
+      Value<DateTime> maintenanceDate,
+      Value<String> payloadJson,
+      Value<DateTime?> createdAt,
+      Value<DateTime?> updatedAt,
+      Value<DateTime> cachedAt,
+      Value<bool> isDeleted,
+      Value<int> rowid,
+    });
+
+class $$LocalMaintenanceRecordsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalMaintenanceRecordsTable> {
+  $$LocalMaintenanceRecordsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get localKey => $composableBuilder(
+    column: $table.localKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get maintenanceId => $composableBuilder(
+    column: $table.maintenanceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordType => $composableBuilder(
+    column: $table.recordType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get maintenanceDate => $composableBuilder(
+    column: $table.maintenanceDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+    column: $table.cachedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalMaintenanceRecordsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalMaintenanceRecordsTable> {
+  $$LocalMaintenanceRecordsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get localKey => $composableBuilder(
+    column: $table.localKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get maintenanceId => $composableBuilder(
+    column: $table.maintenanceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordType => $composableBuilder(
+    column: $table.recordType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get maintenanceDate => $composableBuilder(
+    column: $table.maintenanceDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+    column: $table.cachedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalMaintenanceRecordsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalMaintenanceRecordsTable> {
+  $$LocalMaintenanceRecordsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get localKey =>
+      $composableBuilder(column: $table.localKey, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get maintenanceId => $composableBuilder(
+    column: $table.maintenanceId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get modelId =>
+      $composableBuilder(column: $table.modelId, builder: (column) => column);
+
+  GeneratedColumn<String> get recordType => $composableBuilder(
+    column: $table.recordType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get maintenanceDate => $composableBuilder(
+    column: $table.maintenanceDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+}
+
+class $$LocalMaintenanceRecordsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalMaintenanceRecordsTable,
+          LocalMaintenanceRecord,
+          $$LocalMaintenanceRecordsTableFilterComposer,
+          $$LocalMaintenanceRecordsTableOrderingComposer,
+          $$LocalMaintenanceRecordsTableAnnotationComposer,
+          $$LocalMaintenanceRecordsTableCreateCompanionBuilder,
+          $$LocalMaintenanceRecordsTableUpdateCompanionBuilder,
+          (
+            LocalMaintenanceRecord,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalMaintenanceRecordsTable,
+              LocalMaintenanceRecord
+            >,
+          ),
+          LocalMaintenanceRecord,
+          PrefetchHooks Function()
+        > {
+  $$LocalMaintenanceRecordsTableTableManager(
+    _$AppDatabase db,
+    $LocalMaintenanceRecordsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalMaintenanceRecordsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LocalMaintenanceRecordsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LocalMaintenanceRecordsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> localKey = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> maintenanceId = const Value.absent(),
+                Value<String> modelId = const Value.absent(),
+                Value<String> recordType = const Value.absent(),
+                Value<DateTime> maintenanceDate = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<DateTime?> createdAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime> cachedAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalMaintenanceRecordsCompanion(
+                localKey: localKey,
+                userId: userId,
+                maintenanceId: maintenanceId,
+                modelId: modelId,
+                recordType: recordType,
+                maintenanceDate: maintenanceDate,
+                payloadJson: payloadJson,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                cachedAt: cachedAt,
+                isDeleted: isDeleted,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String localKey,
+                required String userId,
+                required String maintenanceId,
+                required String modelId,
+                required String recordType,
+                required DateTime maintenanceDate,
+                required String payloadJson,
+                Value<DateTime?> createdAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime> cachedAt = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalMaintenanceRecordsCompanion.insert(
+                localKey: localKey,
+                userId: userId,
+                maintenanceId: maintenanceId,
+                modelId: modelId,
+                recordType: recordType,
+                maintenanceDate: maintenanceDate,
+                payloadJson: payloadJson,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                cachedAt: cachedAt,
+                isDeleted: isDeleted,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalMaintenanceRecordsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalMaintenanceRecordsTable,
+      LocalMaintenanceRecord,
+      $$LocalMaintenanceRecordsTableFilterComposer,
+      $$LocalMaintenanceRecordsTableOrderingComposer,
+      $$LocalMaintenanceRecordsTableAnnotationComposer,
+      $$LocalMaintenanceRecordsTableCreateCompanionBuilder,
+      $$LocalMaintenanceRecordsTableUpdateCompanionBuilder,
+      (
+        LocalMaintenanceRecord,
+        BaseReferences<
+          _$AppDatabase,
+          $LocalMaintenanceRecordsTable,
+          LocalMaintenanceRecord
+        >,
+      ),
+      LocalMaintenanceRecord,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncQueueEntriesTableCreateCompanionBuilder =
     SyncQueueEntriesCompanion Function({
       Value<int> id,
@@ -8216,6 +9242,11 @@ class $AppDatabaseManager {
       $$LocalRadiosTableTableManager(_db, _db.localRadios);
   $$LocalModelRadioSetupsTableTableManager get localModelRadioSetups =>
       $$LocalModelRadioSetupsTableTableManager(_db, _db.localModelRadioSetups);
+  $$LocalMaintenanceRecordsTableTableManager get localMaintenanceRecords =>
+      $$LocalMaintenanceRecordsTableTableManager(
+        _db,
+        _db.localMaintenanceRecords,
+      );
   $$SyncQueueEntriesTableTableManager get syncQueueEntries =>
       $$SyncQueueEntriesTableTableManager(_db, _db.syncQueueEntries);
   $$LocalSyncStatesTableTableManager get localSyncStates =>

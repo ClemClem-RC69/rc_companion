@@ -10,6 +10,8 @@ import '../../models/rc_model.dart';
 import '../../services/battery_local_store.dart';
 import '../../services/battery_service.dart';
 import '../../services/session_local_store.dart';
+import '../../services/maintenance_local_store.dart';
+import '../../services/maintenance_service.dart';
 import '../batteries/batteries_page.dart';
 import '../info/info_page.dart';
 import '../maintenance/maintenance_page.dart';
@@ -56,6 +58,7 @@ class _DashboardPageState extends State<DashboardPage>
   StreamSubscription? _measurementSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _sessionSubscription;
   StreamSubscription<List<RcModel>>? _modelSubscription;
+  StreamSubscription<List<Map<String, dynamic>>>? _maintenanceSubscription;
   Timer? _batteryRefreshDebounce;
   Timer? _sessionRefreshDebounce;
   Timer? _dashboardRefreshDebounce;
@@ -69,6 +72,7 @@ class _DashboardPageState extends State<DashboardPage>
     _startBatteryLiveUpdates();
     _startModelLiveUpdates();
     _startSessionLiveUpdates();
+    _startMaintenanceLiveUpdates();
     _startDashboardRefreshTriggers();
     _loadDashboard();
   }
@@ -283,6 +287,43 @@ class _DashboardPageState extends State<DashboardPage>
     });
   }
 
+  void _startMaintenanceLiveUpdates() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _maintenanceSubscription =
+        MaintenanceLocalStore.watchRecords(userId: user.id).listen((rows) {
+          if (!mounted) {
+            return;
+          }
+
+          setState(() {
+            maintenanceCount = rows.length;
+            loading = false;
+          });
+        });
+  }
+
+  Future<void> _refreshMaintenanceMetricsFromDrift() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final rows = await MaintenanceLocalStore.getRecords(userId: user.id);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      maintenanceCount = rows.length;
+      loading = false;
+    });
+  }
+
   void _scheduleBatteryMetricsRefresh() {
     _batteryRefreshDebounce?.cancel();
     _sessionRefreshDebounce?.cancel();
@@ -316,6 +357,7 @@ class _DashboardPageState extends State<DashboardPage>
     _measurementSubscription?.cancel();
     _sessionSubscription?.cancel();
     _modelSubscription?.cancel();
+    _maintenanceSubscription?.cancel();
     _connectivitySubscription?.cancel();
 
     final channel = _dashboardRealtimeChannel;
@@ -339,6 +381,14 @@ class _DashboardPageState extends State<DashboardPage>
 
     await _refreshBatteryMetricsFromDrift();
     await _refreshSessionMetricsFromDrift();
+    await _refreshMaintenanceMetricsFromDrift();
+
+    try {
+      await MaintenanceService.refreshFromCloud();
+    } catch (_) {
+      // Hors ligne, le Dashboard conserve les maintenances présentes dans Drift.
+    }
+
     await _loadDashboard();
   }
 
@@ -369,6 +419,7 @@ class _DashboardPageState extends State<DashboardPage>
       }
 
       await _refreshSessionMetricsFromDrift();
+      await _refreshMaintenanceMetricsFromDrift();
 
       final connectivity = await Connectivity().checkConnectivity();
       final isOffline =
@@ -385,21 +436,17 @@ class _DashboardPageState extends State<DashboardPage>
         await BatteryService.getBatteries();
       } catch (_) {}
 
-      final client = Supabase.instance.client;
+      try {
+        await MaintenanceService.refreshFromCloud();
+      } catch (_) {
+        // Le cache Drift Maintenance reste prioritaire.
+      }
 
-      final results = await Future.wait<int>([
-        _countRows(client, 'rc_models'),
-        _countRows(client, 'rc_sessions'),
-        _countRows(client, 'maintenance_records'),
-      ]).timeout(const Duration(seconds: 4));
-
-      // Les sessions, roulages et la catégorie du dernier modèle restent
-      // exclusivement issus du cache Drift afin d'éviter qu'une réponse
-      // Supabase plus ancienne ne remplace l'état local affiché.
-
+      // Les compteurs restent issus du cache Drift. Les rafraîchissements
+      // cloud alimentent uniquement les caches locaux, dont les streams
+      // mettent ensuite le Dashboard à jour.
       if (!mounted) return;
       setState(() {
-        maintenanceCount = results[2];
         loading = false;
       });
     } catch (_) {
@@ -439,15 +486,6 @@ class _DashboardPageState extends State<DashboardPage>
       storage: storage,
       toCharge: toCharge,
     );
-  }
-
-  Future<int> _countRows(SupabaseClient client, String table) async {
-    try {
-      final rows = await client.from(table).select('id');
-      return rows.length;
-    } catch (_) {
-      return 0;
-    }
   }
 
   void _open(Widget page) {
