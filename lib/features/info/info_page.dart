@@ -7,6 +7,8 @@ class InfoPage extends StatelessWidget {
   static const String batteryHealthVersion = 'V1.2';
   static const String batteryCompatibilityVersion = 'V1.0';
   static const String batteryChargeStateVersion = 'V1.1';
+  static const String offlineArchitectureVersion = 'V1.0';
+  static const String authenticationVersion = 'V1.0';
   static const String lastUpdate = 'Juillet 2026';
 
   @override
@@ -19,6 +21,264 @@ class InfoPage extends StatelessWidget {
           _headerCard(context),
           const SizedBox(height: 16),
           _warningCard(context),
+          const SizedBox(height: 16),
+          _sectionCard(
+            context,
+            icon: Icons.lock_outline_rounded,
+            title: 'Authentification et sécurité',
+            children: const [
+              Text(
+                'L’authentification permet de protéger l’accès au compte '
+                'RC Companion et de rattacher les données synchronisées au '
+                'bon utilisateur.',
+              ),
+              SizedBox(height: 12),
+              Text('Connexion', style: TextStyle(fontWeight: FontWeight.w700)),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'La connexion s’effectue avec une adresse e-mail et un mot '
+                'de passe.',
+              ),
+              _InfoBullet(
+                'Le pseudo demandé lors de la création du compte sert '
+                'uniquement d’information de profil. Il ne permet pas de '
+                'se connecter.',
+              ),
+              _InfoBullet(
+                'Une connexion Internet est nécessaire lors de la première '
+                'authentification, après une déconnexion complète ou lorsque '
+                'la session n’est plus valide.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Gestion de la session',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Après une connexion réussie, la session utilisateur peut '
+                'rester enregistrée sur l’appareil afin d’éviter une nouvelle '
+                'saisie du mot de passe à chaque ouverture.',
+              ),
+              _InfoBullet(
+                'Une déconnexion volontaire supprime la session enregistrée '
+                'sur l’appareil et impose une nouvelle authentification en '
+                'ligne.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Protection du mot de passe',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Les mots de passe sont gérés par le service '
+                'd’authentification Supabase.',
+              ),
+              _InfoBullet(
+                'Ils ne sont pas enregistrés dans la base de données métier '
+                'de RC Companion ni dans les données locales de l’application.',
+              ),
+              _InfoBullet(
+                'RC Companion ne connaît pas le mot de passe en clair de '
+                'l’utilisateur.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Évolutions prévues',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Déverrouillage local par Face ID, Touch ID ou biométrie '
+                'Android, selon les capacités de l’appareil.',
+              ),
+              _InfoBullet(
+                'Verrouillage local de l’application sans déconnexion du '
+                'compte utilisateur.',
+              ),
+              SizedBox(height: 12),
+              _VersionLine(
+                label: 'Version de la documentation',
+                value: authenticationVersion,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _sectionCard(
+            context,
+            icon: Icons.cloud_off_rounded,
+            title: 'Fonctionnement hors ligne',
+            children: const [
+              Text(
+                'RC Companion est conçu pour permettre la consultation et '
+                'l’enregistrement de données même lorsque l’appareil ne '
+                'dispose pas d’une connexion Internet.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Base de données locale',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Les données utiles au fonctionnement de l’application sont '
+                'conservées localement dans une base Drift sur chaque appareil.',
+              ),
+              _InfoBullet(
+                'Les informations déjà synchronisées restent consultables '
+                'hors connexion.',
+              ),
+              _InfoBullet(
+                'Les créations, modifications et suppressions compatibles '
+                'avec le mode hors ligne sont enregistrées localement avant '
+                'leur envoi vers le cloud.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'File d’attente de synchronisation',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Chaque opération réalisée hors ligne est placée dans une '
+                'file d’attente locale.',
+              ),
+              _InfoBullet(
+                'Cette file permet de conserver les opérations à transmettre '
+                'jusqu’au retour du réseau.',
+              ),
+              _InfoBullet(
+                'La fermeture puis la réouverture de l’application ne doit '
+                'pas supprimer les opérations locales encore en attente.',
+              ),
+              SizedBox(height: 12),
+              Text('Limites', style: TextStyle(fontWeight: FontWeight.w700)),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Une nouvelle authentification ne peut pas être créée hors '
+                'connexion après une déconnexion complète.',
+              ),
+              _InfoBullet(
+                'Certaines fonctions dépendant directement d’un service en '
+                'ligne peuvent rester indisponibles sans réseau.',
+              ),
+              SizedBox(height: 12),
+              _VersionLine(
+                label: 'Version de l’architecture hors ligne',
+                value: offlineArchitectureVersion,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _sectionCard(
+            context,
+            icon: Icons.sync_rounded,
+            title: 'Synchronisation multi-appareils',
+            children: const [
+              Text(
+                'La synchronisation permet de retrouver les mêmes données '
+                'RC Companion sur les différents appareils connectés au même '
+                'compte utilisateur.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Principe général',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet('L’opération est d’abord enregistrée localement.'),
+              _InfoBullet(
+                'Lorsqu’elle ne peut pas être envoyée immédiatement, elle '
+                'reste dans la file d’attente de synchronisation.',
+              ),
+              _InfoBullet(
+                'Dès que le réseau est disponible, l’application tente '
+                'd’envoyer les opérations en attente vers Supabase.',
+              ),
+              _InfoBullet(
+                'Les autres appareils récupèrent ensuite les données '
+                'synchronisées lors de leur prochaine mise à jour.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Appareils concernés',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet('macOS.'),
+              _InfoBullet('iPadOS et iOS.'),
+              _InfoBullet('Android.'),
+              _InfoBullet(
+                'Windows lorsque la version correspondante sera distribuée.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Précautions',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Une synchronisation peut nécessiter quelques instants selon '
+                'la qualité du réseau et le nombre d’opérations en attente.',
+              ),
+              _InfoBullet(
+                'Avant de modifier la même donnée sur plusieurs appareils '
+                'hors ligne, il est recommandé de laisser les appareils se '
+                'synchroniser afin de limiter les conflits.',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _sectionCard(
+            context,
+            icon: Icons.account_tree_outlined,
+            title: 'Architecture de RC Companion',
+            children: const [
+              Text(
+                'RC Companion repose sur une architecture locale et cloud '
+                'afin de concilier rapidité, fonctionnement hors ligne et '
+                'synchronisation entre appareils.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Drift — base locale',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Conserve les données utiles directement sur l’appareil.',
+              ),
+              _InfoBullet(
+                'Permet la consultation et les opérations compatibles hors '
+                'connexion.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Supabase — services en ligne',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet('Gère l’authentification des utilisateurs.'),
+              _InfoBullet(
+                'Centralise les données synchronisées afin qu’elles puissent '
+                'être retrouvées sur plusieurs appareils.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Synchronisation automatique',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Relie la base locale Drift aux données distantes Supabase.',
+              ),
+              _InfoBullet(
+                'Transmet les opérations en attente lorsque le réseau '
+                'redevient disponible.',
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           _sectionCard(
             context,
@@ -263,6 +523,34 @@ class InfoPage extends StatelessWidget {
           const SizedBox(height: 16),
           _sectionCard(
             context,
+            icon: Icons.description_outlined,
+            title: 'Formats de fichiers pris en charge',
+            children: const [
+              Text(
+                'RC Companion accepte uniquement les formats de documents '
+                'et d’images officiellement prévus par l’application.',
+              ),
+              SizedBox(height: 12),
+              Text('Documents', style: TextStyle(fontWeight: FontWeight.w700)),
+              SizedBox(height: 8),
+              _InfoBullet('PDF.'),
+              SizedBox(height: 8),
+              Text('Images', style: TextStyle(fontWeight: FontWeight.w700)),
+              SizedBox(height: 8),
+              _InfoBullet('JPG et JPEG.'),
+              _InfoBullet('PNG.'),
+              _InfoBullet('WEBP.'),
+              SizedBox(height: 12),
+              Text(
+                'Les autres formats bureautiques ou formats de documents '
+                'ne sont pas pris en charge dans cette version de '
+                'RC Companion.',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _sectionCard(
+            context,
             icon: Icons.update,
             title: 'Évolution des calculs',
             children: const [
@@ -275,8 +563,25 @@ class InfoPage extends StatelessWidget {
               SizedBox(height: 10),
               Text(
                 'Cette page est mise à jour lors de l’ajout ou de la '
-                'modification d’un calcul, d’un seuil ou d’une règle de '
-                'compatibilité.',
+                'modification d’un calcul, d’un seuil, d’une règle de '
+                'compatibilité ou d’un fonctionnement important de '
+                'l’application.',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _sectionCard(
+            context,
+            icon: Icons.history_rounded,
+            title: 'Historique documentaire',
+            children: const [
+              _InfoBullet('V1.0 : première documentation générale.'),
+              _InfoBullet('V1.1 : documentation de l’état de charge.'),
+              _InfoBullet('V1.2 : documentation de la santé batterie.'),
+              _InfoBullet(
+                'Juillet 2026 : ajout de l’authentification, du mode hors '
+                'ligne, de la synchronisation, de l’architecture et des '
+                'formats de fichiers pris en charge.',
               ),
             ],
           ),
@@ -400,11 +705,13 @@ class InfoPage extends StatelessWidget {
               children: [
                 Icon(icon, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 10),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],
