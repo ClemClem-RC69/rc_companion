@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,15 +8,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class PickedModelDocument {
   const PickedModelDocument({
     required this.name,
-    required this.bytes,
     required this.size,
     required this.contentType,
+    this.path,
+    this.bytes,
   });
 
   final String name;
-  final Uint8List bytes;
   final int size;
   final String contentType;
+  final String? path;
+  final Uint8List? bytes;
 
   bool get isPdf => contentType == 'application/pdf';
 
@@ -129,7 +132,7 @@ class StorageService {
       dialogTitle: 'Choisir un document',
       type: FileType.any,
       allowMultiple: false,
-      withData: true,
+      withData: kIsWeb,
     );
 
     if (result == null || result.files.isEmpty) {
@@ -137,11 +140,6 @@ class StorageService {
     }
 
     final file = result.files.single;
-    final bytes = file.bytes;
-
-    if (bytes == null || bytes.isEmpty) {
-      throw Exception('Impossible de lire le document sélectionné.');
-    }
 
     if (file.size > _maximumDocumentSize) {
       throw Exception(
@@ -155,20 +153,39 @@ class StorageService {
       throw Exception('Le fichier doit être un PDF, JPG, JPEG, PNG ou WEBP.');
     }
 
+    final path = file.path?.trim();
+    final bytes = file.bytes;
+
+    if ((path == null || path.isEmpty) && (bytes == null || bytes.isEmpty)) {
+      throw Exception('Impossible de lire le document sélectionné.');
+    }
+
     return PickedModelDocument(
       name: file.name,
-      bytes: bytes,
       size: file.size,
       contentType: contentType,
+      path: path,
+      bytes: bytes,
     );
   }
 
   static Future<String> uploadModelDocument({
     required PickedModelDocument document,
     required String modelId,
-  }) {
+  }) async {
+    Uint8List? bytes = document.bytes;
+
+    final path = document.path?.trim();
+    if ((bytes == null || bytes.isEmpty) && path != null && path.isNotEmpty) {
+      bytes = await XFile(path).readAsBytes();
+    }
+
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception('Impossible de lire le document sélectionné.');
+    }
+
     return uploadModelDocumentBytes(
-      bytes: document.bytes,
+      bytes: bytes,
       originalFilename: document.name,
       contentType: document.contentType,
       modelId: modelId,

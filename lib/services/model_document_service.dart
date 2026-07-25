@@ -73,13 +73,31 @@ class ModelDocumentService {
     }
 
     final documentId = _newUuid();
-    final localPath = await ModelDocumentFileStore.saveBytes(
-      userId: user.id,
-      modelId: modelId,
-      documentId: documentId,
-      originalFilename: picked.name,
-      bytes: picked.bytes,
-    );
+    final sourcePath = picked.path?.trim();
+
+    late final String localPath;
+    if (sourcePath != null && sourcePath.isNotEmpty) {
+      localPath = await ModelDocumentFileStore.saveFile(
+        userId: user.id,
+        modelId: modelId,
+        documentId: documentId,
+        originalFilename: picked.name,
+        sourcePath: sourcePath,
+      );
+    } else {
+      final bytes = picked.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        throw StateError('Impossible de lire le document sélectionné.');
+      }
+
+      localPath = await ModelDocumentFileStore.saveBytes(
+        userId: user.id,
+        modelId: modelId,
+        documentId: documentId,
+        originalFilename: picked.name,
+        bytes: bytes,
+      );
+    }
 
     final document = ModelDocument(
       id: documentId,

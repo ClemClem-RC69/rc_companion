@@ -7,6 +7,22 @@ import 'model_document_file_store_stub.dart'
 class ModelDocumentFileStore {
   ModelDocumentFileStore._();
 
+  static Future<String> saveFile({
+    required String userId,
+    required String modelId,
+    required String documentId,
+    required String originalFilename,
+    required String sourcePath,
+  }) {
+    return implementation.saveFile(
+      userId: userId,
+      modelId: modelId,
+      documentId: documentId,
+      originalFilename: originalFilename,
+      sourcePath: sourcePath,
+    );
+  }
+
   static Future<String> saveBytes({
     required String userId,
     required String modelId,
