@@ -93,7 +93,7 @@ BEGIN
             VALUE "FileDescription", "rc_companion" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "rc_companion" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "© 2026 RC Companion - Tous droits réservés." "\0"
             VALUE "OriginalFilename", "rc_companion.exe" "\0"
             VALUE "ProductName", "rc_companion" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
