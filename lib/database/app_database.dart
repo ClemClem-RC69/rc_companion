@@ -354,4 +354,59 @@ final class AppDatabase extends _$AppDatabase {
       ),
     );
   }
+
+  Future<void> clearUserData({required String userId}) async {
+    await transaction(() async {
+      await (delete(
+        localBatteryMeasurements,
+      )..where((row) => row.userId.equals(userId))).go();
+      await (delete(
+        localBatteries,
+      )..where((row) => row.userId.equals(userId))).go();
+      await (delete(
+        localSessions,
+      )..where((row) => row.userId.equals(userId))).go();
+      await (delete(
+        localModelDocuments,
+      )..where((row) => row.userId.equals(userId))).go();
+      await (delete(
+        localModelRadioSetups,
+      )..where((row) => row.userId.equals(userId))).go();
+      await (delete(
+        localModelSetups,
+      )..where((row) => row.userId.equals(userId))).go();
+      await (delete(
+        localMaintenanceRecords,
+      )..where((row) => row.userId.equals(userId))).go();
+      await (delete(
+        localRadios,
+      )..where((row) => row.userId.equals(userId))).go();
+      await (delete(
+        localModels,
+      )..where((row) => row.userId.equals(userId))).go();
+      await (delete(
+        syncQueueEntries,
+      )..where((row) => row.userId.equals(userId))).go();
+    });
+  }
+
+  Future<DateTime?> getHandledResetAt({required String userId}) async {
+    final row = await (select(
+      localSyncStates,
+    )..where((row) => row.userId.equals(userId))).getSingleOrNull();
+    return row?.lastAttemptAt;
+  }
+
+  Future<void> markResetHandled({
+    required String userId,
+    required DateTime resetAt,
+  }) async {
+    await into(localSyncStates).insertOnConflictUpdate(
+      LocalSyncStatesCompanion.insert(
+        userId: userId,
+        lastAttemptAt: Value(resetAt),
+        lastError: const Value(null),
+      ),
+    );
+  }
 }

@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../pages/radios_page.dart';
 import '../../models/battery.dart';
 import '../../models/rc_model.dart';
+import '../../services/account_service.dart';
 import '../../services/battery_local_store.dart';
 import '../../services/battery_service.dart';
 import '../../services/session_local_store.dart';
@@ -53,6 +54,7 @@ class _DashboardPageState extends State<DashboardPage>
   int totalRunMinutes = 0;
   int totalPacks = 0;
   List<double> chartValues = const <double>[];
+  String? accountPseudo;
 
   StreamSubscription<List<Battery>>? _batterySubscription;
   StreamSubscription? _measurementSubscription;
@@ -69,6 +71,14 @@ class _DashboardPageState extends State<DashboardPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    accountPseudo = Supabase
+        .instance
+        .client
+        .auth
+        .currentUser
+        ?.userMetadata?['pseudo']
+        ?.toString()
+        .trim();
     _startBatteryLiveUpdates();
     _startModelLiveUpdates();
     _startSessionLiveUpdates();
@@ -430,6 +440,8 @@ class _DashboardPageState extends State<DashboardPage>
         return;
       }
 
+      await _refreshAccountProfile();
+
       // Supabase alimente uniquement le cache local. Le Dashboard reste basé
       // sur Drift et se met à jour via les streams ci-dessus.
       try {
@@ -493,6 +505,586 @@ class _DashboardPageState extends State<DashboardPage>
       context,
       MaterialPageRoute(builder: (_) => page),
     ).then((_) => _loadDashboard());
+  }
+
+  Future<void> _refreshAccountProfile() async {
+    try {
+      final user = await AccountService.refreshUser();
+      if (!mounted) {
+        return;
+      }
+
+      final pseudo = user.userMetadata?['pseudo']?.toString().trim();
+      setState(() {
+        accountPseudo = pseudo == null || pseudo.isEmpty ? null : pseudo;
+      });
+    } catch (_) {
+      // Hors ligne : le pseudo déjà présent dans la session reste affiché.
+    }
+  }
+
+  Future<void> _showAccountDialog() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null || !mounted) {
+      return;
+    }
+
+    try {
+      await _refreshAccountProfile();
+    } catch (_) {}
+
+    if (!mounted) {
+      return;
+    }
+
+    final currentUser = Supabase.instance.client.auth.currentUser ?? user;
+    final pseudoController = TextEditingController(text: accountPseudo ?? '');
+
+    var savingPseudo = false;
+    String? message;
+    bool messageSuccess = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> savePseudo() async {
+            final pseudo = pseudoController.text.trim();
+
+            setDialogState(() {
+              savingPseudo = true;
+              message = null;
+            });
+
+            try {
+              final updated = await AccountService.updatePseudo(pseudo);
+              final updatedPseudo = updated.userMetadata?['pseudo']
+                  ?.toString()
+                  .trim();
+
+              if (mounted) {
+                setState(() {
+                  accountPseudo = updatedPseudo == null || updatedPseudo.isEmpty
+                      ? null
+                      : updatedPseudo;
+                });
+              }
+
+              if (!dialogContext.mounted) return;
+              setDialogState(() {
+                savingPseudo = false;
+                messageSuccess = true;
+                message = 'Pseudo enregistré et synchronisé.';
+              });
+            } on AuthException catch (error) {
+              if (!dialogContext.mounted) return;
+              setDialogState(() {
+                savingPseudo = false;
+                messageSuccess = false;
+                message = error.message;
+              });
+            } catch (_) {
+              if (!dialogContext.mounted) return;
+              setDialogState(() {
+                savingPseudo = false;
+                messageSuccess = false;
+                message = 'Impossible de modifier le pseudo.';
+              });
+            }
+          }
+
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.account_circle_rounded),
+                SizedBox(width: 10),
+                Text('Mon compte'),
+              ],
+            ),
+            content: SizedBox(
+              width: 500,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextFormField(
+                      initialValue:
+                          currentUser.email ?? 'Adresse e-mail non renseignée',
+                      readOnly: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Adresse e-mail',
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: pseudoController,
+                      enabled: !savingPseudo,
+                      decoration: const InputDecoration(
+                        labelText: 'Pseudo',
+                        hintText: 'Ajouter un pseudo',
+                        prefixIcon: Icon(Icons.person_outline_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: savingPseudo ? null : savePseudo,
+                      icon: savingPseudo
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save_outlined),
+                      label: Text(
+                        savingPseudo
+                            ? 'Enregistrement...'
+                            : 'Enregistrer le pseudo',
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    const Divider(),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: savingPseudo
+                          ? null
+                          : () async {
+                              Navigator.pop(dialogContext);
+                              await _showPasswordDialog();
+                            },
+                      icon: const Icon(Icons.lock_outline_rounded),
+                      label: const Text('Modifier mon mot de passe'),
+                    ),
+                    const SizedBox(height: 22),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF201A0D),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF8A6825)),
+                      ),
+                      child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: Color(0xFFFFC857),
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Après une déconnexion, une connexion Internet '
+                              'est nécessaire pour se reconnecter à RC Companion.',
+                              style: TextStyle(
+                                color: Color(0xFFFFD98A),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    const Divider(),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'ZONE DANGEREUSE',
+                      style: TextStyle(
+                        color: Color(0xFFFF6B64),
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: .4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Le RESET supprime les données de RC Companion sur le '
+                      'cloud et sur cet appareil. Le compte, l’adresse e-mail, '
+                      'le pseudo et le mot de passe sont conservés.',
+                      style: TextStyle(color: Color(0xFFB9C5D4)),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(dialogContext);
+                        await _confirmReset();
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFFF6B64),
+                        side: const BorderSide(color: Color(0xFF8A3430)),
+                      ),
+                      icon: const Icon(Icons.restart_alt_rounded),
+                      label: const Text('RESET — Réinitialiser l’application'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.end,
+            actions: [
+              SizedBox(
+                width: 220,
+                height: 48,
+                child: FilledButton.icon(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  icon: const Icon(Icons.close_rounded),
+                  label: const Text(
+                    'Fermer',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 40,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(dialogContext);
+                    await _logout();
+                  },
+                  icon: const Icon(Icons.logout_rounded, size: 18),
+                  label: const Text('Se déconnecter'),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    pseudoController.dispose();
+  }
+
+  Future<void> _showPasswordDialog() async {
+    final passwordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    var savingPassword = false;
+    var obscurePassword = true;
+    var obscureConfirmation = true;
+    String? message;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> savePassword() async {
+            final password = passwordController.text;
+            final confirmation = confirmPasswordController.text;
+
+            if (password != confirmation) {
+              setDialogState(() {
+                message = 'Les deux mots de passe ne correspondent pas.';
+              });
+              return;
+            }
+
+            setDialogState(() {
+              savingPassword = true;
+              message = null;
+            });
+
+            try {
+              await AccountService.updatePassword(password);
+
+              if (!dialogContext.mounted) {
+                return;
+              }
+
+              Navigator.pop(dialogContext);
+
+              if (!mounted) {
+                return;
+              }
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Mot de passe modifié avec succès.'),
+                ),
+              );
+            } on AuthException catch (error) {
+              if (!dialogContext.mounted) return;
+              setDialogState(() {
+                savingPassword = false;
+                message = error.message;
+              });
+            } catch (_) {
+              if (!dialogContext.mounted) return;
+              setDialogState(() {
+                savingPassword = false;
+                message = 'Impossible de modifier le mot de passe.';
+              });
+            }
+          }
+
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.lock_outline_rounded),
+                SizedBox(width: 10),
+                Text('Modifier mon mot de passe'),
+              ],
+            ),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Le mot de passe ne sera modifié qu’après validation.',
+                    style: TextStyle(color: Color(0xFF7F8DA0)),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: obscurePassword,
+                    enabled: !savingPassword,
+                    decoration: InputDecoration(
+                      labelText: 'Nouveau mot de passe',
+                      prefixIcon: const Icon(Icons.lock_outline_rounded),
+                      suffixIcon: IconButton(
+                        tooltip: obscurePassword
+                            ? 'Afficher le mot de passe'
+                            : 'Masquer le mot de passe',
+                        onPressed: savingPassword
+                            ? null
+                            : () {
+                                setDialogState(() {
+                                  obscurePassword = !obscurePassword;
+                                });
+                              },
+                        icon: Icon(
+                          obscurePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmPasswordController,
+                    obscureText: obscureConfirmation,
+                    enabled: !savingPassword,
+                    onSubmitted: (_) => savePassword(),
+                    decoration: InputDecoration(
+                      labelText: 'Confirmer le mot de passe',
+                      prefixIcon: const Icon(Icons.lock_reset_rounded),
+                      suffixIcon: IconButton(
+                        tooltip: obscureConfirmation
+                            ? 'Afficher le mot de passe'
+                            : 'Masquer le mot de passe',
+                        onPressed: savingPassword
+                            ? null
+                            : () {
+                                setDialogState(() {
+                                  obscureConfirmation = !obscureConfirmation;
+                                });
+                              },
+                        icon: Icon(
+                          obscureConfirmation
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (message != null) ...[
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        message!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: savingPassword
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('Annuler'),
+              ),
+              FilledButton.icon(
+                onPressed: savingPassword ? null : savePassword,
+                icon: savingPassword
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.password_rounded),
+                label: Text(
+                  savingPassword
+                      ? 'Modification...'
+                      : 'Modifier le mot de passe',
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    passwordController.dispose();
+    confirmPasswordController.dispose();
+
+    if (mounted) {
+      await _showAccountDialog();
+    }
+  }
+
+  Future<void> _confirmReset() async {
+    final confirmationController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final valid = confirmationController.text.trim() == 'RESET';
+
+          return AlertDialog(
+            title: const Text('RESET de RC Companion'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Cette opération est irréversible. Tous les modèles, '
+                  'batteries, relevés, sessions, maintenances, radios, '
+                  'documents et historiques seront supprimés.',
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Le RESET nécessite Internet et sera propagé aux autres '
+                  'appareils du même compte lorsqu’ils se reconnecteront.',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Pour continuer, saisis RESET en majuscules :',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: confirmationController,
+                  autofocus: true,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(
+                    hintText: 'RESET',
+                    prefixIcon: Icon(Icons.warning_amber_rounded),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: valid
+                    ? () => Navigator.pop(dialogContext, true)
+                    : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFB3261E),
+                ),
+                child: const Text('Continuer'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    confirmationController.dispose();
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    final finalConfirmation = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Dernière confirmation'),
+        content: const Text(
+          'Supprimer définitivement toutes les données de RC Companion ? '
+          'Cette action ne pourra pas être annulée.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB3261E),
+            ),
+            child: const Text('Réinitialiser définitivement'),
+          ),
+        ],
+      ),
+    );
+
+    if (finalConfirmation != true || !mounted) {
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 18),
+            Expanded(child: Text('Réinitialisation en cours...')),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      await AccountService.resetApplicationData();
+
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.of(context, rootNavigator: true).pop();
+      await _loadDashboard();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'RC Companion a été réinitialisé. Le compte est conservé.',
+          ),
+        ),
+      );
+    } on AuthException catch (error) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (error) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Le RESET n’a pas pu être terminé : $error')),
+      );
+    }
   }
 
   Future<void> _logout() async {
@@ -562,7 +1154,9 @@ class _DashboardPageState extends State<DashboardPage>
 
   Widget _dashboardContent({required bool desktop}) {
     final email = Supabase.instance.client.auth.currentUser?.email;
-    final name = _displayName(email);
+    final name = (accountPseudo != null && accountPseudo!.isNotEmpty)
+        ? accountPseudo!
+        : _displayName(email);
 
     return RefreshIndicator(
       onRefresh: _loadDashboard,
@@ -574,7 +1168,7 @@ class _DashboardPageState extends State<DashboardPage>
               name: name,
               onRefresh: _refreshDashboardManually,
               onInfo: () => _open(const InfoPage()),
-              onLogout: _logout,
+              onAccount: _showAccountDialog,
             ),
           ),
           SliverPadding(
@@ -986,11 +1580,11 @@ class _DashboardPageState extends State<DashboardPage>
               },
             ),
             ListTile(
-              leading: const Icon(Icons.logout_rounded),
-              title: const Text('Se déconnecter'),
+              leading: const Icon(Icons.account_circle_outlined),
+              title: const Text('Mon compte'),
               onTap: () {
                 Navigator.pop(sheetContext);
-                _logout();
+                _showAccountDialog();
               },
             ),
           ],
@@ -1006,14 +1600,14 @@ class _TopBar extends StatelessWidget {
     required this.name,
     required this.onRefresh,
     required this.onInfo,
-    required this.onLogout,
+    required this.onAccount,
   });
 
   final bool desktop;
   final String name;
   final Future<void> Function() onRefresh;
   final VoidCallback onInfo;
-  final VoidCallback onLogout;
+  final VoidCallback onAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -1082,21 +1676,21 @@ class _TopBar extends StatelessWidget {
             onPressed: onInfo,
             icon: const Icon(Icons.info_outline_rounded),
           ),
-          if (desktop) ...[
-            const SizedBox(width: 8),
-            CircleAvatar(
-              backgroundColor: const Color(0xFF185BEA),
-              child: Text(
-                name.isEmpty ? 'R' : name[0].toUpperCase(),
-                style: const TextStyle(fontWeight: FontWeight.w900),
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'Mon compte',
+            child: InkWell(
+              onTap: onAccount,
+              borderRadius: BorderRadius.circular(24),
+              child: CircleAvatar(
+                backgroundColor: const Color(0xFF185BEA),
+                child: Text(
+                  name.isEmpty ? 'R' : name[0].toUpperCase(),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
               ),
             ),
-            const SizedBox(width: 4),
-            IconButton(
-              onPressed: onLogout,
-              icon: const Icon(Icons.logout_rounded),
-            ),
-          ],
+          ),
         ],
       ),
     );
