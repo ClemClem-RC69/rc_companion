@@ -3,18 +3,16 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'battery_service.dart';
+import 'maintenance_service.dart';
 import 'model_service.dart';
+import 'session_local_store.dart';
 import 'supabase_service.dart';
 
-/// Pont temps réel global pour les données Drift.
+/// Pont temps réel global RC Companion.
 ///
-/// Architecture :
-/// Supabase Realtime -> refresh ciblé cloud -> Drift -> streams UI.
+/// Supabase Realtime -> rapprochement cloud ciblé -> Drift -> streams UI.
 ///
-/// Les écritures locales restent Drift-first et continuent d'être envoyées
-/// par la SyncQueue existante. Ce service sert uniquement à faire arriver
-/// immédiatement sur cet appareil les changements effectués sur les autres
-/// supports.
+/// Les écritures locales restent Drift-first via la SyncQueue existante.
 class RealtimeSyncService {
   RealtimeSyncService._();
 
@@ -23,14 +21,14 @@ class RealtimeSyncService {
 
   static Timer? _modelsDebounce;
   static Timer? _batteriesDebounce;
+  static Timer? _sessionsDebounce;
+  static Timer? _maintenanceDebounce;
 
   static bool _started = false;
   static String? _subscribedUserId;
 
   static Future<void> initialize() async {
-    if (_started) {
-      return;
-    }
+    if (_started) return;
     _started = true;
 
     _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen((
@@ -41,7 +39,6 @@ class RealtimeSyncService {
         unawaited(_stopChannel());
         return;
       }
-
       if (_subscribedUserId != userId) {
         unawaited(_startForUser(userId));
       }
@@ -54,21 +51,15 @@ class RealtimeSyncService {
   }
 
   static Future<void> dispose() async {
-    _modelsDebounce?.cancel();
-    _modelsDebounce = null;
-    _batteriesDebounce?.cancel();
-    _batteriesDebounce = null;
-
+    _cancelDebounces();
     await _authSubscription?.cancel();
     _authSubscription = null;
-
     await _stopChannel();
     _started = false;
   }
 
   static Future<void> _startForUser(String userId) async {
     await _stopChannel();
-
     _subscribedUserId = userId;
 
     final channel = SupabaseService.client
@@ -90,23 +81,52 @@ class RealtimeSyncService {
           schema: 'public',
           table: 'battery_measurements',
           callback: (_) => _scheduleBatteriesRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'rc_sessions',
+          callback: (_) => _scheduleSessionsRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'session_runs',
+          callback: (_) => _scheduleSessionsRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'session_run_batteries',
+          callback: (_) => _scheduleSessionsRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'session_run_measurements',
+          callback: (_) {
+            _scheduleSessionsRefresh();
+            _scheduleBatteriesRefresh();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_records',
+          callback: (_) => _scheduleMaintenanceRefresh(),
         );
 
     _channel = channel;
     channel.subscribe();
 
-    // À la connexion/authentification, on rapproche immédiatement Drift de
-    // l'état distant. Les stores locaux protègent déjà les entités qui ont
-    // une opération de synchronisation en attente.
     _scheduleModelsRefresh(immediate: true);
     _scheduleBatteriesRefresh(immediate: true);
+    _scheduleSessionsRefresh(immediate: true);
+    _scheduleMaintenanceRefresh(immediate: true);
   }
 
   static Future<void> _stopChannel() async {
-    _modelsDebounce?.cancel();
-    _modelsDebounce = null;
-    _batteriesDebounce?.cancel();
-    _batteriesDebounce = null;
+    _cancelDebounces();
 
     final channel = _channel;
     _channel = null;
@@ -116,9 +136,20 @@ class RealtimeSyncService {
       try {
         await SupabaseService.client.removeChannel(channel);
       } catch (_) {
-        // Le canal peut déjà être fermé lors d'une déconnexion réseau/auth.
+        // Le canal peut déjà être fermé lors d'une coupure réseau/auth.
       }
     }
+  }
+
+  static void _cancelDebounces() {
+    _modelsDebounce?.cancel();
+    _modelsDebounce = null;
+    _batteriesDebounce?.cancel();
+    _batteriesDebounce = null;
+    _sessionsDebounce?.cancel();
+    _sessionsDebounce = null;
+    _maintenanceDebounce?.cancel();
+    _maintenanceDebounce = null;
   }
 
   static void _scheduleModelsRefresh({bool immediate = false}) {
@@ -128,9 +159,7 @@ class RealtimeSyncService {
       () async {
         try {
           await ModelService.refreshModels();
-        } catch (_) {
-          // Hors ligne : Drift reste la source locale.
-        }
+        } catch (_) {}
       },
     );
   }
@@ -142,10 +171,71 @@ class RealtimeSyncService {
       () async {
         try {
           await BatteryService.refreshBatteries();
+        } catch (_) {}
+      },
+    );
+  }
+
+  static void _scheduleSessionsRefresh({bool immediate = false}) {
+    _sessionsDebounce?.cancel();
+    _sessionsDebounce = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 180),
+      () async {
+        try {
+          await _refreshSessionsFromCloud();
         } catch (_) {
-          // Hors ligne : Drift reste la source locale.
+          // Hors ligne : le cache Drift existant reste affiché.
         }
       },
     );
+  }
+
+  static void _scheduleMaintenanceRefresh({bool immediate = false}) {
+    _maintenanceDebounce?.cancel();
+    _maintenanceDebounce = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 120),
+      () async {
+        try {
+          await MaintenanceService.refreshFromCloud();
+        } catch (_) {
+          // Hors ligne : le cache Drift existant reste affiché.
+        }
+      },
+    );
+  }
+
+  static Future<void> _refreshSessionsFromCloud() async {
+    final user = SupabaseService.client.auth.currentUser;
+    if (user == null) return;
+
+    final response = await SupabaseService.client
+        .from('rc_sessions')
+        .select('''
+          *,
+          session_runs (
+            *,
+            session_run_batteries (
+              battery_code,
+              created_at
+            ),
+            session_run_measurements (
+              battery_code,
+              measured_at,
+              remaining_capacity_percent,
+              temperature_celsius,
+              cell_voltages,
+              cell_resistances
+            )
+          )
+        ''')
+        .eq('user_id', user.id)
+        .order('started_at', ascending: false)
+        .timeout(const Duration(seconds: 8));
+
+    final rows = response
+        .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+
+    await SessionLocalStore.replaceSessions(userId: user.id, rows: rows);
   }
 }

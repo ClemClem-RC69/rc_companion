@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../database/app_database.dart';
 import '../../models/rc_model.dart';
+import '../../services/maintenance_local_store.dart';
 import '../../services/maintenance_service.dart';
 import '../../services/model_setup_service.dart';
 import '../../services/supabase_service.dart';
@@ -33,18 +34,51 @@ class _MaintenancePageState extends State<MaintenancePage> {
   String _historySearch = '';
   String _historyCategory = 'Tous';
 
+  StreamSubscription<List<Map<String, dynamic>>>? _maintenanceSubscription;
+
   bool _initialRecordHandled = false;
 
   @override
   void initState() {
     super.initState();
+    _startMaintenanceLiveUpdates();
     _loadData();
   }
 
   @override
   void dispose() {
+    _maintenanceSubscription?.cancel();
     _historySearchController.dispose();
     super.dispose();
+  }
+
+  void _startMaintenanceLiveUpdates() {
+    final user = SupabaseService.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _maintenanceSubscription =
+        MaintenanceLocalStore.watchRecords(userId: user.id).listen((rows) {
+          if (!mounted || _models.isEmpty) {
+            return;
+          }
+
+          final modelById = <String, RcModel>{
+            for (final model in _models)
+              if (model.id != null && model.id!.isNotEmpty) model.id!: model,
+          };
+
+          final records = rows
+              .map((row) => _MaintenanceRecord.fromMap(row, modelById))
+              .toList(growable: false);
+
+          setState(() {
+            _records = records;
+            _errorMessage = null;
+            _isLoading = false;
+          });
+        });
   }
 
   Future<void> _loadData({bool refreshRemote = true}) async {

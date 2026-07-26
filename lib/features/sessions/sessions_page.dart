@@ -9,6 +9,7 @@ import '../../models/rc_session.dart';
 import '../../services/battery_service.dart';
 import '../../services/model_local_store.dart';
 import '../../services/supabase_service.dart';
+import '../../services/session_local_store.dart';
 import '../../services/session_service.dart';
 import '../batteries/battery_scanner_page.dart';
 import 'session_detail_page.dart';
@@ -36,16 +37,59 @@ class _SessionsPageState extends State<SessionsPage> {
   String _historySearch = '';
   String _historyCategory = 'Tous';
 
+  StreamSubscription<List<Map<String, dynamic>>>? _sessionSubscription;
+
   @override
   void initState() {
     super.initState();
+    _startSessionLiveUpdates();
     _loadData();
   }
 
   @override
   void dispose() {
+    _sessionSubscription?.cancel();
     _historySearchController.dispose();
     super.dispose();
+  }
+
+  void _startSessionLiveUpdates() {
+    final user = SupabaseService.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _sessionSubscription = SessionLocalStore.watchSessionRows(userId: user.id)
+        .listen((_) {
+          unawaited(_refreshSessionsFromLocal());
+        });
+  }
+
+  Future<void> _refreshSessionsFromLocal() async {
+    if (_availableModels.isEmpty) {
+      return;
+    }
+
+    try {
+      final loadedSessions = await SessionService.getSessions(
+        models: _availableModels,
+        batteries: _availableBatteries,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        sessions
+          ..clear()
+          ..addAll(loadedSessions);
+        _loadingError = null;
+        _isLoadingData = false;
+      });
+    } catch (_) {
+      // Une notification Drift ne doit jamais rendre la page inutilisable.
+    }
   }
 
   Future<void> _loadData() async {
@@ -196,6 +240,13 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   int _sessionIndex(RcSession session) {
+    final sessionId = session.id?.trim();
+
+    if (sessionId != null && sessionId.isNotEmpty) {
+      return sessions.indexWhere((item) => item.id?.trim() == sessionId);
+    }
+
+    // Fallback uniquement pour une session qui n'aurait pas encore d'ID.
     return sessions.indexWhere((item) => identical(item, session));
   }
 
