@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../pages/radios_page.dart';
+import '../../pages/radio_manual_viewer_page.dart';
 import '../../data/radio_control_catalog.dart';
 import '../../models/battery.dart';
 import '../../models/rc_model.dart';
@@ -1243,9 +1244,19 @@ class _DashboardPageState extends State<DashboardPage>
         final usableHeight =
             height - topBarHeight - copyrightHeight - gap * 4 - 4;
 
-        final metricsFlex = isPhone ? 14 : 23;
-        final middleFlex = isPhone ? 34 : 31;
-        final statsFlex = isPhone ? 52 : 46;
+        final mobilePlatform =
+            defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.android;
+
+        final metricsFlex = isPhone
+            ? 14
+            : (mobilePlatform && isPortrait ? 23 : 16);
+        final middleFlex = isPhone
+            ? 34
+            : (mobilePlatform && isPortrait ? 31 : 36);
+        final statsFlex = isPhone
+            ? 52
+            : (mobilePlatform && isPortrait ? 46 : 48);
         final totalFlex = metricsFlex + middleFlex + statsFlex;
 
         final metricHeight = usableHeight * metricsFlex / totalFlex;
@@ -1355,7 +1366,7 @@ class _DashboardPageState extends State<DashboardPage>
                               color: const Color(0xFFD9DEE8),
                               loading: false,
                               showValue: false,
-                              onTap: _showCurrentSessionRadioCommands,
+                              onTap: _showRadioCommandOrManualChoice,
                             ),
                           ),
                         ],
@@ -1421,13 +1432,124 @@ class _DashboardPageState extends State<DashboardPage>
         : breakages;
     final duration = _durationText(row);
 
+    final mobilePlatform =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android;
+
     return _CompactPanel(
       title: 'DERNIÈRE SESSION',
       isPhone: isPhone,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final veryTight = constraints.maxHeight < 95;
+          final tight = constraints.maxHeight < 120;
           final landscapeLike = constraints.maxWidth >= 430;
+
+          if (!mobilePlatform) {
+            return Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (!veryTight)
+                        Text(
+                          date,
+                          maxLines: 1,
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: isPhone ? 8 : 10,
+                          ),
+                        ),
+                      if (!veryTight) const SizedBox(height: 2),
+                      Text(
+                        model,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: isPhone ? 12 : 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      if (!veryTight) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          duration,
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: isPhone ? 10 : 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                      const Spacer(),
+                      SizedBox(
+                        height: veryTight
+                            ? 22
+                            : tight
+                            ? 25
+                            : (isPhone ? 27 : 32),
+                        child: OutlinedButton(
+                          onPressed: () => _open(const SessionsPage()),
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: veryTight ? 5 : (isPhone ? 7 : 10),
+                            ),
+                          ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Voir la session',
+                              style: TextStyle(
+                                fontSize: veryTight ? 8 : (isPhone ? 9 : 11),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: EdgeInsets.all(veryTight ? 2 : 4),
+                    child: Center(
+                      child: Transform.translate(
+                        offset: Offset(
+                          isPhone
+                              ? 0
+                              : veryTight
+                              ? -18
+                              : tight
+                              ? -22
+                              : -26,
+                          0,
+                        ),
+                        child: Transform.scale(
+                          scale: isPhone
+                              ? 1.12
+                              : veryTight
+                              ? 1.85
+                              : tight
+                              ? 1.95
+                              : 2.05,
+                          child: Image.asset(
+                            _categoryAsset(lastModelCategory),
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.high,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+
           final dateSize = isPhone ? 8.0 : (landscapeLike ? 13.0 : 12.0);
           final modelSize = isPhone ? 12.0 : (landscapeLike ? 18.0 : 17.0);
           final durationSize = isPhone ? 10.0 : (landscapeLike ? 17.0 : 16.0);
@@ -1549,13 +1671,104 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget _compactBatteryChargeCard({required bool isPhone}) {
+    final mobilePlatform =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android;
+
     return _CompactPanel(
       title: 'ÉTAT DES BATTERIES',
       isPhone: isPhone,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final veryTight = constraints.maxHeight < 95;
+          final tight = constraints.maxHeight < 120;
           final landscapeLike = constraints.maxWidth >= 430;
+
+          if (!mobilePlatform) {
+            return Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _compactBatteryStateLine(
+                        label: 'Chargées',
+                        value: chargedBatteries,
+                        color: const Color(0xFF2E9B57),
+                        isPhone: isPhone,
+                        desktopCompact: true,
+                      ),
+                      SizedBox(height: veryTight ? 1 : (isPhone ? 2 : 4)),
+                      _compactBatteryStateLine(
+                        label: 'Storage',
+                        value: storageBatteries,
+                        color: const Color(0xFF3578C8),
+                        isPhone: isPhone,
+                        desktopCompact: true,
+                      ),
+                      SizedBox(height: veryTight ? 1 : (isPhone ? 2 : 4)),
+                      _compactBatteryStateLine(
+                        label: 'À charger',
+                        value: batteriesToCharge,
+                        color: const Color(0xFFE28A2B),
+                        isPhone: isPhone,
+                        desktopCompact: true,
+                      ),
+                      const Spacer(),
+                      SizedBox(
+                        height: veryTight
+                            ? 22
+                            : tight
+                            ? 25
+                            : (isPhone ? 27 : 32),
+                        child: OutlinedButton(
+                          onPressed: () => _open(const BatteriesPage()),
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: veryTight ? 4 : (isPhone ? 5 : 8),
+                            ),
+                          ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Voir mes batteries',
+                              style: TextStyle(
+                                fontSize: veryTight ? 7 : (isPhone ? 8 : 10),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: EdgeInsets.all(veryTight ? 2 : 4),
+                    child: Center(
+                      child: Transform.scale(
+                        scale: isPhone
+                            ? 1.00
+                            : veryTight
+                            ? 1.45
+                            : tight
+                            ? 1.55
+                            : 1.65,
+                        child: Image.asset(
+                          'assets/images/rc_battery_dashboard_hd.png',
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+
           final lineGap = veryTight
               ? 1.0
               : (isPhone ? 2.0 : (landscapeLike ? 12.0 : 4.0));
@@ -1653,10 +1866,17 @@ class _DashboardPageState extends State<DashboardPage>
     required Color color,
     required bool isPhone,
     bool landscapeLike = false,
+    bool desktopCompact = false,
   }) {
-    final dotSize = isPhone ? 6.0 : (landscapeLike ? 10.0 : 9.0);
-    final labelSize = isPhone ? 9.0 : (landscapeLike ? 16.0 : 14.0);
-    final valueSize = isPhone ? 11.0 : (landscapeLike ? 19.0 : 17.0);
+    final dotSize = desktopCompact
+        ? (isPhone ? 6.0 : 8.0)
+        : (isPhone ? 6.0 : (landscapeLike ? 10.0 : 9.0));
+    final labelSize = desktopCompact
+        ? (isPhone ? 9.0 : 11.0)
+        : (isPhone ? 9.0 : (landscapeLike ? 16.0 : 14.0));
+    final valueSize = desktopCompact
+        ? (isPhone ? 11.0 : 14.0)
+        : (isPhone ? 11.0 : (landscapeLike ? 19.0 : 17.0));
 
     return Row(
       children: [
@@ -1665,7 +1885,11 @@ class _DashboardPageState extends State<DashboardPage>
           height: dotSize,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        SizedBox(width: isPhone ? 4 : (landscapeLike ? 10 : 6)),
+        SizedBox(
+          width: desktopCompact
+              ? (isPhone ? 4 : 6)
+              : (isPhone ? 4 : (landscapeLike ? 10 : 6)),
+        ),
         Expanded(
           child: Text(
             label,
@@ -1772,7 +1996,7 @@ class _DashboardPageState extends State<DashboardPage>
               onRefresh: _refreshDashboardManually,
               onInfo: () => _open(const InfoPage()),
               onAccount: _showAccountDialog,
-              onSession: _openContextualSession,
+              onSession: _handleNewSessionButton,
               hasActiveSession: hasActiveSession,
             ),
           ),
@@ -1859,7 +2083,7 @@ class _DashboardPageState extends State<DashboardPage>
         asset: 'assets/images/rc_icon_radio_nb4_hd.png',
         color: const Color(0xFFD9DEE8),
         showValue: false,
-        onTap: _showCurrentSessionRadioCommands,
+        onTap: _showRadioCommandOrManualChoice,
       ),
     ];
 
@@ -2574,6 +2798,199 @@ class _DashboardPageState extends State<DashboardPage>
     return labels[key] ?? key;
   }
 
+  Future<void> _showRadioCommandOrManualChoice() async {
+    final activeSession = await _currentOpenSession();
+
+    if (!mounted) {
+      return;
+    }
+
+    // Sans session en cours, on conserve exactement le comportement existant :
+    // sélection d'un modèle puis affichage de ses commandes radio.
+    if (activeSession == null) {
+      await _showCurrentSessionRadioCommands();
+      return;
+    }
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          'Radio — ${activeSession.model.name}',
+          overflow: TextOverflow.ellipsis,
+        ),
+        content: SizedBox(
+          width: 430,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(
+                  Icons.settings_remote_rounded,
+                  color: Color(0xFF168CFF),
+                ),
+                title: const Text(
+                  'Commandes radio',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: const Text(
+                  'Afficher l’affectation des boutons et commandes.',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(dialogContext, 'commands'),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(
+                  Icons.menu_book_rounded,
+                  color: Color(0xFF168CFF),
+                ),
+                title: const Text(
+                  'Manuel',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: const Text(
+                  'Ouvrir le manuel de la radio associée au modèle.',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(dialogContext, 'manual'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || choice == null) {
+      return;
+    }
+
+    if (choice == 'commands') {
+      await _showCurrentSessionRadioCommands();
+      return;
+    }
+
+    if (choice == 'manual') {
+      await _openCurrentSessionRadioManual(activeSession);
+    }
+  }
+
+  Future<void> _openCurrentSessionRadioManual(RcSession activeSession) async {
+    final radioId = activeSession.model.radioId?.trim();
+
+    if (radioId == null || radioId.isEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('Manuel — ${activeSession.model.name}'),
+          content: const Text('Aucune radio n’est associée à ce modèle.'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Fermer'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final radioService = RadioService();
+    final radios = await radioService.fetchRadios();
+
+    dynamic radio;
+    for (final candidate in radios) {
+      if (candidate.id == radioId) {
+        radio = candidate;
+        break;
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (radio == null) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('Manuel — ${activeSession.model.name}'),
+          content: const Text('La radio associée à ce modèle est introuvable.'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Fermer'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    if (radio.hasManual != true) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('Manuel — ${radio.fullName}'),
+          content: const Text(
+            'Aucun manuel n’est enregistré pour cette radio.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Fermer'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    try {
+      final path = await radioService.getManualLocalPath(radio);
+
+      if (!mounted) {
+        return;
+      }
+
+      final action = await Navigator.of(context).push<RadioManualViewerAction>(
+        MaterialPageRoute<RadioManualViewerAction>(
+          builder: (_) => RadioManualViewerPage(
+            path: path,
+            filename: radio.manualName ?? 'Manuel',
+          ),
+        ),
+      );
+
+      if (!mounted || action == null) {
+        return;
+      }
+
+      switch (action) {
+        case RadioManualViewerAction.replace:
+          await radioService.addOrReplaceManual(radio);
+          break;
+        case RadioManualViewerAction.delete:
+          await radioService.deleteManual(radio);
+          break;
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible d’ouvrir le manuel : $error')),
+      );
+    }
+  }
+
   Future<void> _showCurrentSessionRadioCommands() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null || !mounted) {
@@ -3233,10 +3650,16 @@ class _CompactPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mobilePlatform =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final veryTight = constraints.maxHeight < 110;
-        final landscapeLike = !isPhone && constraints.maxWidth >= 430;
+        final landscapeLike =
+            mobilePlatform && !isPhone && constraints.maxWidth >= 430;
+
         final padding = veryTight
             ? 6.0
             : (isPhone ? 8.0 : (landscapeLike ? 16.0 : 10.0));
@@ -3266,7 +3689,7 @@ class _CompactPanel extends StatelessWidget {
                         style: TextStyle(
                           fontSize: veryTight
                               ? 8
-                              : (isPhone ? 9 : (landscapeLike ? 19 : 16)),
+                              : (isPhone ? 9 : (landscapeLike ? 19 : 11)),
                           fontWeight: FontWeight.w900,
                         ),
                       ),
