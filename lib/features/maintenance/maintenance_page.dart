@@ -28,12 +28,23 @@ class _MaintenancePageState extends State<MaintenancePage> {
   List<RcModel> _models = [];
   List<_MaintenanceRecord> _records = [];
 
+  final TextEditingController _historySearchController =
+      TextEditingController();
+  String _historySearch = '';
+  String _historyCategory = 'Tous';
+
   bool _initialRecordHandled = false;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _historySearchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData({bool refreshRemote = true}) async {
@@ -718,137 +729,256 @@ class _MaintenancePageState extends State<MaintenancePage> {
           ? const _EmptyMaintenanceState()
           : RefreshIndicator(
               onRefresh: _loadData,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                children: [
-                  const Text(
-                    'Historique',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  for (final record in _records)
-                    Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => _showDetails(record),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-                          child: Row(
-                            children: [
-                              CircleAvatar(child: Icon(record.type.icon)),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      record.modelName,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleLarge
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${record.type.label} • '
-                                      '${_formatDate(record.date)}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    if (record.title.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Text(record.title),
-                                    ],
-                                    if (record.type ==
-                                        _MaintenanceType.revision) ...[
-                                      const SizedBox(height: 8),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          Chip(
-                                            avatar: const Icon(
-                                              Icons.battery_charging_full,
-                                              size: 18,
-                                            ),
-                                            label: Text(
-                                              '${record.packsSinceLastRevision ?? 0} pack(s)',
-                                            ),
-                                          ),
-                                          Chip(
-                                            avatar: const Icon(
-                                              Icons.timer_outlined,
-                                              size: 18,
-                                            ),
-                                            label: Text(
-                                              _durationLabel(
-                                                record
-                                                    .runtimeMinutesSinceLastRevision,
+              child: Builder(
+                builder: (context) {
+                  final query = _historySearch.trim().toLowerCase();
+                  final filteredRecords = _records
+                      .where((record) {
+                        final matchesCategory =
+                            _historyCategory == 'Tous' ||
+                            record.modelCategory.toLowerCase() ==
+                                _historyCategory.toLowerCase();
+                        final matchesSearch =
+                            query.isEmpty ||
+                            record.modelName.toLowerCase().contains(query) ||
+                            record.modelBrand.toLowerCase().contains(query);
+
+                        return matchesCategory && matchesSearch;
+                      })
+                      .toList(growable: false);
+
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                    children: [
+                      const Text(
+                        'Historique',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _MaintenanceFilterBar(
+                        controller: _historySearchController,
+                        selectedCategory: _historyCategory,
+                        onSearchChanged: (value) {
+                          setState(() {
+                            _historySearch = value;
+                          });
+                        },
+                        onCategoryChanged: (value) {
+                          setState(() {
+                            _historyCategory = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      if (filteredRecords.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 48),
+                          child: Center(
+                            child: Text(
+                              'Aucune maintenance ne correspond à la recherche.',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      for (final record in filteredRecords)
+                        Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => _showDetails(record),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(child: Icon(record.type.icon)),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          record.modelName,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleLarge
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w800,
                                               ),
-                                            ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${record.type.label} • '
+                                          '${_formatDate(record.date)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        if (record.title.isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Text(record.title),
+                                        ],
+                                        if (record.type ==
+                                            _MaintenanceType.revision) ...[
+                                          const SizedBox(height: 8),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: [
+                                              Chip(
+                                                avatar: const Icon(
+                                                  Icons.battery_charging_full,
+                                                  size: 18,
+                                                ),
+                                                label: Text(
+                                                  '${record.packsSinceLastRevision ?? 0} pack(s)',
+                                                ),
+                                              ),
+                                              Chip(
+                                                avatar: const Icon(
+                                                  Icons.timer_outlined,
+                                                  size: 18,
+                                                ),
+                                                label: Text(
+                                                  _durationLabel(
+                                                    record
+                                                        .runtimeMinutesSinceLastRevision,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ],
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuButton<String>(
+                                    tooltip: 'Options',
+                                    onSelected: (value) {
+                                      if (value == 'details') {
+                                        _showDetails(record);
+                                      } else if (value == 'edit') {
+                                        _openEditDialog(record);
+                                      } else if (value == 'delete') {
+                                        _deleteRecord(record);
+                                      }
+                                    },
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(
+                                        value: 'details',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.visibility_outlined),
+                                            SizedBox(width: 10),
+                                            Text('Voir'),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit_outlined),
+                                            SizedBox(width: 10),
+                                            Text('Modifier'),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete_outline),
+                                            SizedBox(width: 10),
+                                            Text('Supprimer'),
+                                          ],
+                                        ),
                                       ),
                                     ],
-                                  ],
-                                ),
-                              ),
-                              PopupMenuButton<String>(
-                                tooltip: 'Options',
-                                onSelected: (value) {
-                                  if (value == 'details') {
-                                    _showDetails(record);
-                                  } else if (value == 'edit') {
-                                    _openEditDialog(record);
-                                  } else if (value == 'delete') {
-                                    _deleteRecord(record);
-                                  }
-                                },
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
-                                    value: 'details',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.visibility_outlined),
-                                        SizedBox(width: 10),
-                                        Text('Voir'),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'edit',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.edit_outlined),
-                                        SizedBox(width: 10),
-                                        Text('Modifier'),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'delete',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete_outline),
-                                        SizedBox(width: 10),
-                                        Text('Supprimer'),
-                                      ],
-                                    ),
                                   ),
                                 ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                ],
+                    ],
+                  );
+                },
               ),
             ),
+    );
+  }
+}
+
+class _MaintenanceFilterBar extends StatelessWidget {
+  const _MaintenanceFilterBar({
+    required this.controller,
+    required this.selectedCategory,
+    required this.onSearchChanged,
+    required this.onCategoryChanged,
+  });
+
+  final TextEditingController controller;
+  final String selectedCategory;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String> onCategoryChanged;
+
+  static const List<String> _categories = ['Tous', 'Voiture', 'Bateau', 'Moto'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: controller,
+            onChanged: onSearchChanged,
+            textInputAction: TextInputAction.search,
+            decoration: const InputDecoration(
+              hintText: 'Marque ou modèle',
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 12,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 112,
+          child: DropdownButtonFormField<String>(
+            initialValue: selectedCategory,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 12,
+              ),
+            ),
+            items: _categories
+                .map(
+                  (category) => DropdownMenuItem(
+                    value: category,
+                    child: Text(category, overflow: TextOverflow.ellipsis),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) {
+                onCategoryChanged(value);
+              }
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1803,6 +1933,8 @@ class _MaintenanceRecord {
     required this.id,
     required this.modelId,
     required this.modelName,
+    required this.modelBrand,
+    required this.modelCategory,
     required this.date,
     required this.type,
     required this.title,
@@ -1815,6 +1947,8 @@ class _MaintenanceRecord {
   final String id;
   final String modelId;
   final String modelName;
+  final String modelBrand;
+  final String modelCategory;
   final DateTime date;
   final _MaintenanceType type;
   final String title;
@@ -1862,6 +1996,8 @@ class _MaintenanceRecord {
       id: row['id'] as String,
       modelId: modelId,
       modelName: model?.name ?? 'Modèle supprimé',
+      modelBrand: model?.brand ?? '',
+      modelCategory: model?.category ?? '',
       date: DateTime.parse(row['maintenance_date'].toString()).toLocal(),
       type: _MaintenanceType.fromDatabase(
         row['record_type'] as String? ?? 'REVISION',

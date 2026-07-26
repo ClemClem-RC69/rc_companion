@@ -26,6 +26,20 @@ class _BatteriesPageState extends State<BatteriesPage> {
   bool _localRefreshScheduled = false;
   String? _errorMessage;
 
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  String _selectedTechnology = 'Toutes';
+
+  static const List<String> _technologyFilters = [
+    'Toutes',
+    'LiPo',
+    'LiHV',
+    'Li-Ion',
+    'LiFe',
+    'NiMH',
+    'NiCd',
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -34,6 +48,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _batterySubscription?.cancel();
     _measurementSubscription?.cancel();
     super.dispose();
@@ -616,6 +631,93 @@ class _BatteriesPageState extends State<BatteriesPage> {
     );
   }
 
+  bool _matchesFilters(Battery battery) {
+    final query = _searchQuery.trim().toLowerCase();
+
+    final matchesTechnology =
+        _selectedTechnology == 'Toutes' ||
+        battery.technology == _selectedTechnology;
+
+    final matchesSearch =
+        query.isEmpty ||
+        battery.id.toLowerCase().contains(query) ||
+        battery.brand.toLowerCase().contains(query);
+
+    return matchesTechnology && matchesSearch;
+  }
+
+  Widget _buildSearchAndFilterBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: 'Marque ou ID…',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Effacer',
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                        icon: const Icon(Icons.clear),
+                      ),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 104, maxWidth: 120),
+            child: DropdownButtonFormField<String>(
+              initialValue: _selectedTechnology,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 13,
+                ),
+                border: OutlineInputBorder(),
+              ),
+              items: _technologyFilters
+                  .map(
+                    (technology) => DropdownMenuItem<String>(
+                      value: technology,
+                      child: Text(technology, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) {
+                if (value == null) {
+                  return;
+                }
+
+                setState(() {
+                  _selectedTechnology = value;
+                });
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBatteryTile(Battery battery, {bool insidePair = false}) {
     return Card(
       margin: EdgeInsets.only(bottom: insidePair ? 6 : 10),
@@ -781,8 +883,11 @@ class _BatteriesPageState extends State<BatteriesPage> {
 
     final pairedBatteries = <String, List<Battery>>{};
     final singleBatteries = <Battery>[];
+    final filteredBatteries = _batteries
+        .where(_matchesFilters)
+        .toList(growable: false);
 
-    for (final battery in _batteries) {
+    for (final battery in filteredBatteries) {
       final pairId = battery.pairId;
 
       if (pairId != null && pairId.isNotEmpty) {
@@ -802,6 +907,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
         padding: const EdgeInsets.only(bottom: 24),
         children: [
           _buildActions(),
+          if (_batteries.isNotEmpty) _buildSearchAndFilterBar(),
           if (_batteries.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 140),
@@ -812,6 +918,25 @@ class _BatteriesPageState extends State<BatteriesPage> {
                   Text(
                     'Aucune batterie pour le moment',
                     style: TextStyle(fontSize: 20),
+                  ),
+                ],
+              ),
+            )
+          else if (filteredBatteries.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 80),
+              child: Column(
+                children: [
+                  Icon(Icons.search_off, size: 56),
+                  SizedBox(height: 14),
+                  Text(
+                    'Aucune batterie trouvée',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Modifie la recherche ou le filtre de technologie.',
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),

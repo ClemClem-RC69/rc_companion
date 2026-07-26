@@ -29,10 +29,21 @@ class _SessionsPageState extends State<SessionsPage> {
   bool _isLoadingData = true;
   String? _loadingError;
 
+  final TextEditingController _historySearchController =
+      TextEditingController();
+  String _historySearch = '';
+  String _historyCategory = 'Tous';
+
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _historySearchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -1261,11 +1272,11 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   Widget _buildSessionHistory() {
-    final closedSessions =
+    final allClosedSessions =
         sessions.where((session) => session.isClosed).toList()
           ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
 
-    if (closedSessions.isEmpty) {
+    if (allClosedSessions.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
@@ -1278,6 +1289,22 @@ class _SessionsPageState extends State<SessionsPage> {
       );
     }
 
+    final query = _historySearch.trim().toLowerCase();
+    final closedSessions = allClosedSessions
+        .where((session) {
+          final matchesCategory =
+              _historyCategory == 'Tous' ||
+              session.model.category.toLowerCase() ==
+                  _historyCategory.toLowerCase();
+          final matchesSearch =
+              query.isEmpty ||
+              session.model.name.toLowerCase().contains(query) ||
+              session.model.brand.toLowerCase().contains(query);
+
+          return matchesCategory && matchesSearch;
+        })
+        .toList(growable: false);
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
       children: [
@@ -1286,6 +1313,31 @@ class _SessionsPageState extends State<SessionsPage> {
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
+        _HistoryFilterBar(
+          controller: _historySearchController,
+          selectedCategory: _historyCategory,
+          onSearchChanged: (value) {
+            setState(() {
+              _historySearch = value;
+            });
+          },
+          onCategoryChanged: (value) {
+            setState(() {
+              _historyCategory = value;
+            });
+          },
+        ),
+        const SizedBox(height: 12),
+        if (closedSessions.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: Center(
+              child: Text(
+                'Aucune session ne correspond à la recherche.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
         for (final session in closedSessions)
           Card(
             margin: const EdgeInsets.only(bottom: 12),
@@ -1558,6 +1610,76 @@ class _SessionsPageState extends State<SessionsPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _HistoryFilterBar extends StatelessWidget {
+  const _HistoryFilterBar({
+    required this.controller,
+    required this.selectedCategory,
+    required this.onSearchChanged,
+    required this.onCategoryChanged,
+  });
+
+  final TextEditingController controller;
+  final String selectedCategory;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String> onCategoryChanged;
+
+  static const List<String> _categories = ['Tous', 'Voiture', 'Bateau', 'Moto'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: controller,
+            onChanged: onSearchChanged,
+            textInputAction: TextInputAction.search,
+            decoration: const InputDecoration(
+              hintText: 'Marque ou modèle',
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 12,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 112,
+          child: DropdownButtonFormField<String>(
+            initialValue: selectedCategory,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 12,
+              ),
+            ),
+            items: _categories
+                .map(
+                  (category) => DropdownMenuItem(
+                    value: category,
+                    child: Text(category, overflow: TextOverflow.ellipsis),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) {
+                onCategoryChanged(value);
+              }
+            },
+          ),
+        ),
+      ],
     );
   }
 }
