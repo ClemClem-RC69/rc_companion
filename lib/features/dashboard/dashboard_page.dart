@@ -4108,7 +4108,9 @@ class _MetricCard extends StatelessWidget {
                   : Stack(
                       children: [
                         Align(
-                          alignment: Alignment.centerLeft,
+                          alignment: data.showValue
+                              ? Alignment.centerLeft
+                              : Alignment.center,
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.center,
