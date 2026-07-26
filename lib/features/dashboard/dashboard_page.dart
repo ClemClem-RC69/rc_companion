@@ -11,6 +11,8 @@ import '../../data/radio_control_catalog.dart';
 import '../../models/battery.dart';
 import '../../models/rc_model.dart';
 import '../../models/rc_session.dart';
+import '../../models/model_radio_setup.dart';
+import '../../models/radio.dart';
 import '../../services/account_service.dart';
 import '../../services/battery_local_store.dart';
 import '../../services/battery_service.dart';
@@ -3148,128 +3150,11 @@ class _DashboardPageState extends State<DashboardPage>
       return;
     }
 
-    final setupService = ModelRadioSetupService();
-    final radioService = RadioService();
-
-    final setup = await setupService.getSetup(modelId: modelId);
-    final radios = await radioService.fetchRadios();
-
-    dynamic selectedRadio;
-    for (final radio in radios) {
-      if (radio.id == radioId) {
-        selectedRadio = radio;
-        break;
-      }
-    }
-
-    RadioControlLayout? layout;
-    if (selectedRadio != null) {
-      layout = radioControlLayoutFor(
-        brand: selectedRadio.brand,
-        model: selectedRadio.model,
-      );
-    }
-
-    final assignments = <({String label, String value})>[];
-
-    if (setup != null && layout != null) {
-      for (final control in layout.controls) {
-        final key = 'control_assignment_${control.key}';
-        if (!setup.enabledFields.contains(key)) {
-          continue;
-        }
-
-        final value = setup.value(key).trim();
-        assignments.add((
-          label: control.label,
-          value: value.isEmpty ? 'Non renseignée' : value,
-        ));
-      }
-    }
-
-    if (!mounted) {
-      return;
-    }
-
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.settings_remote_rounded),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Commandes radio — ${model.name}',
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (selectedRadio != null) ...[
-                Text(
-                  selectedRadio.fullName,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
-              if (assignments.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 18),
-                  child: Text(
-                    'Aucune affectation de commande radio enregistrée '
-                    'pour ce modèle.',
-                    textAlign: TextAlign.center,
-                  ),
-                )
-              else
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 420),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: assignments.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final item = assignments[index];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(
-                          Icons.radio_button_checked_rounded,
-                          color: Color(0xFF168CFF),
-                        ),
-                        title: Text(
-                          item.label,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        subtitle: Text(item.value),
-                      );
-                    },
-                  ),
-                ),
-              const SizedBox(height: 8),
-              const Text(
-                'Affichage uniquement — aucune modification possible ici.',
-                style: TextStyle(color: Color(0xFF7F8DA0), fontSize: 12),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Fermer'),
-          ),
-        ],
+      builder: (dialogContext) => _LiveRadioCommandsDialog(
+        modelId: modelId!,
+        fallbackModelName: model.name,
       ),
     );
   }
@@ -3315,6 +3200,215 @@ class _DashboardPageState extends State<DashboardPage>
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LiveRadioCommandsDialog extends StatefulWidget {
+  const _LiveRadioCommandsDialog({
+    required this.modelId,
+    required this.fallbackModelName,
+  });
+
+  final String modelId;
+  final String fallbackModelName;
+
+  @override
+  State<_LiveRadioCommandsDialog> createState() =>
+      _LiveRadioCommandsDialogState();
+}
+
+class _LiveRadioCommandsDialogState extends State<_LiveRadioCommandsDialog> {
+  final ModelRadioSetupService _setupService = ModelRadioSetupService();
+  final RadioService _radioService = RadioService();
+
+  StreamSubscription<List<RcModel>>? _modelSubscription;
+  StreamSubscription<List<RcRadio>>? _radioSubscription;
+  StreamSubscription<ModelRadioSetup?>? _setupSubscription;
+
+  RcModel? _model;
+  List<RcRadio> _radios = const [];
+  ModelRadioSetup? _setup;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      _modelSubscription = ModelLocalStore.watchModels(userId: user.id).listen((
+        models,
+      ) {
+        RcModel? selected;
+        for (final model in models) {
+          if (model.id?.trim() == widget.modelId) {
+            selected = model;
+            break;
+          }
+        }
+        if (!mounted) return;
+        setState(() => _model = selected);
+      });
+    }
+
+    _radioSubscription = _radioService.watchRadios().listen((radios) {
+      if (!mounted) return;
+      setState(() => _radios = radios);
+    });
+
+    _setupSubscription = _setupService
+        .watchSetup(modelId: widget.modelId)
+        .listen((setup) {
+          if (!mounted) return;
+          setState(() => _setup = setup);
+        });
+  }
+
+  @override
+  void dispose() {
+    _modelSubscription?.cancel();
+    _radioSubscription?.cancel();
+    _setupSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final modelName = _model?.name.trim().isNotEmpty == true
+        ? _model!.name.trim()
+        : widget.fallbackModelName;
+
+    final radioId = _model?.radioId?.trim();
+
+    RcRadio? selectedRadio;
+    if (radioId != null && radioId.isNotEmpty) {
+      for (final radio in _radios) {
+        if (radio.id == radioId) {
+          selectedRadio = radio;
+          break;
+        }
+      }
+    }
+
+    RadioControlLayout? layout;
+    if (selectedRadio != null) {
+      layout = radioControlLayoutFor(
+        brand: selectedRadio.brand,
+        model: selectedRadio.model ?? '',
+      );
+    }
+
+    final assignments = <({String label, String value})>[];
+    final setup = _setup;
+
+    if (setup != null && layout != null) {
+      for (final control in layout.controls) {
+        final key = 'control_assignment_${control.key}';
+        if (!setup.enabledFields.contains(key)) {
+          continue;
+        }
+
+        final value = setup.value(key).trim();
+        assignments.add((
+          label: control.label,
+          value: value.isEmpty ? 'Non renseignée' : value,
+        ));
+      }
+    }
+
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.settings_remote_rounded),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Commandes radio — $modelName',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 520,
+        child: radioId == null || radioId.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Text(
+                  'Aucune radio n’est associée à ce modèle.',
+                  textAlign: TextAlign.center,
+                ),
+              )
+            : selectedRadio == null
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Text(
+                  'La radio associée à ce modèle est introuvable.',
+                  textAlign: TextAlign.center,
+                ),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    selectedRadio.fullName,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  if (assignments.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 18),
+                      child: Text(
+                        'Aucune affectation de commande radio enregistrée '
+                        'pour ce modèle.',
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 420),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: assignments.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = assignments[index];
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(
+                              Icons.radio_button_checked_rounded,
+                              color: Color(0xFF168CFF),
+                            ),
+                            title: Text(
+                              item.label,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            subtitle: Text(item.value),
+                          );
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Affichage uniquement — mise à jour automatique.',
+                    style: TextStyle(color: Color(0xFF7F8DA0), fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Fermer'),
+        ),
+      ],
     );
   }
 }

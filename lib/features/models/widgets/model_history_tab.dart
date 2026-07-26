@@ -14,6 +14,7 @@ import '../../../services/session_local_store.dart';
 import '../../../services/session_service.dart';
 import '../../../services/maintenance_local_store.dart';
 import '../../../services/maintenance_service.dart';
+import '../../../services/model_local_store.dart';
 import '../../../services/supabase_service.dart';
 
 class ModelHistoryTab extends StatefulWidget {
@@ -33,15 +34,19 @@ class ModelHistoryTab extends StatefulWidget {
 class _ModelHistoryTabState extends State<ModelHistoryTab> {
   List<RcSession> _sessions = [];
   List<_ModelMaintenanceRecord> _maintenances = [];
+  late RcModel _currentModel;
 
   bool _isLoading = true;
   String? _errorMessage;
+  StreamSubscription<List<RcModel>>? _modelSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _sessionSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _maintenanceSubscription;
 
   @override
   void initState() {
     super.initState();
+    _currentModel = widget.model;
+    _startModelLiveUpdates();
     _startSessionLiveUpdates();
     _startMaintenanceLiveUpdates();
     _loadHistory();
@@ -49,9 +54,39 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
 
   @override
   void dispose() {
+    _modelSubscription?.cancel();
     _sessionSubscription?.cancel();
     _maintenanceSubscription?.cancel();
     super.dispose();
+  }
+
+  void _startModelLiveUpdates() {
+    final user = SupabaseService.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _modelSubscription = ModelLocalStore.watchModels(userId: user.id).listen((
+      models,
+    ) {
+      RcModel? updated;
+      for (final model in models) {
+        if (model.id?.trim() == widget.modelId) {
+          updated = model;
+          break;
+        }
+      }
+
+      if (!mounted || updated == null) {
+        return;
+      }
+
+      setState(() {
+        _currentModel = updated!;
+      });
+
+      unawaited(_refreshSessionsFromLocal());
+    });
   }
 
   void _startSessionLiveUpdates() {
@@ -123,7 +158,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       final batteries = await BatteryService.getCachedBatteries();
       final sessions =
           (await SessionService.getSessions(
-            models: [widget.model],
+            models: [_currentModel],
             batteries: batteries,
           )).where((session) => session.isClosed).toList(growable: false)..sort(
             (first, second) => second.startedAt.compareTo(first.startedAt),
@@ -157,7 +192,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       final batteries = await BatteryService.getCachedBatteries();
       final sessions =
           (await SessionService.getSessions(
-            models: [widget.model],
+            models: [_currentModel],
             batteries: batteries,
           )).where((session) => session.isClosed).toList(growable: false)..sort(
             (first, second) => second.startedAt.compareTo(first.startedAt),
@@ -227,7 +262,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         _TimelineItem.maintenance(maintenance),
     ];
 
-    final acquisitionDate = widget.model.acquisitionDate;
+    final acquisitionDate = _currentModel.acquisitionDate;
 
     if (acquisitionDate != null) {
       items.add(
@@ -703,7 +738,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          '${_formatDate(date)} • ${widget.model.formattedAcquisition}',
+          '${_formatDate(date)} • ${_currentModel.formattedAcquisition}',
         ),
       ),
     );
@@ -724,7 +759,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
   Future<Uint8List> _buildPdf(PdfPageFormat format) async {
     pw.ImageProvider? modelImage;
 
-    final photoUrl = widget.model.photoUrl?.trim() ?? '';
+    final photoUrl = _currentModel.photoUrl?.trim() ?? '';
     if (photoUrl.isNotEmpty) {
       try {
         modelImage = await networkImage(photoUrl);
@@ -734,7 +769,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     }
 
     final document = pw.Document(
-      title: 'Historique ${widget.model.name}',
+      title: 'Historique ${_currentModel.name}',
       author: 'RC Companion',
       subject: 'Carnet de vie du modèle',
       creator: 'RC Companion',
@@ -798,12 +833,12 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
 
   pw.Widget _pdfVisualHeader(pw.ImageProvider? modelImage) {
     final subtitleValues = <String>[
-      widget.model.brand.trim(),
-      widget.model.category.trim(),
-      widget.model.scale.trim(),
-      if (widget.model.discipline.trim().isNotEmpty)
-        widget.model.discipline.trim(),
-      widget.model.motorization.trim(),
+      _currentModel.brand.trim(),
+      _currentModel.category.trim(),
+      _currentModel.scale.trim(),
+      if (_currentModel.discipline.trim().isNotEmpty)
+        _currentModel.discipline.trim(),
+      _currentModel.motorization.trim(),
     ].where((value) => value.isNotEmpty).toList(growable: false);
 
     return pw.Row(
@@ -837,7 +872,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  widget.model.name,
+                  _currentModel.name,
                   style: pw.TextStyle(
                     fontSize: 25,
                     fontWeight: pw.FontWeight.bold,
@@ -940,30 +975,30 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
 
   pw.Widget _pdfCompactModelInformation() {
     final items = <_PdfLabelValue>[
-      _PdfLabelValue('Catégorie', widget.model.category),
-      if (widget.model.discipline.trim().isNotEmpty)
-        _PdfLabelValue('Discipline', widget.model.discipline),
-      _PdfLabelValue('Motorisation', widget.model.motorization),
-      _PdfLabelValue('Échelle', widget.model.scale),
-      if (widget.model.motorization == 'Électrique')
+      _PdfLabelValue('Catégorie', _currentModel.category),
+      if (_currentModel.discipline.trim().isNotEmpty)
+        _PdfLabelValue('Discipline', _currentModel.discipline),
+      _PdfLabelValue('Motorisation', _currentModel.motorization),
+      _PdfLabelValue('Échelle', _currentModel.scale),
+      if (_currentModel.motorization == 'Électrique')
         _PdfLabelValue(
           'Nombre de batteries',
-          widget.model.batteryCount.toString(),
+          _currentModel.batteryCount.toString(),
         ),
-      if (widget.model.motorization == 'Électrique')
-        _PdfLabelValue('Configuration maxi', widget.model.maxCells),
-      if (widget.model.weightKg != null)
-        _PdfLabelValue('Poids', widget.model.formattedWeight),
-      if (widget.model.hasAcquisitionDate)
-        _PdfLabelValue('Acquisition', widget.model.formattedAcquisitionDate),
-      if (widget.model.purchaseType != null &&
-          widget.model.purchaseType!.trim().isNotEmpty)
-        _PdfLabelValue('Type d\u0027achat', widget.model.purchaseType!.trim()),
-      if (widget.model.purchaseLocation != null &&
-          widget.model.purchaseLocation!.trim().isNotEmpty)
+      if (_currentModel.motorization == 'Électrique')
+        _PdfLabelValue('Configuration maxi', _currentModel.maxCells),
+      if (_currentModel.weightKg != null)
+        _PdfLabelValue('Poids', _currentModel.formattedWeight),
+      if (_currentModel.hasAcquisitionDate)
+        _PdfLabelValue('Acquisition', _currentModel.formattedAcquisitionDate),
+      if (_currentModel.purchaseType != null &&
+          _currentModel.purchaseType!.trim().isNotEmpty)
+        _PdfLabelValue('Type d\u0027achat', _currentModel.purchaseType!.trim()),
+      if (_currentModel.purchaseLocation != null &&
+          _currentModel.purchaseLocation!.trim().isNotEmpty)
         _PdfLabelValue(
           'Lieu d\u0027achat',
-          widget.model.purchaseLocation!.trim(),
+          _currentModel.purchaseLocation!.trim(),
         ),
     ];
 
@@ -1182,12 +1217,12 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     }
 
     final acquisitionDetails = <String>[
-      if (widget.model.purchaseType != null &&
-          widget.model.purchaseType!.trim().isNotEmpty)
-        'Modèle acheté ${widget.model.purchaseType!.trim().toLowerCase()}',
-      if (widget.model.purchaseLocation != null &&
-          widget.model.purchaseLocation!.trim().isNotEmpty)
-        'chez ${widget.model.purchaseLocation!.trim()}',
+      if (_currentModel.purchaseType != null &&
+          _currentModel.purchaseType!.trim().isNotEmpty)
+        'Modèle acheté ${_currentModel.purchaseType!.trim().toLowerCase()}',
+      if (_currentModel.purchaseLocation != null &&
+          _currentModel.purchaseLocation!.trim().isNotEmpty)
+        'chez ${_currentModel.purchaseLocation!.trim()}',
     ].join(' ');
 
     return pw.TableRow(
@@ -1196,7 +1231,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         _pdfHistoryCell('Acquisition'),
         _pdfHistoryCell(
           acquisitionDetails.isEmpty
-              ? widget.model.formattedAcquisition
+              ? _currentModel.formattedAcquisition
               : '$acquisitionDetails.',
         ),
         _pdfHistoryCell('-'),
@@ -1218,7 +1253,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
   }
 
   String get _pdfFileName {
-    final cleanName = widget.model.name
+    final cleanName = _currentModel.name
         .trim()
         .replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_')
         .replaceAll(RegExp(r'_+'), '_');
@@ -1233,7 +1268,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => _ModelHistoryPdfPreviewPage(
-          title: 'Historique — ${widget.model.name}',
+          title: 'Historique — ${_currentModel.name}',
           fileName: _pdfFileName,
           buildPdf: _buildPdf,
         ),
