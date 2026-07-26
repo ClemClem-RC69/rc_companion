@@ -20,18 +20,51 @@ class ModelsPage extends StatefulWidget {
 class _ModelsPageState extends State<ModelsPage> {
   final SupabaseClient supabase = Supabase.instance.client;
 
+  final TextEditingController _searchController = TextEditingController();
+
   List<_StoredModel> models = [];
 
   StreamSubscription<List<RcModel>>? _modelsSubscription;
 
   bool isLoading = true;
   String? errorMessage;
+  String _selectedCategory = 'Tous';
+
+  List<_StoredModel> get _filteredModels {
+    final query = _searchController.text.trim().toLowerCase();
+
+    return models
+        .where((storedModel) {
+          final model = storedModel.model;
+
+          final matchesCategory =
+              _selectedCategory == 'Tous' ||
+              model.category == _selectedCategory;
+
+          final matchesSearch =
+              query.isEmpty ||
+              model.name.toLowerCase().contains(query) ||
+              model.brand.toLowerCase().contains(query);
+
+          return matchesCategory && matchesSearch;
+        })
+        .toList(growable: false);
+  }
 
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(_onSearchChanged);
     _startModelLiveUpdates();
     loadModels();
+  }
+
+  void _onSearchChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
   }
 
   void _startModelLiveUpdates() {
@@ -47,6 +80,8 @@ class _ModelsPageState extends State<ModelsPage> {
 
   @override
   void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
     _modelsSubscription?.cancel();
     super.dispose();
   }
@@ -373,22 +408,103 @@ class _ModelsPageState extends State<ModelsPage> {
       );
     }
 
+    final filteredModels = _filteredModels;
+
     return RefreshIndicator(
       onRefresh: _refreshModelsManually,
-      child: ListView.builder(
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-        itemCount: models.length,
-        itemBuilder: (context, index) {
-          final storedModel = models[index];
-
-          return _ModelCard(
-            storedModel: storedModel,
-            onTap: () => openModelDetail(storedModel),
-            onEdit: () => editModel(storedModel),
-            onDelete: () => confirmDelete(storedModel),
-          );
-        },
+        children: [
+          _buildSearchAndFilterBar(),
+          const SizedBox(height: 14),
+          if (filteredModels.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 80),
+              child: Column(
+                children: [
+                  Icon(Icons.search_off, size: 56),
+                  SizedBox(height: 14),
+                  Text(
+                    'Aucun modèle trouvé',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Modifie la recherche ou le filtre de catégorie.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            )
+          else
+            ...filteredModels.map(
+              (storedModel) => _ModelCard(
+                storedModel: storedModel,
+                onTap: () => openModelDetail(storedModel),
+                onEdit: () => editModel(storedModel),
+                onDelete: () => confirmDelete(storedModel),
+              ),
+            ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildSearchAndFilterBar() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _searchController,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Marque ou modèle…',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Effacer',
+                      onPressed: _searchController.clear,
+                      icon: const Icon(Icons.clear),
+                    ),
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 104, maxWidth: 120),
+          child: DropdownButtonFormField<String>(
+            value: _selectedCategory,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 13,
+              ),
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'Tous', child: Text('Tous')),
+              DropdownMenuItem(value: 'Voiture', child: Text('Voiture')),
+              DropdownMenuItem(value: 'Bateau', child: Text('Bateau')),
+              DropdownMenuItem(value: 'Moto', child: Text('Moto')),
+            ],
+            onChanged: (value) {
+              if (value == null) {
+                return;
+              }
+
+              setState(() {
+                _selectedCategory = value;
+              });
+            },
+          ),
+        ),
+      ],
     );
   }
 }
