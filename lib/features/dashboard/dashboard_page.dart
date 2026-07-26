@@ -51,6 +51,7 @@ class _DashboardPageState extends State<DashboardPage>
   bool loading = true;
   Map<String, dynamic>? lastSession;
   String lastModelCategory = 'Voiture';
+  String lastModelName = '';
   int totalRunMinutes = 0;
   int totalPacks = 0;
   List<double> chartValues = const <double>[];
@@ -174,12 +175,18 @@ class _DashboardPageState extends State<DashboardPage>
 
       final currentModelId = lastSession?['model_id']?.toString().trim();
       String? currentCategory;
+      String? currentName;
       if (currentModelId != null && currentModelId.isNotEmpty) {
         for (final model in models) {
           if (model.id?.trim() == currentModelId) {
             final category = model.category.trim();
             if (category.isNotEmpty) {
               currentCategory = category;
+            }
+
+            final name = model.name.trim();
+            if (name.isNotEmpty) {
+              currentName = name;
             }
             break;
           }
@@ -190,6 +197,9 @@ class _DashboardPageState extends State<DashboardPage>
         modelCount = models.length;
         if (currentCategory != null) {
           lastModelCategory = currentCategory!;
+        }
+        if (currentName != null) {
+          lastModelName = currentName!;
         }
         loading = false;
       });
@@ -232,11 +242,24 @@ class _DashboardPageState extends State<DashboardPage>
       return;
     }
 
+    final recent = rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+    final recentModelId = recent?['model_id']?.toString().trim();
+
     var runMinutes = 0;
     var packs = 0;
     final valuesByDay = <DateTime, int>{};
 
+    // Le bloc Statistiques représente toujours le même modèle que la carte
+    // "Dernière session". Les autres modèles n'entrent pas dans le calcul.
     for (final session in rows) {
+      final sessionModelId = session['model_id']?.toString().trim();
+
+      if (recentModelId == null ||
+          recentModelId.isEmpty ||
+          sessionModelId != recentModelId) {
+        continue;
+      }
+
       final runs = (session['session_runs'] as List<dynamic>? ?? const []);
       for (final rawRun in runs) {
         final run = Map<String, dynamic>.from(rawRun as Map);
@@ -266,19 +289,27 @@ class _DashboardPageState extends State<DashboardPage>
       chart.add(cumulativeMinutes);
     }
 
-    final recent = rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
     var category = 'Voiture';
+    var modelName =
+        _firstText(recent, ['model_name', 'name', 'model', 'title']) ?? '';
 
     final user = Supabase.instance.client.auth.currentUser;
-    final modelId = recent?['model_id']?.toString().trim();
-    if (user != null && modelId != null && modelId.isNotEmpty) {
+    if (user != null && recentModelId != null && recentModelId.isNotEmpty) {
       final model = await ModelLocalStore.getModel(
         userId: user.id,
-        modelId: modelId,
+        modelId: recentModelId,
       );
+
       final localCategory = model?.category.trim();
       if (localCategory != null && localCategory.isNotEmpty) {
         category = localCategory;
+      }
+
+      // RcModel.name contient le nom du modèle uniquement : la marque
+      // n'est donc pas ajoutée au titre des statistiques.
+      final localName = model?.name.trim();
+      if (localName != null && localName.isNotEmpty) {
+        modelName = localName;
       }
     }
 
@@ -290,6 +321,7 @@ class _DashboardPageState extends State<DashboardPage>
       sessionCount = rows.length;
       lastSession = recent;
       lastModelCategory = category;
+      lastModelName = modelName;
       totalRunMinutes = runMinutes;
       totalPacks = packs;
       chartValues = chart;
@@ -1198,6 +1230,18 @@ class _DashboardPageState extends State<DashboardPage>
                 ],
                 const SizedBox(height: 16),
                 _statisticsCard(),
+                const SizedBox(height: 18),
+                Center(
+                  child: Text(
+                    '© ${DateTime.now().year} RC Companion — Tous droits réservés.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF65758A),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
               ]),
             ),
           ),
@@ -1452,6 +1496,16 @@ class _DashboardPageState extends State<DashboardPage>
 
     return _DashboardPanel(
       title: 'STATISTIQUES — ÉVOLUTION RÉELLE',
+      titleTrailing: lastModelName.isEmpty
+          ? null
+          : Text(
+              lastModelName,
+              style: const TextStyle(
+                color: Color(0xFF168CFF),
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth > 620;
@@ -1464,7 +1518,7 @@ class _DashboardPageState extends State<DashboardPage>
               ),
               const SizedBox(height: 12),
               _StatLine(
-                icon: Icons.rocket_launch_outlined,
+                icon: Icons.battery_5_bar_rounded,
                 label: 'Nombre de packs utilisés',
                 value: '$totalPacks',
               ),
@@ -1659,8 +1713,11 @@ class _TopBar extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   const Text(
-                    'Voici un résumé de votre activité.',
-                    style: TextStyle(color: Color(0xFF7F8DA0)),
+                    'Dashboard',
+                    style: TextStyle(
+                      color: Color(0xFF168BFF),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),
@@ -1954,10 +2011,15 @@ class _MetricCard extends StatelessWidget {
 }
 
 class _DashboardPanel extends StatelessWidget {
-  const _DashboardPanel({required this.title, required this.child});
+  const _DashboardPanel({
+    required this.title,
+    required this.child,
+    this.titleTrailing,
+  });
 
   final String title;
   final Widget child;
+  final Widget? titleTrailing;
 
   @override
   Widget build(BuildContext context) {
@@ -1971,9 +2033,26 @@ class _DashboardPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+          Wrap(
+            spacing: 6,
+            runSpacing: 2,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              if (titleTrailing != null) ...[
+                const Text(
+                  '—',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+                ),
+                titleTrailing!,
+              ],
+            ],
           ),
           const SizedBox(height: 14),
           child,
