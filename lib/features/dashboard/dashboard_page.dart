@@ -1230,6 +1230,7 @@ class _DashboardPageState extends State<DashboardPage>
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
         final isPhone = width < 600;
+        final isPortrait = height >= width;
 
         final horizontalPadding = isPhone ? 8.0 : 14.0;
         final gap = isPhone ? 6.0 : 10.0;
@@ -1242,9 +1243,9 @@ class _DashboardPageState extends State<DashboardPage>
         final usableHeight =
             height - topBarHeight - copyrightHeight - gap * 4 - 4;
 
-        final metricsFlex = isPhone ? 14 : 16;
-        final middleFlex = isPhone ? 34 : 36;
-        final statsFlex = isPhone ? 52 : 48;
+        final metricsFlex = isPhone ? 14 : 23;
+        final middleFlex = isPhone ? 34 : 31;
+        final statsFlex = isPhone ? 52 : 46;
         final totalFlex = metricsFlex + middleFlex + statsFlex;
 
         final metricHeight = usableHeight * metricsFlex / totalFlex;
@@ -1293,6 +1294,9 @@ class _DashboardPageState extends State<DashboardPage>
                     SizedBox(
                       height: metricHeight,
                       child: Row(
+                        crossAxisAlignment: isPortrait
+                            ? CrossAxisAlignment.stretch
+                            : CrossAxisAlignment.center,
                         children: [
                           SizedBox(
                             width: metricWidth,
@@ -1408,6 +1412,13 @@ class _DashboardPageState extends State<DashboardPage>
     final model =
         _firstText(row, ['model_name', 'name', 'model', 'title']) ??
         'Aucun modèle';
+    final place =
+        _firstText(row, ['location', 'place', 'terrain']) ??
+        'Lieu non renseigné';
+    final breakages = _firstText(row, ['breakages']);
+    final incidentText = breakages == null || breakages.trim().isEmpty
+        ? 'Aucune casse'
+        : breakages;
     final duration = _durationText(row);
 
     return _CompactPanel(
@@ -1416,67 +1427,94 @@ class _DashboardPageState extends State<DashboardPage>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final veryTight = constraints.maxHeight < 95;
-          final tight = constraints.maxHeight < 120;
+          final landscapeLike = constraints.maxWidth >= 430;
+          final dateSize = isPhone ? 8.0 : (landscapeLike ? 13.0 : 12.0);
+          final modelSize = isPhone ? 12.0 : (landscapeLike ? 18.0 : 17.0);
+          final durationSize = isPhone ? 10.0 : (landscapeLike ? 17.0 : 16.0);
+          final detailSize = isPhone ? 8.0 : (landscapeLike ? 13.0 : 12.0);
+          final buttonHeight = veryTight
+              ? 22.0
+              : (isPhone ? 27.0 : (landscapeLike ? 46.0 : 38.0));
+          final buttonTextSize = veryTight
+              ? 8.0
+              : (isPhone ? 9.0 : (landscapeLike ? 16.0 : 13.0));
 
           return Row(
             children: [
               Expanded(
-                flex: 3,
+                flex: 44,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (!veryTight)
+                    if (!veryTight) ...[
                       Text(
                         date,
                         maxLines: 1,
                         style: TextStyle(
                           color: Colors.white70,
-                          fontSize: isPhone ? 8 : 10,
+                          fontSize: dateSize,
                         ),
                       ),
-                    if (!veryTight) const SizedBox(height: 2),
+                      SizedBox(height: landscapeLike ? 8 : 2),
+                    ],
                     Text(
                       model,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: isPhone ? 12 : 15,
+                        fontSize: modelSize,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                     if (!veryTight) ...[
-                      const SizedBox(height: 2),
+                      SizedBox(height: landscapeLike ? 6 : 2),
                       Text(
                         duration,
                         maxLines: 1,
                         style: TextStyle(
-                          fontSize: isPhone ? 10 : 13,
+                          fontSize: durationSize,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
+                      if (!isPhone) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          incidentText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: const Color(0xFF7F8DA0),
+                            fontSize: detailSize,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          place,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: const Color(0xFF65758A),
+                            fontSize: detailSize - 1,
+                          ),
+                        ),
+                      ],
                     ],
                     const Spacer(),
                     SizedBox(
-                      height: veryTight
-                          ? 22
-                          : tight
-                          ? 25
-                          : (isPhone ? 27 : 32),
+                      height: buttonHeight,
                       child: OutlinedButton(
                         onPressed: () => _open(const SessionsPage()),
                         style: OutlinedButton.styleFrom(
                           padding: EdgeInsets.symmetric(
-                            horizontal: veryTight ? 5 : (isPhone ? 7 : 10),
+                            horizontal: landscapeLike ? 20 : 7,
                           ),
                         ),
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
                             'Voir la session',
-                            style: TextStyle(
-                              fontSize: veryTight ? 8 : (isPhone ? 9 : 11),
-                            ),
+                            style: TextStyle(fontSize: buttonTextSize),
                           ),
                         ),
                       ),
@@ -1485,34 +1523,19 @@ class _DashboardPageState extends State<DashboardPage>
                 ),
               ),
               Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: EdgeInsets.all(veryTight ? 2 : 4),
-                  child: Center(
-                    child: Transform.translate(
-                      offset: Offset(
-                        isPhone
-                            ? 0
-                            : veryTight
-                            ? -18
-                            : tight
-                            ? -22
-                            : -26,
-                        0,
-                      ),
-                      child: Transform.scale(
-                        scale: isPhone
-                            ? 1.12
-                            : veryTight
-                            ? 1.85
-                            : tight
-                            ? 1.95
-                            : 2.05,
-                        child: Image.asset(
-                          _categoryAsset(lastModelCategory),
-                          fit: BoxFit.contain,
-                          filterQuality: FilterQuality.high,
-                        ),
+                flex: 56,
+                child: Center(
+                  child: Transform.translate(
+                    offset: Offset(
+                      isPhone ? 0 : (landscapeLike ? -4 : -18),
+                      landscapeLike ? 4 : 0,
+                    ),
+                    child: Transform.scale(
+                      scale: isPhone ? 0.88 : (landscapeLike ? 1.34 : 1.08),
+                      child: Image.asset(
+                        _categoryAsset(lastModelCategory),
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
                       ),
                     ),
                   ),
@@ -1532,12 +1555,21 @@ class _DashboardPageState extends State<DashboardPage>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final veryTight = constraints.maxHeight < 95;
-          final tight = constraints.maxHeight < 120;
+          final landscapeLike = constraints.maxWidth >= 430;
+          final lineGap = veryTight
+              ? 1.0
+              : (isPhone ? 2.0 : (landscapeLike ? 12.0 : 4.0));
+          final buttonHeight = veryTight
+              ? 22.0
+              : (isPhone ? 27.0 : (landscapeLike ? 46.0 : 32.0));
+          final buttonTextSize = veryTight
+              ? 7.0
+              : (isPhone ? 8.0 : (landscapeLike ? 16.0 : 13.0));
 
           return Row(
             children: [
               Expanded(
-                flex: 3,
+                flex: 44,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -1546,41 +1578,41 @@ class _DashboardPageState extends State<DashboardPage>
                       value: chargedBatteries,
                       color: const Color(0xFF2E9B57),
                       isPhone: isPhone,
+                      landscapeLike: landscapeLike,
                     ),
-                    SizedBox(height: veryTight ? 1 : (isPhone ? 2 : 4)),
+                    SizedBox(height: lineGap),
                     _compactBatteryStateLine(
                       label: 'Storage',
                       value: storageBatteries,
                       color: const Color(0xFF3578C8),
                       isPhone: isPhone,
+                      landscapeLike: landscapeLike,
                     ),
-                    SizedBox(height: veryTight ? 1 : (isPhone ? 2 : 4)),
+                    SizedBox(height: lineGap),
                     _compactBatteryStateLine(
                       label: 'À charger',
                       value: batteriesToCharge,
                       color: const Color(0xFFE28A2B),
                       isPhone: isPhone,
+                      landscapeLike: landscapeLike,
                     ),
                     const Spacer(),
-                    SizedBox(
-                      height: veryTight
-                          ? 22
-                          : tight
-                          ? 25
-                          : (isPhone ? 27 : 32),
-                      child: OutlinedButton(
-                        onPressed: () => _open(const BatteriesPage()),
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: veryTight ? 4 : (isPhone ? 5 : 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        height: buttonHeight,
+                        child: OutlinedButton(
+                          onPressed: () => _open(const BatteriesPage()),
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: landscapeLike ? 18 : 5,
+                            ),
                           ),
-                        ),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            'Voir mes batteries',
-                            style: TextStyle(
-                              fontSize: veryTight ? 7 : (isPhone ? 8 : 10),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Voir mes batteries',
+                              style: TextStyle(fontSize: buttonTextSize),
                             ),
                           ),
                         ),
@@ -1590,18 +1622,15 @@ class _DashboardPageState extends State<DashboardPage>
                 ),
               ),
               Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: EdgeInsets.all(veryTight ? 2 : 4),
-                  child: Center(
+                flex: 56,
+                child: Center(
+                  child: Transform.translate(
+                    offset: Offset(
+                      landscapeLike ? 5 : 0,
+                      landscapeLike ? 4 : 0,
+                    ),
                     child: Transform.scale(
-                      scale: isPhone
-                          ? 1.00
-                          : veryTight
-                          ? 1.45
-                          : tight
-                          ? 1.55
-                          : 1.65,
+                      scale: isPhone ? 0.86 : (landscapeLike ? 1.28 : 1.06),
                       child: Image.asset(
                         'assets/images/rc_battery_dashboard_hd.png',
                         fit: BoxFit.contain,
@@ -1623,31 +1652,33 @@ class _DashboardPageState extends State<DashboardPage>
     required int value,
     required Color color,
     required bool isPhone,
+    bool landscapeLike = false,
   }) {
+    final dotSize = isPhone ? 6.0 : (landscapeLike ? 10.0 : 9.0);
+    final labelSize = isPhone ? 9.0 : (landscapeLike ? 16.0 : 14.0);
+    final valueSize = isPhone ? 11.0 : (landscapeLike ? 19.0 : 17.0);
+
     return Row(
       children: [
         Container(
-          width: isPhone ? 6 : 8,
-          height: isPhone ? 6 : 8,
+          width: dotSize,
+          height: dotSize,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        SizedBox(width: isPhone ? 4 : 6),
+        SizedBox(width: isPhone ? 4 : (landscapeLike ? 10 : 6)),
         Expanded(
           child: Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: isPhone ? 9 : 11,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(fontSize: labelSize, fontWeight: FontWeight.w600),
           ),
         ),
         Text(
           '$value',
           style: TextStyle(
             color: color,
-            fontSize: isPhone ? 11 : 14,
+            fontSize: valueSize,
             fontWeight: FontWeight.w900,
           ),
         ),
@@ -3068,66 +3099,121 @@ class _CompactMetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0B1A2D),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final portraitLike =
+            constraints.maxHeight > constraints.maxWidth * 0.85;
+
+        return InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFF23405E)),
-        ),
-        child: loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-            : Row(
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: Image.asset(
-                      asset,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                    ),
-                  ),
-                  const SizedBox(width: 3),
-                  Expanded(
-                    flex: 5,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (showValue) ...[
-                            Text(
-                              '$value',
-                              style: TextStyle(
-                                color: color,
-                                fontSize: 18,
-                                height: 1,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                          ],
-                          Text(
+          child: Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: portraitLike ? 6 : 5,
+              vertical: portraitLike ? 8 : 5,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0B1A2D),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF23405E)),
+            ),
+            child: loading
+                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                : portraitLike
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        flex: 6,
+                        child: Center(
+                          child: Image.asset(
+                            asset,
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.high,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      if (showValue) ...[
+                        Text(
+                          '$value',
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 24,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                      Flexible(
+                        flex: 3,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
                             label,
                             maxLines: 2,
-                            textAlign: TextAlign.left,
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
-                              fontSize: 8,
-                              height: 1,
+                              fontSize: 11,
+                              height: 1.05,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: Image.asset(
+                          asset,
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      Expanded(
+                        flex: 5,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (showValue) ...[
+                                Text(
+                                  '$value',
+                                  style: TextStyle(
+                                    color: color,
+                                    fontSize: 18,
+                                    height: 1,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                              ],
+                              Text(
+                                label,
+                                maxLines: 2,
+                                textAlign: TextAlign.left,
+                                style: const TextStyle(
+                                  fontSize: 8,
+                                  height: 1,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -3150,8 +3236,13 @@ class _CompactPanel extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final veryTight = constraints.maxHeight < 110;
-        final padding = veryTight ? 6.0 : (isPhone ? 8.0 : 10.0);
-        final titleGap = veryTight ? 3.0 : (isPhone ? 5.0 : 7.0);
+        final landscapeLike = !isPhone && constraints.maxWidth >= 430;
+        final padding = veryTight
+            ? 6.0
+            : (isPhone ? 8.0 : (landscapeLike ? 16.0 : 10.0));
+        final titleGap = veryTight
+            ? 3.0
+            : (isPhone ? 5.0 : (landscapeLike ? 14.0 : 7.0));
 
         return Container(
           padding: EdgeInsets.all(padding),
@@ -3173,7 +3264,9 @@ class _CompactPanel extends StatelessWidget {
                         title,
                         maxLines: 1,
                         style: TextStyle(
-                          fontSize: veryTight ? 8 : (isPhone ? 9 : 11),
+                          fontSize: veryTight
+                              ? 8
+                              : (isPhone ? 9 : (landscapeLike ? 19 : 16)),
                           fontWeight: FontWeight.w900,
                         ),
                       ),
