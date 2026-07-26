@@ -14,7 +14,9 @@ import '../batteries/battery_scanner_page.dart';
 import 'session_detail_page.dart';
 
 class SessionsPage extends StatefulWidget {
-  const SessionsPage({super.key});
+  const SessionsPage({super.key, this.historyOnly = false});
+
+  final bool historyOnly;
 
   @override
   State<SessionsPage> createState() => _SessionsPageState();
@@ -1258,25 +1260,28 @@ class _SessionsPageState extends State<SessionsPage> {
           ),
         ],
       ),
-      floatingActionButton: activeSession == null
+      floatingActionButton: !widget.historyOnly && activeSession == null
           ? FloatingActionButton.extended(
               onPressed: _openSession,
               icon: const Icon(Icons.play_arrow),
               label: const Text('Ouvrir une session'),
             )
           : null,
-      body: activeSession == null
+      body: widget.historyOnly
+          ? _buildSessionHistory()
+          : activeSession == null
           ? _buildSessionHistory()
           : _buildActiveSession(activeSession),
     );
   }
 
   Widget _buildSessionHistory() {
+    final activeSession = _activeSession;
     final allClosedSessions =
         sessions.where((session) => session.isClosed).toList()
           ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
 
-    if (allClosedSessions.isEmpty) {
+    if (activeSession == null && allClosedSessions.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
@@ -1312,6 +1317,95 @@ class _SessionsPageState extends State<SessionsPage> {
           'Historique',
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
+        if (activeSession != null) ...[
+          const SizedBox(height: 12),
+          Card(
+            margin: EdgeInsets.zero,
+            color: const Color(0xFF0A2C5A),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SessionsPage()),
+                ).then((_) => _loadData());
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.play_circle_fill_rounded,
+                      size: 32,
+                      color: Color(0xFF58A6FF),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1565C0),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: const Text(
+                              'SESSION EN COURS',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: .4,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            activeSession.model.name,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(_formatDateTime(activeSession.startedAt)),
+                              const Text('•'),
+                              Text('${activeSession.runs.length} roulage(s)'),
+                              const Text('•'),
+                              Text(
+                                _durationLabel(
+                                  activeSession.totalDurationMinutes,
+                                ),
+                              ),
+                              if (activeSession.location.isNotEmpty) ...[
+                                const Text('•'),
+                                Text(
+                                  activeSession.location,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Icon(Icons.chevron_right_rounded),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         _HistoryFilterBar(
           controller: _historySearchController,

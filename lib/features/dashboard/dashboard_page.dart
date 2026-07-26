@@ -5,20 +5,29 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../pages/radios_page.dart';
+import '../../data/radio_control_catalog.dart';
 import '../../models/battery.dart';
 import '../../models/rc_model.dart';
+import '../../models/rc_session.dart';
 import '../../services/account_service.dart';
 import '../../services/battery_local_store.dart';
 import '../../services/battery_service.dart';
 import '../../services/session_local_store.dart';
+import '../../services/session_service.dart';
 import '../../services/maintenance_local_store.dart';
 import '../../services/maintenance_service.dart';
 import '../batteries/batteries_page.dart';
+import '../batteries/battery_detail_page.dart';
 import '../info/info_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../models/models_page.dart';
+import '../models/model_detail_page.dart';
 import '../sessions/sessions_page.dart';
+import '../sessions/session_detail_page.dart';
 import '../../services/model_local_store.dart';
+import '../../services/model_setup_service.dart';
+import '../../services/model_radio_setup_service.dart';
+import '../../services/radio_service.dart';
 
 class _BatteryChargeMetrics {
   const _BatteryChargeMetrics({
@@ -49,12 +58,15 @@ class _DashboardPageState extends State<DashboardPage>
   int storageBatteries = 0;
   int batteriesToCharge = 0;
   bool loading = true;
+  bool hasActiveSession = false;
   Map<String, dynamic>? lastSession;
   String lastModelCategory = 'Voiture';
   String lastModelName = '';
   int totalRunMinutes = 0;
   int totalPacks = 0;
   List<double> chartValues = const <double>[];
+  List<double> chartPackValues = const <double>[];
+  List<String> chartDateLabels = const <String>[];
   String? accountPseudo;
 
   StreamSubscription<List<Battery>>? _batterySubscription;
@@ -244,10 +256,15 @@ class _DashboardPageState extends State<DashboardPage>
 
     final recent = rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
     final recentModelId = recent?['model_id']?.toString().trim();
+    final activeSessionExists = rows.any((row) {
+      final endedAt = row['ended_at']?.toString().trim();
+      return endedAt == null || endedAt.isEmpty;
+    });
 
     var runMinutes = 0;
     var packs = 0;
-    final valuesByDay = <DateTime, int>{};
+    final minutesByDay = <DateTime, int>{};
+    final packsByDay = <DateTime, int>{};
 
     // Le bloc Statistiques représente toujours le même modèle que la carte
     // "Dernière session". Les autres modèles n'entrent pas dans le calcul.
@@ -272,21 +289,32 @@ class _DashboardPageState extends State<DashboardPage>
         )?.toLocal();
         if (startedAt != null) {
           final day = DateTime(startedAt.year, startedAt.month, startedAt.day);
-          valuesByDay.update(
+          minutesByDay.update(
             day,
             (value) => value + duration,
             ifAbsent: () => duration,
           );
+          packsByDay.update(day, (value) => value + 1, ifAbsent: () => 1);
         }
       }
     }
 
-    final sortedDays = valuesByDay.keys.toList()..sort();
+    final sortedDays = minutesByDay.keys.toList()..sort();
     var cumulativeMinutes = 0.0;
+    var cumulativePacks = 0.0;
     final chart = <double>[];
+    final packChart = <double>[];
+    final dateLabels = <String>[];
+
     for (final day in sortedDays) {
-      cumulativeMinutes += valuesByDay[day]!.toDouble();
+      cumulativeMinutes += minutesByDay[day]!.toDouble();
+      cumulativePacks += (packsByDay[day] ?? 0).toDouble();
       chart.add(cumulativeMinutes);
+      packChart.add(cumulativePacks);
+      dateLabels.add(
+        '${day.day.toString().padLeft(2, '0')}/'
+        '${day.month.toString().padLeft(2, '0')}',
+      );
     }
 
     var category = 'Voiture';
@@ -319,12 +347,15 @@ class _DashboardPageState extends State<DashboardPage>
 
     setState(() {
       sessionCount = rows.length;
+      hasActiveSession = activeSessionExists;
       lastSession = recent;
       lastModelCategory = category;
       lastModelName = modelName;
       totalRunMinutes = runMinutes;
       totalPacks = packs;
       chartValues = chart;
+      chartPackValues = packChart;
+      chartDateLabels = dateLabels;
       loading = false;
     });
   }
@@ -1149,7 +1180,8 @@ class _DashboardPageState extends State<DashboardPage>
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final desktop = constraints.maxWidth >= 860;
+        final desktop =
+            constraints.maxWidth >= 860 && constraints.maxHeight >= 640;
         return Scaffold(
           backgroundColor: const Color(0xFF050D18),
           body: SafeArea(
@@ -1160,7 +1192,8 @@ class _DashboardPageState extends State<DashboardPage>
                         onHome: () {},
                         onModels: () => _open(const ModelsPage()),
                         onBatteries: () => _open(const BatteriesPage()),
-                        onSessions: () => _open(const SessionsPage()),
+                        onSessions: () =>
+                            _open(const SessionsPage(historyOnly: true)),
                         onMaintenance: () => _open(const MaintenancePage()),
                         onRadios: () => _open(const RadiosPage()),
                         onInfo: () => _open(const InfoPage()),
@@ -1168,7 +1201,7 @@ class _DashboardPageState extends State<DashboardPage>
                       Expanded(child: _dashboardContent(desktop: true)),
                     ],
                   )
-                : _dashboardContent(desktop: false),
+                : _compactMobileDashboard(),
           ),
           bottomNavigationBar: desktop
               ? null
@@ -1176,11 +1209,483 @@ class _DashboardPageState extends State<DashboardPage>
                   onHome: () {},
                   onModels: () => _open(const ModelsPage()),
                   onBatteries: () => _open(const BatteriesPage()),
-                  onSessions: () => _open(const SessionsPage()),
-                  onMore: _showMoreMenu,
+                  onSessions: () =>
+                      _open(const SessionsPage(historyOnly: true)),
+                  onRadios: () => _open(const RadiosPage()),
                 ),
         );
       },
+    );
+  }
+
+  Widget _compactMobileDashboard() {
+    final email = Supabase.instance.client.auth.currentUser?.email;
+    final name = (accountPseudo != null && accountPseudo!.isNotEmpty)
+        ? accountPseudo!
+        : _displayName(email);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final height = constraints.maxHeight;
+        final isPhone = width < 600;
+
+        final horizontalPadding = isPhone ? 8.0 : 14.0;
+        final gap = isPhone ? 6.0 : 10.0;
+        final topBarHeight = isPhone ? 48.0 : 56.0;
+        final copyrightHeight = isPhone ? 15.0 : 18.0;
+
+        // Les blocs occupent tout l'espace vertical disponible.
+        // Sur un grand écran portrait, ils grandissent au lieu de laisser
+        // une grande zone vide sous les statistiques.
+        final usableHeight =
+            height - topBarHeight - copyrightHeight - gap * 4 - 4;
+
+        final metricsFlex = isPhone ? 14 : 16;
+        final middleFlex = isPhone ? 34 : 36;
+        final statsFlex = isPhone ? 52 : 48;
+        final totalFlex = metricsFlex + middleFlex + statsFlex;
+
+        final metricHeight = usableHeight * metricsFlex / totalFlex;
+
+        final calculatedMiddleHeight = usableHeight * middleFlex / totalFlex;
+        final minMiddleHeight = isPhone ? 118.0 : 138.0;
+        final middleHeight = calculatedMiddleHeight < minMiddleHeight
+            ? minMiddleHeight
+            : calculatedMiddleHeight;
+
+        final remainingForStats = usableHeight - metricHeight - middleHeight;
+        final minStatsHeight = isPhone ? 120.0 : 150.0;
+        final statsHeight = remainingForStats < minStatsHeight
+            ? minStatsHeight
+            : remainingForStats;
+
+        final metricWidth = (width - horizontalPadding * 2 - gap * 4) / 5;
+
+        return RefreshIndicator(
+          onRefresh: _loadDashboard,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: height,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  0,
+                  horizontalPadding,
+                  2,
+                ),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: topBarHeight,
+                      child: _CompactTopBar(
+                        name: name,
+                        onRefresh: _refreshDashboardManually,
+                        onInfo: () => _open(const InfoPage()),
+                        onAccount: _showAccountDialog,
+                        onSession: _handleNewSessionButton,
+                        hasActiveSession: hasActiveSession,
+                      ),
+                    ),
+                    SizedBox(height: gap),
+                    SizedBox(
+                      height: metricHeight,
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: metricWidth,
+                            child: _CompactMetricCard(
+                              value: modelCount,
+                              label: 'MODÈLES',
+                              asset: 'assets/images/rc_icon_models_hd.png',
+                              color: const Color(0xFF218BFF),
+                              loading: loading,
+                              onTap: _openContextualModel,
+                            ),
+                          ),
+                          SizedBox(width: gap),
+                          SizedBox(
+                            width: metricWidth,
+                            child: _CompactMetricCard(
+                              value: batteryCount,
+                              label: 'BATTERIES',
+                              asset: 'assets/images/rc_icon_batteries_hd.png',
+                              color: const Color(0xFFFF3D36),
+                              loading: loading,
+                              onTap: _openContextualBattery,
+                            ),
+                          ),
+                          SizedBox(width: gap),
+                          SizedBox(
+                            width: metricWidth,
+                            child: _CompactMetricCard(
+                              value: sessionCount,
+                              label: 'SESSIONS',
+                              asset: 'assets/images/rc_icon_sessions_hd.png',
+                              color: const Color(0xFF168CFF),
+                              loading: loading,
+                              onTap: () => _open(const SessionsPage()),
+                            ),
+                          ),
+                          SizedBox(width: gap),
+                          SizedBox(
+                            width: metricWidth,
+                            child: _CompactMetricCard(
+                              value: maintenanceCount,
+                              label: 'MAINTENANCE',
+                              asset: 'assets/images/rc_icon_maintenance_hd.png',
+                              color: const Color(0xFFD9DEE8),
+                              loading: loading,
+                              onTap: _openContextualMaintenance,
+                            ),
+                          ),
+                          SizedBox(width: gap),
+                          SizedBox(
+                            width: metricWidth,
+                            child: _CompactMetricCard(
+                              value: 0,
+                              label: 'COMMANDE\nRADIO',
+                              asset: 'assets/images/rc_icon_radio_nb4_hd.png',
+                              color: const Color(0xFFD9DEE8),
+                              loading: false,
+                              showValue: false,
+                              onTap: _showCurrentSessionRadioCommands,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: gap),
+                    SizedBox(
+                      height: middleHeight,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _compactLastSessionCard(isPhone: isPhone),
+                          ),
+                          SizedBox(width: gap),
+                          Expanded(
+                            child: _compactBatteryChargeCard(isPhone: isPhone),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: gap),
+                    SizedBox(
+                      height: statsHeight,
+                      child: _compactStatisticsCard(isPhone: isPhone),
+                    ),
+                    SizedBox(height: gap),
+                    SizedBox(
+                      height: copyrightHeight,
+                      child: Center(
+                        child: Text(
+                          '© ${DateTime.now().year} RC Companion — Tous droits réservés.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: const Color(0xFF65758A),
+                            fontSize: isPhone ? 8 : 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _compactLastSessionCard({required bool isPhone}) {
+    final row = lastSession;
+    final date = _formatSessionDate(row);
+    final model =
+        _firstText(row, ['model_name', 'name', 'model', 'title']) ??
+        'Aucun modèle';
+    final duration = _durationText(row);
+
+    return _CompactPanel(
+      title: 'DERNIÈRE SESSION',
+      isPhone: isPhone,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final veryTight = constraints.maxHeight < 95;
+          final tight = constraints.maxHeight < 120;
+
+          return Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (!veryTight)
+                      Text(
+                        date,
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: isPhone ? 8 : 10,
+                        ),
+                      ),
+                    if (!veryTight) const SizedBox(height: 2),
+                    Text(
+                      model,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isPhone ? 12 : 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (!veryTight) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        duration,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: isPhone ? 10 : 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                    const Spacer(),
+                    SizedBox(
+                      height: veryTight
+                          ? 22
+                          : tight
+                          ? 25
+                          : (isPhone ? 27 : 32),
+                      child: OutlinedButton(
+                        onPressed: () => _open(const SessionsPage()),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: veryTight ? 5 : (isPhone ? 7 : 10),
+                          ),
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Voir la session',
+                            style: TextStyle(
+                              fontSize: veryTight ? 8 : (isPhone ? 9 : 11),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Padding(
+                  padding: EdgeInsets.all(veryTight ? 2 : 4),
+                  child: Image.asset(
+                    _categoryAsset(lastModelCategory),
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _compactBatteryChargeCard({required bool isPhone}) {
+    return _CompactPanel(
+      title: 'ÉTAT DES BATTERIES',
+      isPhone: isPhone,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final veryTight = constraints.maxHeight < 95;
+          final tight = constraints.maxHeight < 120;
+
+          return Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _compactBatteryStateLine(
+                      label: 'Chargées',
+                      value: chargedBatteries,
+                      color: const Color(0xFF2E9B57),
+                      isPhone: isPhone,
+                    ),
+                    SizedBox(height: veryTight ? 1 : (isPhone ? 2 : 4)),
+                    _compactBatteryStateLine(
+                      label: 'Storage',
+                      value: storageBatteries,
+                      color: const Color(0xFF3578C8),
+                      isPhone: isPhone,
+                    ),
+                    SizedBox(height: veryTight ? 1 : (isPhone ? 2 : 4)),
+                    _compactBatteryStateLine(
+                      label: 'À charger',
+                      value: batteriesToCharge,
+                      color: const Color(0xFFE28A2B),
+                      isPhone: isPhone,
+                    ),
+                    const Spacer(),
+                    SizedBox(
+                      height: veryTight
+                          ? 22
+                          : tight
+                          ? 25
+                          : (isPhone ? 27 : 32),
+                      child: OutlinedButton(
+                        onPressed: () => _open(const BatteriesPage()),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: veryTight ? 4 : (isPhone ? 5 : 8),
+                          ),
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Voir mes batteries',
+                            style: TextStyle(
+                              fontSize: veryTight ? 7 : (isPhone ? 8 : 10),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Padding(
+                  padding: EdgeInsets.all(veryTight ? 2 : 4),
+                  child: Image.asset(
+                    'assets/images/rc_battery_dashboard_hd.png',
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _compactBatteryStateLine({
+    required String label,
+    required int value,
+    required Color color,
+    required bool isPhone,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: isPhone ? 6 : 8,
+          height: isPhone ? 6 : 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        SizedBox(width: isPhone ? 4 : 6),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: isPhone ? 9 : 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Text(
+          '$value',
+          style: TextStyle(
+            color: color,
+            fontSize: isPhone ? 11 : 14,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _compactStatisticsCard({required bool isPhone}) {
+    final hours = totalRunMinutes ~/ 60;
+    final minutes = totalRunMinutes % 60;
+
+    return _CompactPanel(
+      title: 'STATISTIQUES — ÉVOLUTION RÉELLE',
+      isPhone: isPhone,
+      titleTrailing: lastModelName.isEmpty
+          ? null
+          : Text(
+              lastModelName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: const Color(0xFF168CFF),
+                fontSize: isPhone ? 10 : 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: isPhone ? 4 : 3,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _CompactStatLine(
+                  icon: Icons.schedule_rounded,
+                  label: 'Temps total',
+                  value: '${hours}h ${minutes.toString().padLeft(2, '0')}m',
+                  isPhone: isPhone,
+                ),
+                SizedBox(height: isPhone ? 4 : 7),
+                _CompactStatLine(
+                  icon: Icons.battery_5_bar_rounded,
+                  label: 'Packs',
+                  value: '$totalPacks',
+                  isPhone: isPhone,
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: isPhone ? 6 : 10),
+          Expanded(
+            flex: isPhone ? 5 : 6,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ChartLegend(compact: isPhone),
+                SizedBox(height: isPhone ? 2 : 4),
+                Expanded(
+                  child: CustomPaint(
+                    painter: _DashboardChartPainter(
+                      minutesValues: chartValues,
+                      packValues: chartPackValues,
+                      dateLabels: chartDateLabels,
+                      compact: isPhone,
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1201,6 +1706,8 @@ class _DashboardPageState extends State<DashboardPage>
               onRefresh: _refreshDashboardManually,
               onInfo: () => _open(const InfoPage()),
               onAccount: _showAccountDialog,
+              onSession: _openContextualSession,
+              hasActiveSession: hasActiveSession,
             ),
           ),
           SliverPadding(
@@ -1257,14 +1764,14 @@ class _DashboardPageState extends State<DashboardPage>
         label: 'MODÈLES',
         asset: 'assets/images/rc_icon_models_hd.png',
         color: const Color(0xFF218BFF),
-        onTap: () => _open(const ModelsPage()),
+        onTap: _openContextualModel,
       ),
       _MetricCardData(
         value: batteryCount,
         label: 'BATTERIES',
         asset: 'assets/images/rc_icon_batteries_hd.png',
         color: const Color(0xFFFF3D36),
-        onTap: () => _open(const BatteriesPage()),
+        onTap: _openContextualBattery,
       ),
       _MetricCardData(
         value: sessionCount,
@@ -1275,16 +1782,24 @@ class _DashboardPageState extends State<DashboardPage>
       ),
       _MetricCardData(
         value: maintenanceCount,
-        label: 'MAINTENANCES',
+        label: 'MAINTENANCE',
         asset: 'assets/images/rc_icon_maintenance_hd.png',
         color: const Color(0xFFD9DEE8),
-        onTap: () => _open(const MaintenancePage()),
+        onTap: _openContextualMaintenance,
+      ),
+      _MetricCardData(
+        value: 0,
+        label: 'COMMANDE\nRADIO',
+        asset: 'assets/images/rc_icon_radio_nb4_hd.png',
+        color: const Color(0xFFD9DEE8),
+        showValue: false,
+        onTap: _showCurrentSessionRadioCommands,
       ),
     ];
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = desktop ? 4 : 1;
+        final columns = desktop ? 5 : 1;
         final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
         return Wrap(
           spacing: 12,
@@ -1526,10 +2041,23 @@ class _DashboardPageState extends State<DashboardPage>
           );
 
           final chart = SizedBox(
-            height: 150,
-            child: CustomPaint(
-              painter: _DashboardChartPainter(chartValues),
-              child: const SizedBox.expand(),
+            height: 170,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const _ChartLegend(),
+                const SizedBox(height: 5),
+                Expanded(
+                  child: CustomPaint(
+                    painter: _DashboardChartPainter(
+                      minutesValues: chartValues,
+                      packValues: chartPackValues,
+                      dateLabels: chartDateLabels,
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ],
             ),
           );
 
@@ -1603,6 +2131,653 @@ class _DashboardPageState extends State<DashboardPage>
     return '${minutes ~/ 60}h ${(minutes % 60).toString().padLeft(2, '0')}m';
   }
 
+  Future<RcSession?> _currentOpenSession() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final models = await ModelLocalStore.getModels(userId: user.id);
+    final batteries = await BatteryService.getCachedBatteries();
+    final sessions = await SessionService.getSessions(
+      models: models,
+      batteries: batteries,
+    );
+
+    for (final session in sessions) {
+      if (!session.isClosed) {
+        return session;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _openContextualModel() async {
+    final session = await _currentOpenSession();
+
+    if (!mounted) {
+      return;
+    }
+
+    if (session == null) {
+      _open(const ModelsPage());
+      return;
+    }
+
+    final modelId = session.model.id?.trim();
+    if (modelId == null || modelId.isEmpty) {
+      _open(const ModelsPage());
+      return;
+    }
+
+    _open(ModelDetailPage(modelId: modelId, model: session.model));
+  }
+
+  Future<void> _openContextualBattery() async {
+    final session = await _currentOpenSession();
+
+    if (!mounted) {
+      return;
+    }
+
+    if (session == null) {
+      _open(const BatteriesPage());
+      return;
+    }
+
+    List<Battery> batteries = const <Battery>[];
+
+    final activeRun = session.activeRun;
+    if (activeRun != null && activeRun.batteries.isNotEmpty) {
+      batteries = activeRun.batteries;
+    } else if (session.runs.isNotEmpty) {
+      final latestRun = session.runs.last;
+      if (latestRun.batteries.isNotEmpty) {
+        batteries = latestRun.batteries;
+      }
+    }
+
+    if (batteries.isEmpty) {
+      _open(const BatteriesPage());
+      return;
+    }
+
+    if (batteries.length == 1) {
+      _open(BatteryDetailPage(battery: batteries.first));
+      return;
+    }
+
+    final selected = await showDialog<Battery>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Batteries de la session en cours'),
+        content: SizedBox(
+          width: 460,
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: batteries.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final battery = batteries[index];
+              return ListTile(
+                leading: const Icon(
+                  Icons.battery_charging_full_rounded,
+                  color: Color(0xFF168CFF),
+                ),
+                title: Text(
+                  battery.id,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: Text(
+                  '${battery.brand} • ${battery.technology} • '
+                  '${battery.cells} • ${battery.capacity} mAh',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(dialogContext, battery),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+
+    if (selected != null && mounted) {
+      _open(BatteryDetailPage(battery: selected));
+    }
+  }
+
+  Future<void> _handleNewSessionButton() async {
+    final activeSession = await _currentOpenSession();
+
+    if (!mounted) {
+      return;
+    }
+
+    if (activeSession != null) {
+      final accessSession = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.info_outline_rounded),
+          title: const Text('Session déjà en cours'),
+          content: Text(
+            'Une session est déjà en cours avec '
+            '${activeSession.model.name}.'
+            '\n\nSouhaites-tu accéder à cette session ?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Non'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Accéder à la session'),
+            ),
+          ],
+        ),
+      );
+
+      if (accessSession == true && mounted) {
+        _open(const SessionsPage());
+      }
+      return;
+    }
+
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final models = await ModelLocalStore.getModels(userId: user.id);
+
+    if (!mounted) {
+      return;
+    }
+
+    if (models.isEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Nouvelle session'),
+          content: const Text(
+            'Aucun modèle n’est enregistré. '
+            'Enregistre d’abord un modèle avant d’ouvrir une session.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Fermer'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final result = await showDialog<_DashboardNewSessionResult>(
+      context: context,
+      builder: (dialogContext) => _DashboardNewSessionDialog(models: models),
+    );
+
+    if (result == null || !mounted) {
+      return;
+    }
+
+    try {
+      await SessionService.saveSession(
+        RcSession(
+          model: result.model,
+          startedAt: DateTime.now(),
+          location: result.location,
+        ),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      await _refreshSessionMetricsFromDrift();
+
+      if (!mounted) {
+        return;
+      }
+
+      _open(const SessionsPage());
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ouverture de la session impossible : $error')),
+      );
+    }
+  }
+
+  Future<void> _openContextualSession() async {
+    final session = await _currentOpenSession();
+
+    if (!mounted) {
+      return;
+    }
+
+    if (session == null) {
+      _open(const SessionsPage());
+      return;
+    }
+
+    _open(SessionDetailPage(session: session));
+  }
+
+  Future<void> _openContextualMaintenance() async {
+    final session = await _currentOpenSession();
+
+    if (!mounted) {
+      return;
+    }
+
+    if (session == null) {
+      _open(const MaintenancePage());
+      return;
+    }
+
+    final modelId = session.model.id?.trim();
+    if (modelId == null || modelId.isEmpty) {
+      _open(const MaintenancePage());
+      return;
+    }
+
+    final setup = await ModelSetupService.getLocalSetup(modelId);
+
+    if (!mounted) {
+      return;
+    }
+
+    final fields = setup.enabledFields
+        .where((field) => setup.currentValue(field).trim().isNotEmpty)
+        .toList(growable: false);
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.tune_rounded),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Setup actuel — ${session.model.name}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 560,
+          child: fields.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18),
+                  child: Text(
+                    'Aucun réglage de setup actuel n’est renseigné '
+                    'pour ce modèle.',
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 520),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: fields.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final key = fields[index];
+                      final value = setup.currentValue(key).trim();
+
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(
+                          Icons.settings_rounded,
+                          color: Color(0xFF168CFF),
+                        ),
+                        title: Text(
+                          _setupFieldLabel(key),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: Text(value),
+                      );
+                    },
+                  ),
+                ),
+        ),
+        actions: [
+          const Text(
+            'Lecture seule',
+            style: TextStyle(color: Color(0xFF7F8DA0), fontSize: 12),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _setupFieldLabel(String key) {
+    const labels = <String, String>{
+      'pinion': 'Pignon moteur',
+      'spur': 'Couronne',
+      'front_diff_oil': 'Huile diff avant',
+      'center_diff_oil': 'Huile diff central',
+      'rear_diff_oil': 'Huile diff arrière',
+      'front_shock_oil': 'Huile amortisseurs avant',
+      'rear_shock_oil': 'Huile amortisseurs arrière',
+      'front_camber': 'Carrossage avant',
+      'rear_camber': 'Carrossage arrière',
+      'front_toe': 'Pincement avant',
+      'rear_toe': 'Pincement arrière',
+      'front_ride_height': 'Garde au sol avant',
+      'rear_ride_height': 'Garde au sol arrière',
+      'esc': 'ESC',
+      'motor': 'Moteur',
+      'servo': 'Servo',
+      'tires': 'Pneus',
+      'notes': 'Notes',
+    };
+
+    return labels[key] ?? key;
+  }
+
+  Future<void> _showCurrentSessionRadioCommands() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null || !mounted) {
+      return;
+    }
+
+    final rows = await SessionLocalStore.getSessionRows(userId: user.id);
+
+    Map<String, dynamic>? activeSession;
+    for (final row in rows) {
+      final endedAt = row['ended_at']?.toString().trim();
+      if (endedAt == null || endedAt.isEmpty) {
+        activeSession = row;
+        break;
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    String? modelId = activeSession?['model_id']?.toString().trim();
+
+    if (activeSession == null) {
+      final models = await ModelLocalStore.getModels(userId: user.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      if (models.isEmpty) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Commande radio'),
+            content: const Text(
+              'Aucun modèle disponible. Créez d’abord un modèle pour '
+              'consulter ses commandes radio.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Fermer'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      modelId = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Commande radio'),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Aucune session en cours. Sélectionnez un modèle '
+                    'pour afficher ses commandes radio.',
+                  ),
+                  const SizedBox(height: 14),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 420),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: models.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final model = models[index];
+                        return ListTile(
+                          leading: const Icon(
+                            Icons.directions_car_rounded,
+                            color: Color(0xFF168CFF),
+                          ),
+                          title: Text(
+                            model.name,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => Navigator.pop(dialogContext, model.id),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Fermer'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (modelId == null || modelId.isEmpty || !mounted) {
+        return;
+      }
+    }
+
+    if (modelId == null || modelId.isEmpty) {
+      return;
+    }
+
+    final model = await ModelLocalStore.getModel(
+      userId: user.id,
+      modelId: modelId,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (model == null) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Commandes radio'),
+          content: const Text(
+            'Le modèle de la session en cours est introuvable.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Fermer'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final radioId = model.radioId?.trim();
+    if (radioId == null || radioId.isEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('Commandes radio — ${model.name}'),
+          content: const Text('Aucune radio n’est associée à ce modèle.'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Fermer'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final setupService = ModelRadioSetupService();
+    final radioService = RadioService();
+
+    final setup = await setupService.getSetup(modelId: modelId);
+    final radios = await radioService.fetchRadios();
+
+    dynamic selectedRadio;
+    for (final radio in radios) {
+      if (radio.id == radioId) {
+        selectedRadio = radio;
+        break;
+      }
+    }
+
+    RadioControlLayout? layout;
+    if (selectedRadio != null) {
+      layout = radioControlLayoutFor(
+        brand: selectedRadio.brand,
+        model: selectedRadio.model,
+      );
+    }
+
+    final assignments = <({String label, String value})>[];
+
+    if (setup != null && layout != null) {
+      for (final control in layout.controls) {
+        final key = 'control_assignment_${control.key}';
+        if (!setup.enabledFields.contains(key)) {
+          continue;
+        }
+
+        final value = setup.value(key).trim();
+        assignments.add((
+          label: control.label,
+          value: value.isEmpty ? 'Non renseignée' : value,
+        ));
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.settings_remote_rounded),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Commandes radio — ${model.name}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (selectedRadio != null) ...[
+                Text(
+                  selectedRadio.fullName,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+              if (assignments.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18),
+                  child: Text(
+                    'Aucune affectation de commande radio enregistrée '
+                    'pour ce modèle.',
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 420),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: assignments.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final item = assignments[index];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(
+                          Icons.radio_button_checked_rounded,
+                          color: Color(0xFF168CFF),
+                        ),
+                        title: Text(
+                          item.label,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: Text(item.value),
+                      );
+                    },
+                  ),
+                ),
+              const SizedBox(height: 8),
+              const Text(
+                'Affichage uniquement — aucune modification possible ici.',
+                style: TextStyle(color: Color(0xFF7F8DA0), fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showMoreMenu() {
     showModalBottomSheet<void>(
       context: context,
@@ -1648,6 +2823,385 @@ class _DashboardPageState extends State<DashboardPage>
   }
 }
 
+class _DashboardNewSessionResult {
+  const _DashboardNewSessionResult({
+    required this.model,
+    required this.location,
+  });
+
+  final RcModel model;
+  final String location;
+}
+
+class _DashboardNewSessionDialog extends StatefulWidget {
+  const _DashboardNewSessionDialog({required this.models});
+
+  final List<RcModel> models;
+
+  @override
+  State<_DashboardNewSessionDialog> createState() =>
+      _DashboardNewSessionDialogState();
+}
+
+class _DashboardNewSessionDialogState
+    extends State<_DashboardNewSessionDialog> {
+  RcModel? _selectedModel;
+  final TextEditingController _locationController = TextEditingController();
+
+  @override
+  void dispose() {
+    _locationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nouvelle session'),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<RcModel>(
+              initialValue: _selectedModel,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Modèle utilisé',
+                border: OutlineInputBorder(),
+              ),
+              items: widget.models
+                  .map(
+                    (model) => DropdownMenuItem<RcModel>(
+                      value: model,
+                      child: Text(
+                        '${model.name} — ${model.brand}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+              onChanged: (value) {
+                setState(() {
+                  _selectedModel = value;
+                });
+              },
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _locationController,
+              decoration: const InputDecoration(
+                labelText: 'Lieu (facultatif)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(
+          onPressed: _selectedModel == null
+              ? null
+              : () {
+                  Navigator.pop(
+                    context,
+                    _DashboardNewSessionResult(
+                      model: _selectedModel!,
+                      location: _locationController.text.trim(),
+                    ),
+                  );
+                },
+          child: const Text('Ouvrir'),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactTopBar extends StatelessWidget {
+  const _CompactTopBar({
+    required this.name,
+    required this.onRefresh,
+    required this.onInfo,
+    required this.onAccount,
+    required this.onSession,
+    required this.hasActiveSession,
+  });
+
+  final String name;
+  final Future<void> Function() onRefresh;
+  final VoidCallback onInfo;
+  final VoidCallback onAccount;
+  final VoidCallback onSession;
+  final bool hasActiveSession;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Bonjour, $name !',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+          ),
+        ),
+        const SizedBox(width: 6),
+        FilledButton.icon(
+          onPressed: onSession,
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            visualDensity: VisualDensity.compact,
+          ),
+          icon: const Icon(Icons.add_rounded, size: 17),
+          label: const FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'Nouvelle session',
+              maxLines: 1,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: 'Actualiser le Dashboard',
+          onPressed: () => onRefresh(),
+          icon: const Icon(Icons.refresh_rounded, size: 21),
+        ),
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: 'Informations & Références',
+          onPressed: onInfo,
+          icon: const Icon(Icons.info_outline_rounded, size: 20),
+        ),
+        const SizedBox(width: 2),
+        InkWell(
+          onTap: onAccount,
+          borderRadius: BorderRadius.circular(18),
+          child: CircleAvatar(
+            radius: 16,
+            backgroundColor: const Color(0xFF185BEA),
+            child: Text(
+              name.isEmpty ? 'R' : name[0].toUpperCase(),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactMetricCard extends StatelessWidget {
+  const _CompactMetricCard({
+    required this.value,
+    required this.label,
+    required this.asset,
+    required this.color,
+    required this.loading,
+    required this.onTap,
+    this.showValue = true,
+  });
+
+  final int value;
+  final String label;
+  final String asset;
+  final Color color;
+  final bool loading;
+  final VoidCallback onTap;
+  final bool showValue;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0B1A2D),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF23405E)),
+        ),
+        child: loading
+            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            : Row(
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Image.asset(
+                      asset,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  Expanded(
+                    flex: 5,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (showValue) ...[
+                            Text(
+                              '$value',
+                              style: TextStyle(
+                                color: color,
+                                fontSize: 18,
+                                height: 1,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                          ],
+                          Text(
+                            label,
+                            maxLines: 2,
+                            textAlign: TextAlign.left,
+                            style: const TextStyle(
+                              fontSize: 8,
+                              height: 1,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _CompactPanel extends StatelessWidget {
+  const _CompactPanel({
+    required this.title,
+    required this.child,
+    required this.isPhone,
+    this.titleTrailing,
+  });
+
+  final String title;
+  final Widget child;
+  final bool isPhone;
+  final Widget? titleTrailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final veryTight = constraints.maxHeight < 110;
+        final padding = veryTight ? 6.0 : (isPhone ? 8.0 : 10.0);
+        final titleGap = veryTight ? 3.0 : (isPhone ? 5.0 : 7.0);
+
+        return Container(
+          padding: EdgeInsets.all(padding),
+          decoration: BoxDecoration(
+            color: const Color(0xFF071426),
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: const Color(0xFF23405E)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: veryTight ? 8 : (isPhone ? 9 : 11),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (titleTrailing != null) ...[
+                    const SizedBox(width: 4),
+                    const Text('—'),
+                    const SizedBox(width: 4),
+                    Flexible(child: titleTrailing!),
+                  ],
+                ],
+              ),
+              SizedBox(height: titleGap),
+              Expanded(child: child),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CompactStatLine extends StatelessWidget {
+  const _CompactStatLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.isPhone,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool isPhone;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isPhone ? 6 : 8,
+        vertical: isPhone ? 5 : 7,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1A2D),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF168CFF), size: isPhone ? 16 : 20),
+          SizedBox(width: isPhone ? 4 : 7),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: const Color(0xFF7F8DA0),
+                fontSize: isPhone ? 8 : 10,
+              ),
+            ),
+          ),
+          const SizedBox(width: 3),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: isPhone ? 10 : 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.desktop,
@@ -1655,6 +3209,8 @@ class _TopBar extends StatelessWidget {
     required this.onRefresh,
     required this.onInfo,
     required this.onAccount,
+    required this.onSession,
+    required this.hasActiveSession,
   });
 
   final bool desktop;
@@ -1662,6 +3218,8 @@ class _TopBar extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback onInfo;
   final VoidCallback onAccount;
+  final VoidCallback onSession;
+  final bool hasActiveSession;
 
   @override
   Widget build(BuildContext context) {
@@ -1722,6 +3280,17 @@ class _TopBar extends StatelessWidget {
                 ],
               ),
             ),
+          ],
+          if (desktop) ...[
+            FilledButton.icon(
+              onPressed: onSession,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                'Nouvelle session',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(width: 10),
           ],
           IconButton(
             tooltip: 'Actualiser le Dashboard',
@@ -1923,6 +3492,7 @@ class _MetricCardData {
     required this.asset,
     required this.color,
     required this.onTap,
+    this.showValue = true,
   });
 
   final int value;
@@ -1930,6 +3500,7 @@ class _MetricCardData {
   final String asset;
   final Color color;
   final VoidCallback onTap;
+  final bool showValue;
 }
 
 class _MetricCard extends StatelessWidget {
@@ -1977,22 +3548,25 @@ class _MetricCard extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          '${data.value}',
-                          style: TextStyle(
-                            color: data.color,
-                            fontSize: 29,
-                            height: 1,
-                            fontWeight: FontWeight.w900,
+                        if (data.showValue) ...[
+                          Text(
+                            '${data.value}',
+                            style: TextStyle(
+                              color: data.color,
+                              fontSize: 29,
+                              height: 1,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 6),
+                          const SizedBox(height: 6),
+                        ],
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
                           child: Text(
                             data.label,
-                            maxLines: 1,
+                            maxLines: 2,
+                            textAlign: TextAlign.left,
                             style: const TextStyle(
                               fontSize: 12,
                               height: 1,
@@ -2101,53 +3675,152 @@ class _StatLine extends StatelessWidget {
   }
 }
 
-class _DashboardChartPainter extends CustomPainter {
-  const _DashboardChartPainter(this.values);
+class _ChartLegend extends StatelessWidget {
+  const _ChartLegend({this.compact = false});
 
-  final List<double> values;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final fontSize = compact ? 8.0 : 10.0;
+    final dotSize = compact ? 6.0 : 8.0;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Container(
+          width: dotSize,
+          height: dotSize,
+          decoration: const BoxDecoration(
+            color: Color(0xFF168CFF),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          'Temps cumulé',
+          style: TextStyle(
+            color: const Color(0xFF8DBDFF),
+            fontSize: fontSize,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        SizedBox(width: compact ? 8 : 14),
+        Container(
+          width: dotSize,
+          height: dotSize,
+          decoration: const BoxDecoration(
+            color: Color(0xFFE28A2B),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          'Packs cumulés',
+          style: TextStyle(
+            color: const Color(0xFFFFC36D),
+            fontSize: fontSize,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DashboardChartPainter extends CustomPainter {
+  const _DashboardChartPainter({
+    required this.minutesValues,
+    required this.packValues,
+    required this.dateLabels,
+    this.compact = false,
+  });
+
+  final List<double> minutesValues;
+  final List<double> packValues;
+  final List<String> dateLabels;
+  final bool compact;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final left = compact ? 28.0 : 38.0;
+    final right = compact ? 24.0 : 34.0;
+    final top = 5.0;
+    final bottom = compact ? 18.0 : 22.0;
+
+    final plotWidth = (size.width - left - right).clamp(1.0, double.infinity);
+    final plotHeight = (size.height - top - bottom).clamp(1.0, double.infinity);
+    final plotRect = Rect.fromLTWH(left, top, plotWidth, plotHeight);
+
     final grid = Paint()
       ..color = const Color(0xFF18304B)
       ..strokeWidth = 1;
 
-    for (var i = 0; i <= 5; i++) {
-      final y = size.height * i / 5;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
-    }
-    for (var i = 0; i <= 6; i++) {
-      final x = size.width * i / 6;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
+    const horizontalLines = 4;
+    const verticalLines = 6;
+
+    for (var i = 0; i <= horizontalLines; i++) {
+      final y = plotRect.top + plotRect.height * i / horizontalLines;
+      canvas.drawLine(
+        Offset(plotRect.left, y),
+        Offset(plotRect.right, y),
+        grid,
+      );
     }
 
-    final usableValues = values.length >= 2
-        ? values
-        : const <double>[0, 0, 0, 0, 0, 0, 0];
-    final maxValue = usableValues.fold<double>(
+    for (var i = 0; i <= verticalLines; i++) {
+      final x = plotRect.left + plotRect.width * i / verticalLines;
+      canvas.drawLine(
+        Offset(x, plotRect.top),
+        Offset(x, plotRect.bottom),
+        grid,
+      );
+    }
+
+    final minuteSeries = minutesValues.isNotEmpty
+        ? minutesValues
+        : const <double>[0, 0];
+    final packSeries = packValues.isNotEmpty
+        ? packValues
+        : const <double>[0, 0];
+
+    final maxMinutes = minuteSeries.fold<double>(
+      1,
+      (current, value) => value > current ? value : current,
+    );
+    final maxPacks = packSeries.fold<double>(
       1,
       (current, value) => value > current ? value : current,
     );
 
-    final path = Path();
-    for (var i = 0; i < usableValues.length; i++) {
-      final x = usableValues.length == 1
-          ? 0.0
-          : size.width * i / (usableValues.length - 1);
-      final y =
-          size.height -
-          (usableValues[i] / maxValue * (size.height * .88)) -
-          size.height * .05;
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
+    double xFor(int index, int count) {
+      if (count <= 1) return plotRect.left;
+      return plotRect.left + plotRect.width * index / (count - 1);
     }
 
-    final fillPath = Path.from(path)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
+    double yFor(double value, double maxValue) {
+      return plotRect.bottom - (value / maxValue) * plotRect.height * .92;
+    }
+
+    Path makePath(List<double> values, double maxValue) {
+      final path = Path();
+      for (var i = 0; i < values.length; i++) {
+        final point = Offset(xFor(i, values.length), yFor(values[i], maxValue));
+        if (i == 0) {
+          path.moveTo(point.dx, point.dy);
+        } else {
+          path.lineTo(point.dx, point.dy);
+        }
+      }
+      return path;
+    }
+
+    final minutesPath = makePath(minuteSeries, maxMinutes);
+    final packsPath = makePath(packSeries, maxPacks);
+
+    final fillPath = Path.from(minutesPath)
+      ..lineTo(plotRect.right, plotRect.bottom)
+      ..lineTo(plotRect.left, plotRect.bottom)
       ..close();
 
     canvas.drawPath(
@@ -2156,25 +3829,119 @@ class _DashboardChartPainter extends CustomPainter {
         ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0x553B82F6), Color(0x00168CFF)],
-        ).createShader(Offset.zero & size)
+          colors: [Color(0x33168CFF), Color(0x00168CFF)],
+        ).createShader(plotRect)
         ..style = PaintingStyle.fill,
     );
 
     canvas.drawPath(
-      path,
+      minutesPath,
       Paint()
         ..color = const Color(0xFF168CFF)
-        ..strokeWidth = 3
+        ..strokeWidth = compact ? 2.0 : 2.6
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
+
+    canvas.drawPath(
+      packsPath,
+      Paint()
+        ..color = const Color(0xFFE28A2B)
+        ..strokeWidth = compact ? 1.8 : 2.4
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+
+    final labelStyle = TextStyle(
+      color: const Color(0xFF7F8DA0),
+      fontSize: compact ? 7.0 : 9.0,
+      fontWeight: FontWeight.w600,
+    );
+
+    void drawText(
+      String text,
+      Offset offset, {
+      TextAlign align = TextAlign.left,
+    }) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: labelStyle),
+        textDirection: TextDirection.ltr,
+        textAlign: align,
+      )..layout();
+
+      var dx = offset.dx;
+      if (align == TextAlign.center) {
+        dx -= painter.width / 2;
+      } else if (align == TextAlign.right) {
+        dx -= painter.width;
+      }
+
+      painter.paint(canvas, Offset(dx, offset.dy));
+    }
+
+    String minuteLabel(double minutes) {
+      final rounded = minutes.round();
+      if (rounded >= 60) {
+        final h = rounded ~/ 60;
+        final m = rounded % 60;
+        return m == 0 ? '${h}h' : '${h}h${m.toString().padLeft(2, '0')}';
+      }
+      return '${rounded}m';
+    }
+
+    // Axe gauche : temps cumulé.
+    for (var i = 0; i <= horizontalLines; i++) {
+      final ratio = 1 - i / horizontalLines;
+      final y = plotRect.top + plotRect.height * i / horizontalLines;
+      drawText(
+        minuteLabel(maxMinutes * ratio),
+        Offset(plotRect.left - 4, y - (compact ? 4 : 5)),
+        align: TextAlign.right,
+      );
+    }
+
+    // Axe droit : packs cumulés.
+    for (var i = 0; i <= horizontalLines; i++) {
+      final ratio = 1 - i / horizontalLines;
+      final y = plotRect.top + plotRect.height * i / horizontalLines;
+      drawText(
+        '${(maxPacks * ratio).round()}',
+        Offset(plotRect.right + 4, y - (compact ? 4 : 5)),
+      );
+    }
+
+    // Dates : nombre limité automatiquement pour ne jamais chevaucher.
+    if (dateLabels.isNotEmpty) {
+      final maxLabels = compact ? 3 : 6;
+      final count = dateLabels.length;
+      final step = count <= maxLabels
+          ? 1
+          : ((count - 1) / (maxLabels - 1)).ceil();
+
+      final indexes = <int>{0, count - 1};
+      for (var i = 0; i < count; i += step) {
+        indexes.add(i);
+      }
+
+      final sortedIndexes = indexes.toList()..sort();
+      for (final i in sortedIndexes) {
+        drawText(
+          dateLabels[i],
+          Offset(xFor(i, count), plotRect.bottom + (compact ? 4 : 6)),
+          align: TextAlign.center,
+        );
+      }
+    }
   }
 
   @override
   bool shouldRepaint(covariant _DashboardChartPainter oldDelegate) {
-    return oldDelegate.values != values;
+    return oldDelegate.minutesValues != minutesValues ||
+        oldDelegate.packValues != packValues ||
+        oldDelegate.dateLabels != dateLabels ||
+        oldDelegate.compact != compact;
   }
 }
 
@@ -2184,14 +3951,14 @@ class _MobileNavigation extends StatelessWidget {
     required this.onModels,
     required this.onBatteries,
     required this.onSessions,
-    required this.onMore,
+    required this.onRadios,
   });
 
   final VoidCallback onHome;
   final VoidCallback onModels;
   final VoidCallback onBatteries;
   final VoidCallback onSessions;
-  final VoidCallback onMore;
+  final VoidCallback onRadios;
 
   @override
   Widget build(BuildContext context) {
@@ -2208,7 +3975,7 @@ class _MobileNavigation extends StatelessWidget {
           case 3:
             onSessions();
           case 4:
-            onMore();
+            onRadios();
         }
       },
       destinations: const [
@@ -2233,8 +4000,9 @@ class _MobileNavigation extends StatelessWidget {
           label: 'Sessions',
         ),
         NavigationDestination(
-          icon: Icon(Icons.more_horiz_rounded),
-          label: 'Plus',
+          icon: Icon(Icons.settings_remote_outlined),
+          selectedIcon: Icon(Icons.settings_remote_rounded),
+          label: 'Radios',
         ),
       ],
     );
