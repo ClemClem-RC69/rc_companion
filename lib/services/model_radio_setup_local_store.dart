@@ -38,6 +38,30 @@ class ModelRadioSetupLocalStore {
     );
   }
 
+  static Stream<ModelRadioSetup?> watchSetup({
+    required String userId,
+    required String modelId,
+  }) {
+    final query = _database.select(_database.localModelRadioSetups)
+      ..where(
+        (item) =>
+            item.userId.equals(userId) &
+            item.modelId.equals(modelId) &
+            item.isDeleted.equals(false),
+      )
+      ..limit(1);
+
+    return query.watchSingleOrNull().map((row) {
+      if (row == null) {
+        return null;
+      }
+
+      return ModelRadioSetup.fromMap(
+        Map<String, dynamic>.from(jsonDecode(row.payloadJson) as Map),
+      );
+    });
+  }
+
   static Future<bool> hasCachedSetup({
     required String userId,
     required String modelId,

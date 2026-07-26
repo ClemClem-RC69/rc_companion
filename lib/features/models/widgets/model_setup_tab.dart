@@ -1,13 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../models/model_setup.dart';
 import '../../../services/model_setup_service.dart';
 
 class ModelSetupTab extends StatefulWidget {
-  const ModelSetupTab({
-    super.key,
-    required this.modelId,
-  });
+  const ModelSetupTab({super.key, required this.modelId});
 
   final String modelId;
 
@@ -17,6 +15,7 @@ class ModelSetupTab extends StatefulWidget {
 
 class _ModelSetupTabState extends State<ModelSetupTab> {
   ModelSetup? setup;
+  StreamSubscription<ModelSetup?>? _setupSubscription;
 
   bool isLoading = true;
   bool isSaving = false;
@@ -38,11 +37,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
           label: 'Pignon moteur',
           hint: 'Ex. 18 dents',
         ),
-        _SetupField(
-          keyName: 'spur',
-          label: 'Couronne',
-          hint: 'Ex. 54 dents',
-        ),
+        _SetupField(keyName: 'spur', label: 'Couronne', hint: 'Ex. 54 dents'),
       ],
     ),
     _SetupSection(
@@ -122,21 +117,9 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       title: 'Électronique',
       icon: Icons.electric_bolt_outlined,
       fields: [
-        _SetupField(
-          keyName: 'esc',
-          label: 'ESC',
-          hint: 'Ex. Hobbywing MAX6',
-        ),
-        _SetupField(
-          keyName: 'motor',
-          label: 'Moteur',
-          hint: 'Ex. 4985 1650KV',
-        ),
-        _SetupField(
-          keyName: 'servo',
-          label: 'Servo',
-          hint: 'Ex. 35 kg',
-        ),
+        _SetupField(keyName: 'esc', label: 'ESC', hint: 'Ex. Hobbywing MAX6'),
+        _SetupField(keyName: 'motor', label: 'Moteur', hint: 'Ex. 4985 1650KV'),
+        _SetupField(keyName: 'servo', label: 'Servo', hint: 'Ex. 35 kg'),
       ],
     ),
     _SetupSection(
@@ -165,9 +148,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
   ];
 
   List<_SetupField> get allFields {
-    return sections
-        .expand((section) => section.fields)
-        .toList();
+    return sections.expand((section) => section.fields).toList();
   }
 
   bool get hasSetup {
@@ -185,11 +166,31 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
   @override
   void initState() {
     super.initState();
+
+    _setupSubscription = ModelSetupService.watchSetup(widget.modelId).listen((
+      updatedSetup,
+    ) {
+      if (!mounted || isSaving || isEditingOriginal || isCreatingInitialSetup) {
+        return;
+      }
+
+      final value = updatedSetup ?? ModelSetup.empty(widget.modelId);
+      _prepareControllers(value);
+
+      setState(() {
+        setup = value;
+        isLoading = false;
+        errorMessage = null;
+      });
+    });
+
     loadSetup();
   }
 
   @override
   void dispose() {
+    _setupSubscription?.cancel();
+
     for (final controller in originalControllers.values) {
       controller.dispose();
     }
@@ -208,9 +209,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
     });
 
     try {
-      final loadedSetup = await ModelSetupService.getSetup(
-        widget.modelId,
-      );
+      final loadedSetup = await ModelSetupService.getSetup(widget.modelId);
 
       _prepareControllers(loadedSetup);
 
@@ -238,21 +237,17 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
 
   void _prepareControllers(ModelSetup loadedSetup) {
     for (final field in allFields) {
-      originalControllers.putIfAbsent(
+      originalControllers.putIfAbsent(field.keyName, TextEditingController.new);
+
+      currentControllers.putIfAbsent(field.keyName, TextEditingController.new);
+
+      originalControllers[field.keyName]!.text = loadedSetup.originalValue(
         field.keyName,
-        TextEditingController.new,
       );
 
-      currentControllers.putIfAbsent(
+      currentControllers[field.keyName]!.text = loadedSetup.currentValue(
         field.keyName,
-        TextEditingController.new,
       );
-
-      originalControllers[field.keyName]!.text =
-          loadedSetup.originalValue(field.keyName);
-
-      currentControllers[field.keyName]!.text =
-          loadedSetup.currentValue(field.keyName);
     }
   }
 
@@ -267,9 +262,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text(
-                'Choisir les éléments du setup',
-              ),
+              title: const Text('Choisir les éléments du setup'),
               content: SizedBox(
                 width: 520,
                 child: ListView(
@@ -277,10 +270,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
                   children: [
                     for (final section in sections) ...[
                       Padding(
-                        padding: const EdgeInsets.only(
-                          top: 12,
-                          bottom: 4,
-                        ),
+                        padding: const EdgeInsets.only(top: 12, bottom: 4),
                         child: Row(
                           children: [
                             Icon(section.icon, size: 20),
@@ -296,13 +286,10 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
                       ),
                       for (final field in section.fields)
                         CheckboxListTile(
-                          value: selectedFields.contains(
-                            field.keyName,
-                          ),
+                          value: selectedFields.contains(field.keyName),
                           title: Text(field.label),
                           dense: true,
-                          controlAffinity:
-                              ListTileControlAffinity.leading,
+                          controlAffinity: ListTileControlAffinity.leading,
                           onChanged: (value) {
                             setDialogState(() {
                               if (value == true) {
@@ -328,10 +315,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
                   onPressed: selectedFields.isEmpty
                       ? null
                       : () {
-                          Navigator.pop(
-                            dialogContext,
-                            selectedFields.toList(),
-                          );
+                          Navigator.pop(dialogContext, selectedFields.toList());
                         },
                   child: const Text('Continuer'),
                 ),
@@ -344,9 +328,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
   }
 
   Future<void> createOriginalSetup() async {
-    final selectedFields = await _chooseSetupFields(
-      initialSelection: const [],
-    );
+    final selectedFields = await _chooseSetupFields(initialSelection: const []);
 
     if (selectedFields == null || selectedFields.isEmpty) {
       return;
@@ -354,9 +336,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
 
     final newSetup = ModelSetup.empty(
       widget.modelId,
-    ).copyWith(
-      enabledFields: selectedFields,
-    );
+    ).copyWith(enabledFields: selectedFields);
 
     _prepareControllers(newSetup);
 
@@ -378,9 +358,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Modifier les éléments du setup',
-          ),
+          title: const Text('Modifier les éléments du setup'),
           content: const Text(
             'Tu peux ajouter ou retirer des éléments. '
             'Les valeurs des éléments retirés ne seront plus affichées.',
@@ -415,9 +393,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       return;
     }
 
-    final updatedSetup = currentSetup.copyWith(
-      enabledFields: selectedFields,
-    );
+    final updatedSetup = currentSetup.copyWith(enabledFields: selectedFields);
 
     setState(() {
       setup = updatedSetup;
@@ -431,9 +407,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Modifier le setup d’origine',
-          ),
+          title: const Text('Modifier le setup d’origine'),
           content: const Text(
             'Cette fonction sert à corriger une erreur de saisie '
             'ou une valeur constructeur incorrecte. '
@@ -469,8 +443,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
   Future<void> saveSetup() async {
     final currentSetup = setup;
 
-    if (currentSetup == null ||
-        currentSetup.enabledFields.isEmpty) {
+    if (currentSetup == null || currentSetup.enabledFields.isEmpty) {
       return;
     }
 
@@ -482,11 +455,9 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
     final currentValues = <String, String>{};
 
     for (final fieldKey in currentSetup.enabledFields) {
-      final originalValue =
-          originalControllers[fieldKey]?.text.trim() ?? '';
+      final originalValue = originalControllers[fieldKey]?.text.trim() ?? '';
 
-      var currentValue =
-          currentControllers[fieldKey]?.text.trim() ?? '';
+      var currentValue = currentControllers[fieldKey]?.text.trim() ?? '';
 
       originalValues[fieldKey] = originalValue;
 
@@ -497,15 +468,12 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
         currentValue = originalValue;
         currentControllers[fieldKey]?.value = TextEditingValue(
           text: originalValue,
-          selection: TextSelection.collapsed(
-            offset: originalValue.length,
-          ),
+          selection: TextSelection.collapsed(offset: originalValue.length),
         );
       }
 
       currentValues[fieldKey] = currentValue;
     }
-
 
     final setupToSave = currentSetup.copyWith(
       originalValues: originalValues,
@@ -513,9 +481,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
     );
 
     try {
-      final savedSetup = await ModelSetupService.saveSetup(
-        setupToSave,
-      );
+      final savedSetup = await ModelSetupService.saveSetup(setupToSave);
 
       if (!mounted) {
         return;
@@ -530,11 +496,9 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
         isCreatingInitialSetup = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Setup enregistré'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Setup enregistré')));
     } catch (error) {
       if (!mounted) {
         return;
@@ -545,11 +509,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible d’enregistrer le setup : $error',
-          ),
-        ),
+        SnackBar(content: Text('Impossible d’enregistrer le setup : $error')),
       );
     }
   }
@@ -557,8 +517,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
   Future<void> restoreOriginalSetup() async {
     final currentSetup = setup;
 
-    if (currentSetup == null ||
-        currentSetup.enabledFields.isEmpty) {
+    if (currentSetup == null || currentSetup.enabledFields.isEmpty) {
       return;
     }
 
@@ -566,9 +525,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Revenir au setup d’origine',
-          ),
+          title: const Text('Revenir au setup d’origine'),
           content: const Text(
             'Toutes les valeurs actuelles seront remplacées '
             'par les valeurs du setup d’origine.',
@@ -599,8 +556,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
     final currentValues = <String, String>{};
 
     for (final fieldKey in currentSetup.enabledFields) {
-      final originalValue =
-          originalControllers[fieldKey]?.text.trim() ?? '';
+      final originalValue = originalControllers[fieldKey]?.text.trim() ?? '';
 
       originalValues[fieldKey] = originalValue;
       currentValues[fieldKey] = originalValue;
@@ -617,9 +573,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
     });
 
     try {
-      final savedSetup = await ModelSetupService.saveSetup(
-        restoredSetup,
-      );
+      final savedSetup = await ModelSetupService.saveSetup(restoredSetup);
 
       if (!mounted) {
         return;
@@ -649,11 +603,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible de restaurer le setup : $error',
-          ),
-        ),
+        SnackBar(content: Text('Impossible de restaurer le setup : $error')),
       );
     }
   }
@@ -661,9 +611,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (errorMessage != null) {
@@ -673,15 +621,9 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.error_outline,
-                size: 54,
-              ),
+              const Icon(Icons.error_outline, size: 54),
               const SizedBox(height: 16),
-              Text(
-                errorMessage!,
-                textAlign: TextAlign.center,
-              ),
+              Text(errorMessage!, textAlign: TextAlign.center),
               const SizedBox(height: 18),
               FilledButton.icon(
                 onPressed: loadSetup,
@@ -701,12 +643,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
     final currentSetup = setup!;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        16,
-        16,
-        16,
-        40,
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
       children: [
         _buildActionCard(),
         const SizedBox(height: 16),
@@ -731,15 +668,10 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
               ),
             ),
           ),
-        if (isCreatingInitialSetup)
-          const SizedBox(height: 16),
+        if (isCreatingInitialSetup) const SizedBox(height: 16),
         _buildColumnHeader(),
         const SizedBox(height: 10),
-        for (final section in sections)
-          _buildSection(
-            section,
-            currentSetup,
-          ),
+        for (final section in sections) _buildSection(section, currentSetup),
         const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: isSaving ? null : saveSetup,
@@ -747,17 +679,15 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
               ? const SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                  ),
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.save),
           label: Text(
             isSaving
                 ? 'Enregistrement...'
                 : isCreatingInitialSetup
-                    ? 'Créer le setup'
-                    : 'Enregistrer les modifications',
+                ? 'Créer le setup'
+                : 'Enregistrer les modifications',
           ),
         ),
       ],
@@ -769,18 +699,12 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       padding: const EdgeInsets.all(24),
       children: [
         const SizedBox(height: 90),
-        const Icon(
-          Icons.tune,
-          size: 72,
-        ),
+        const Icon(Icons.tune, size: 72),
         const SizedBox(height: 18),
         const Text(
           'Aucun setup enregistré',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
         const Text(
@@ -793,9 +717,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
           child: FilledButton.icon(
             onPressed: createOriginalSetup,
             icon: const Icon(Icons.add),
-            label: const Text(
-              'Créer le setup d’origine',
-            ),
+            label: const Text('Créer le setup d’origine'),
           ),
         ),
       ],
@@ -813,9 +735,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
             FilledButton.tonalIcon(
               onPressed: isSaving ? null : configureFields,
               icon: const Icon(Icons.tune),
-              label: const Text(
-                'Configurer les éléments',
-              ),
+              label: const Text('Configurer les éléments'),
             ),
             OutlinedButton.icon(
               onPressed: isSaving || isEditingOriginal
@@ -829,13 +749,9 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
               ),
             ),
             OutlinedButton.icon(
-              onPressed: isSaving
-                  ? null
-                  : restoreOriginalSetup,
+              onPressed: isSaving ? null : restoreOriginalSetup,
               icon: const Icon(Icons.restart_alt),
-              label: const Text(
-                'Revenir au setup d’origine',
-              ),
+              label: const Text('Revenir au setup d’origine'),
             ),
           ],
         ),
@@ -858,9 +774,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
                 flex: 3,
                 child: Text(
                   'Réglage',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
               Expanded(
@@ -872,9 +786,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
                     SizedBox(width: 4),
                     Text(
                       'Origine',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -885,9 +797,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
                 child: Text(
                   'Actuel',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
             ],
@@ -897,17 +807,10 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
     );
   }
 
-  Widget _buildSection(
-    _SetupSection section,
-    ModelSetup currentSetup,
-  ) {
-    final visibleFields = section.fields.where(
-      (field) {
-        return currentSetup.isFieldEnabled(
-          field.keyName,
-        );
-      },
-    ).toList();
+  Widget _buildSection(_SetupSection section, ModelSetup currentSetup) {
+    final visibleFields = section.fields.where((field) {
+      return currentSetup.isFieldEnabled(field.keyName);
+    }).toList();
 
     if (visibleFields.isEmpty) {
       return const SizedBox.shrink();
@@ -934,8 +837,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
               ],
             ),
             const Divider(height: 18),
-            for (final field in visibleFields)
-              _buildSetupRow(field),
+            for (final field in visibleFields) _buildSetupRow(field),
           ],
         ),
       ),
@@ -943,8 +845,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
   }
 
   Widget _buildSetupRow(_SetupField field) {
-    final canEditOriginal =
-        isCreatingInitialSetup || isEditingOriginal;
+    final canEditOriginal = isCreatingInitialSetup || isEditingOriginal;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -958,9 +859,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
               children: [
                 Text(
                   field.label,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
                 Row(
@@ -969,17 +868,14 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
                     Expanded(
                       child: canEditOriginal
                           ? _buildValueField(
-                              controller: originalControllers[
-                                  field.keyName]!,
+                              controller: originalControllers[field.keyName]!,
                               label: 'Origine',
                               hint: field.hint,
                               multiline: field.multiline,
                               enabled: true,
                             )
                           : _buildOriginalDisplay(
-                              value: originalControllers[
-                                      field.keyName]
-                                  ?.text,
+                              value: originalControllers[field.keyName]?.text,
                               label: 'Origine',
                               multiline: field.multiline,
                             ),
@@ -987,8 +883,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: _buildValueField(
-                        controller:
-                            currentControllers[field.keyName]!,
+                        controller: currentControllers[field.keyName]!,
                         label: 'Actuel',
                         hint: isCreatingInitialSetup
                             ? 'Copié à l’enregistrement'
@@ -1010,26 +905,21 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
                 flex: 3,
                 child: Text(
                   field.label,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
               Expanded(
                 flex: 4,
                 child: canEditOriginal
                     ? _buildValueField(
-                        controller:
-                            originalControllers[field.keyName]!,
+                        controller: originalControllers[field.keyName]!,
                         label: null,
                         hint: field.hint,
                         multiline: field.multiline,
                         enabled: true,
                       )
                     : _buildOriginalDisplay(
-                        value: originalControllers[
-                                field.keyName]
-                            ?.text,
+                        value: originalControllers[field.keyName]?.text,
                         multiline: field.multiline,
                       ),
               ),
@@ -1037,8 +927,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
               Expanded(
                 flex: 4,
                 child: _buildValueField(
-                  controller:
-                      currentControllers[field.keyName]!,
+                  controller: currentControllers[field.keyName]!,
                   label: null,
                   hint: isCreatingInitialSetup
                       ? 'Copié à l’enregistrement'
@@ -1060,23 +949,16 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
     String? label,
   }) {
     final cleanValue = value?.trim() ?? '';
-    final displayedValue =
-        cleanValue.isEmpty ? 'Non renseigné' : cleanValue;
+    final displayedValue = cleanValue.isEmpty ? 'Non renseigné' : cleanValue;
 
     return Container(
       width: double.infinity,
-      constraints: BoxConstraints(
-        minHeight: multiline ? 72 : 42,
-      ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 10,
-      ),
+      constraints: BoxConstraints(minHeight: multiline ? 72 : 42),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.55),
+        color: Theme.of(
+          context,
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -1084,12 +966,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (label != null) ...[
-            Text(
-              label,
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall,
-            ),
+            Text(label, style: Theme.of(context).textTheme.labelSmall),
             const SizedBox(height: 2),
           ],
           Text(
@@ -1099,9 +976,7 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
             style: TextStyle(
               fontSize: 15,
               color: cleanValue.isEmpty
-                  ? Theme.of(context)
-                      .colorScheme
-                      .onSurfaceVariant
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
                   : null,
             ),
           ),
@@ -1136,7 +1011,6 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       ),
     );
   }
-
 }
 
 class _SetupSection {

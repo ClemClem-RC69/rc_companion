@@ -4,6 +4,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'battery_service.dart';
 import 'maintenance_service.dart';
+import 'model_document_service.dart';
+import 'model_local_store.dart';
+import 'model_radio_setup_service.dart';
+import 'model_setup_service.dart';
+import 'radio_service.dart';
 import 'model_service.dart';
 import 'session_local_store.dart';
 import 'supabase_service.dart';
@@ -23,6 +28,10 @@ class RealtimeSyncService {
   static Timer? _batteriesDebounce;
   static Timer? _sessionsDebounce;
   static Timer? _maintenanceDebounce;
+  static Timer? _radiosDebounce;
+  static Timer? _documentsDebounce;
+  static Timer? _setupsDebounce;
+  static Timer? _radioSetupsDebounce;
 
   static bool _started = false;
   static String? _subscribedUserId;
@@ -114,6 +123,30 @@ class RealtimeSyncService {
           schema: 'public',
           table: 'maintenance_records',
           callback: (_) => _scheduleMaintenanceRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'radios',
+          callback: (_) => _scheduleRadiosRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'model_documents',
+          callback: (_) => _scheduleDocumentsRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'model_setups',
+          callback: (_) => _scheduleSetupsRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'model_radio_setups',
+          callback: (_) => _scheduleRadioSetupsRefresh(),
         );
 
     _channel = channel;
@@ -123,6 +156,10 @@ class RealtimeSyncService {
     _scheduleBatteriesRefresh(immediate: true);
     _scheduleSessionsRefresh(immediate: true);
     _scheduleMaintenanceRefresh(immediate: true);
+    _scheduleRadiosRefresh(immediate: true);
+    _scheduleDocumentsRefresh(immediate: true);
+    _scheduleSetupsRefresh(immediate: true);
+    _scheduleRadioSetupsRefresh(immediate: true);
   }
 
   static Future<void> _stopChannel() async {
@@ -150,6 +187,14 @@ class RealtimeSyncService {
     _sessionsDebounce = null;
     _maintenanceDebounce?.cancel();
     _maintenanceDebounce = null;
+    _radiosDebounce?.cancel();
+    _radiosDebounce = null;
+    _documentsDebounce?.cancel();
+    _documentsDebounce = null;
+    _setupsDebounce?.cancel();
+    _setupsDebounce = null;
+    _radioSetupsDebounce?.cancel();
+    _radioSetupsDebounce = null;
   }
 
   static void _scheduleModelsRefresh({bool immediate = false}) {
@@ -200,6 +245,82 @@ class RealtimeSyncService {
         } catch (_) {
           // Hors ligne : le cache Drift existant reste affiché.
         }
+      },
+    );
+  }
+
+  static void _scheduleRadiosRefresh({bool immediate = false}) {
+    _radiosDebounce?.cancel();
+    _radiosDebounce = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 120),
+      () async {
+        try {
+          await RadioService().refreshRadios();
+        } catch (_) {}
+      },
+    );
+  }
+
+  static void _scheduleDocumentsRefresh({bool immediate = false}) {
+    _documentsDebounce?.cancel();
+    _documentsDebounce = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 160),
+      () async {
+        final user = SupabaseService.client.auth.currentUser;
+        if (user == null) return;
+
+        try {
+          final models = await ModelLocalStore.getModels(userId: user.id);
+          for (final model in models) {
+            final modelId = model.id?.trim();
+            if (modelId != null && modelId.isNotEmpty) {
+              await ModelDocumentService.refreshDocuments(modelId);
+            }
+          }
+        } catch (_) {}
+      },
+    );
+  }
+
+  static void _scheduleSetupsRefresh({bool immediate = false}) {
+    _setupsDebounce?.cancel();
+    _setupsDebounce = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 140),
+      () async {
+        final user = SupabaseService.client.auth.currentUser;
+        if (user == null) return;
+
+        try {
+          final models = await ModelLocalStore.getModels(userId: user.id);
+          for (final model in models) {
+            final modelId = model.id?.trim();
+            if (modelId != null && modelId.isNotEmpty) {
+              await ModelSetupService.refreshSetup(modelId);
+            }
+          }
+        } catch (_) {}
+      },
+    );
+  }
+
+  static void _scheduleRadioSetupsRefresh({bool immediate = false}) {
+    _radioSetupsDebounce?.cancel();
+    _radioSetupsDebounce = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 140),
+      () async {
+        final user = SupabaseService.client.auth.currentUser;
+        if (user == null) return;
+
+        try {
+          final models = await ModelLocalStore.getModels(userId: user.id);
+          final service = ModelRadioSetupService();
+          for (final model in models) {
+            final modelId = model.id?.trim();
+            if (modelId != null && modelId.isNotEmpty) {
+              await service.refreshSetup(modelId: modelId);
+            }
+          }
+        } catch (_) {}
       },
     );
   }

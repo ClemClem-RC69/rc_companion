@@ -58,6 +58,15 @@ class ModelDocumentService {
     );
   }
 
+  static Future<List<ModelDocument>> refreshDocuments(String modelId) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw StateError('Aucun utilisateur connecté.');
+    }
+
+    return _refreshDocumentsFromCloud(userId: user.id, modelId: modelId);
+  }
+
   static Future<ModelDocument> addDocument({
     required String modelId,
     required String documentType,

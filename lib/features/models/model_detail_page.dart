@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ class _ModelDetailPageState extends State<ModelDetailPage>
   late final TabController tabController;
 
   List<ModelDocument> documents = [];
+  StreamSubscription<List<ModelDocument>>? _documentsSubscription;
 
   bool isLoadingDocuments = true;
   bool isAddingDocument = false;
@@ -45,11 +47,22 @@ class _ModelDetailPageState extends State<ModelDetailPage>
 
     tabController = TabController(length: 6, vsync: this);
 
+    _documentsSubscription = ModelDocumentService.watchDocuments(widget.modelId)
+        .listen((items) {
+          if (!mounted) return;
+          setState(() {
+            documents = List<ModelDocument>.of(items);
+            isLoadingDocuments = false;
+            documentsError = null;
+          });
+        });
+
     loadDocuments();
   }
 
   @override
   void dispose() {
+    _documentsSubscription?.cancel();
     tabController.dispose();
     super.dispose();
   }

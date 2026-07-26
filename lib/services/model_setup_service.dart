@@ -50,6 +50,24 @@ class ModelSetupService {
     }
   }
 
+  static Stream<ModelSetup?> watchSetup(String modelId) {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return const Stream.empty();
+    }
+
+    return ModelSetupLocalStore.watchSetup(userId: user.id, modelId: modelId);
+  }
+
+  static Future<ModelSetup> refreshSetup(String modelId) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw StateError('Aucun utilisateur connecté.');
+    }
+
+    return _refreshSetupFromCloud(userId: user.id, modelId: modelId);
+  }
+
   static Future<ModelSetup> saveSetup(ModelSetup setup) async {
     final user = _client.auth.currentUser;
     if (user == null) {

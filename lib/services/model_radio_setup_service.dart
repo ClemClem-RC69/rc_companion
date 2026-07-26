@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../database/app_database.dart';
 import '../models/model_radio_setup.dart';
+import 'battery_sync_service.dart';
 import 'model_radio_setup_local_store.dart';
 
 class ModelRadioSetupService {
@@ -33,6 +34,19 @@ class ModelRadioSetupService {
     } catch (_) {
       return null;
     }
+  }
+
+  Stream<ModelRadioSetup?> watchSetup({required String modelId}) {
+    final user = _requireUser();
+    return ModelRadioSetupLocalStore.watchSetup(
+      userId: user.id,
+      modelId: modelId,
+    );
+  }
+
+  Future<ModelRadioSetup?> refreshSetup({required String modelId}) async {
+    final user = _requireUser();
+    return _refreshFromRemote(userId: user.id, modelId: modelId);
   }
 
   Future<ModelRadioSetup> saveSetup(ModelRadioSetup setup) async {
@@ -69,6 +83,7 @@ class ModelRadioSetupService {
       );
     });
 
+    unawaited(BatterySyncService.syncNow());
     return saved;
   }
 
@@ -94,6 +109,8 @@ class ModelRadioSetupService {
         operation: 'delete',
       );
     });
+
+    unawaited(BatterySyncService.syncNow());
   }
 
   Future<ModelRadioSetup?> _refreshFromRemote({
@@ -105,7 +122,8 @@ class ModelRadioSetupService {
         .select()
         .eq('user_id', userId)
         .eq('model_id', modelId)
-        .maybeSingle();
+        .maybeSingle()
+        .timeout(const Duration(seconds: 8));
 
     final remoteRow = response == null
         ? null

@@ -45,6 +45,11 @@ class RadioService {
     return RadioLocalStore.watchRadios(userId: user.id);
   }
 
+  Future<List<RcRadio>> refreshRadios() async {
+    final user = _requireUser();
+    return _refreshFromRemote(user.id);
+  }
+
   Future<RcRadio> addRadio({
     required String brand,
     required String model,

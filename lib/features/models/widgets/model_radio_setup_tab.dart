@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../models/model_radio_setup.dart';
@@ -18,20 +19,19 @@ class ModelRadioSetupTab extends StatefulWidget {
   final RcModel model;
 
   @override
-  State<ModelRadioSetupTab> createState() =>
-      _ModelRadioSetupTabState();
+  State<ModelRadioSetupTab> createState() => _ModelRadioSetupTabState();
 }
 
-class _ModelRadioSetupTabState
-    extends State<ModelRadioSetupTab> {
-  final ModelRadioSetupService _setupService =
-      ModelRadioSetupService();
+class _ModelRadioSetupTabState extends State<ModelRadioSetupTab> {
+  final ModelRadioSetupService _setupService = ModelRadioSetupService();
   final RadioService _radioService = RadioService();
 
   final Map<String, TextEditingController> _controllers = {};
 
   RcRadio? _selectedRadio;
   ModelRadioSetup? _loadedSetup;
+  StreamSubscription<ModelRadioSetup?>? _setupSubscription;
+  StreamSubscription<List<RcRadio>>? _radioSubscription;
   Set<String> _enabledFields = {};
 
   bool _isLoading = true;
@@ -41,17 +41,13 @@ class _ModelRadioSetupTabState
   List<RadioFieldSection> get _sections {
     return radioFieldCatalog
         .where(
-          (section) =>
-              section.title !=
-              'Boutons, molettes et interrupteurs',
+          (section) => section.title != 'Boutons, molettes et interrupteurs',
         )
         .toList();
   }
 
   List<RadioFieldDefinition> get _allFields {
-    return _sections
-        .expand((section) => section.fields)
-        .toList();
+    return _sections.expand((section) => section.fields).toList();
   }
 
   Set<String> get _availableKeys {
@@ -66,11 +62,51 @@ class _ModelRadioSetupTabState
       _controllers[field.key] = TextEditingController();
     }
 
+    _setupSubscription = _setupService
+        .watchSetup(modelId: widget.modelId)
+        .listen((setup) {
+          if (!mounted || _isSaving) return;
+
+          final enabled = {
+            ...?setup?.enabledFields,
+          }.where(_availableKeys.contains).toSet();
+
+          for (final field in _allFields) {
+            _controllers[field.key]?.text = setup?.value(field.key) ?? '';
+          }
+
+          setState(() {
+            _loadedSetup = setup;
+            _enabledFields = enabled;
+            _isLoading = false;
+            _errorMessage = null;
+          });
+        });
+
+    _radioSubscription = _radioService.watchRadios().listen((radios) {
+      if (!mounted) return;
+      final radioId = widget.model.radioId?.trim();
+      RcRadio? selected;
+      if (radioId != null && radioId.isNotEmpty) {
+        for (final radio in radios) {
+          if (radio.id == radioId) {
+            selected = radio;
+            break;
+          }
+        }
+      }
+      setState(() {
+        _selectedRadio = selected;
+      });
+    });
+
     _loadData();
   }
 
   @override
   void dispose() {
+    _setupSubscription?.cancel();
+    _radioSubscription?.cancel();
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -115,8 +151,7 @@ class _ModelRadioSetupTabState
       }.where(_availableKeys.contains).toSet();
 
       for (final field in _allFields) {
-        _controllers[field.key]?.text =
-            setup?.value(field.key) ?? '';
+        _controllers[field.key]?.text = setup?.value(field.key) ?? '';
       }
 
       if (!mounted) {
@@ -136,8 +171,7 @@ class _ModelRadioSetupTabState
 
       setState(() {
         _isLoading = false;
-        _errorMessage =
-            'Impossible de charger les réglages radio.\n$error';
+        _errorMessage = 'Impossible de charger les réglages radio.\n$error';
       });
     }
   }
@@ -159,12 +193,7 @@ class _ModelRadioSetupTabState
                   children: [
                     for (final section in _sections) ...[
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          4,
-                          14,
-                          4,
-                          4,
-                        ),
+                        padding: const EdgeInsets.fromLTRB(4, 14, 4, 4),
                         child: Row(
                           children: [
                             Icon(section.icon, size: 20),
@@ -182,8 +211,7 @@ class _ModelRadioSetupTabState
                         CheckboxListTile(
                           value: draft.contains(field.key),
                           title: Text(field.label),
-                          controlAffinity:
-                              ListTileControlAffinity.leading,
+                          controlAffinity: ListTileControlAffinity.leading,
                           contentPadding: EdgeInsets.zero,
                           onChanged: (value) {
                             setDialogState(() {
@@ -246,23 +274,17 @@ class _ModelRadioSetupTabState
     });
 
     try {
-      final previousFields =
-          _loadedSetup?.enabledFields ?? const <String>[];
-      final previousValues =
-          _loadedSetup?.values ?? const <String, String>{};
+      final previousFields = _loadedSetup?.enabledFields ?? const <String>[];
+      final previousValues = _loadedSetup?.values ?? const <String, String>{};
 
       final otherFields = previousFields
           .where((key) => !_availableKeys.contains(key))
           .toList();
 
-      final mergedFields = <String>[
-        ...otherFields,
-        ..._enabledFields,
-      ];
+      final mergedFields = <String>[...otherFields, ..._enabledFields];
 
       final mergedValues = <String, String>{
-        for (final key in otherFields)
-          key: previousValues[key] ?? '',
+        for (final key in otherFields) key: previousValues[key] ?? '',
         for (final key in _enabledFields)
           key: _controllers[key]?.text.trim() ?? '',
       };
@@ -286,9 +308,7 @@ class _ModelRadioSetupTabState
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Réglages radio enregistrés'),
-        ),
+        const SnackBar(content: Text('Réglages radio enregistrés')),
       );
     } catch (error) {
       if (!mounted) {
@@ -313,32 +333,21 @@ class _ModelRadioSetupTabState
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_errorMessage != null) {
-      return _ErrorState(
-        message: _errorMessage!,
-        onRetry: _loadData,
-      );
+      return _ErrorState(message: _errorMessage!, onRetry: _loadData);
     }
 
-    if (widget.model.radioId == null ||
-        widget.model.radioId!.trim().isEmpty) {
+    if (widget.model.radioId == null || widget.model.radioId!.trim().isEmpty) {
       return const _NoRadioState();
     }
 
     return Stack(
       children: [
         ListView(
-          padding: const EdgeInsets.fromLTRB(
-            16,
-            16,
-            16,
-            100,
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
             _RadioCard(radio: _selectedRadio),
             const SizedBox(height: 16),
@@ -375,16 +384,10 @@ class _ModelRadioSetupTabState
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.save_outlined),
-            label: Text(
-              _isSaving
-                  ? 'Enregistrement...'
-                  : 'Enregistrer',
-            ),
+            label: Text(_isSaving ? 'Enregistrement...' : 'Enregistrer'),
           ),
         ),
       ],
@@ -396,10 +399,7 @@ class _ModelRadioSetupTabState
 
     for (final section in _sections) {
       final fields = section.fields
-          .where(
-            (field) =>
-                _enabledFields.contains(field.key),
-          )
+          .where((field) => _enabledFields.contains(field.key))
           .toList();
 
       if (fields.isEmpty) {
@@ -408,10 +408,7 @@ class _ModelRadioSetupTabState
 
       widgets.add(
         Padding(
-          padding: const EdgeInsets.only(
-            top: 8,
-            bottom: 10,
-          ),
+          padding: const EdgeInsets.only(top: 8, bottom: 10),
           child: Row(
             children: [
               Icon(section.icon),
@@ -442,16 +439,13 @@ class _ModelRadioSetupTabState
                 hintText: field.hint,
                 border: const OutlineInputBorder(),
                 alignLabelWithHint: field.multiline,
-                counterText:
-                    field.multiline ? null : '',
+                counterText: field.multiline ? null : '',
                 suffixIcon: IconButton(
                   tooltip: 'Retirer',
                   onPressed: () {
                     _removeField(field.key);
                   },
-                  icon: const Icon(
-                    Icons.close,
-                  ),
+                  icon: const Icon(Icons.close),
                 ),
               ),
             ),
@@ -465,9 +459,7 @@ class _ModelRadioSetupTabState
 }
 
 class _RadioCard extends StatelessWidget {
-  const _RadioCard({
-    required this.radio,
-  });
+  const _RadioCard({required this.radio});
 
   final RcRadio? radio;
 
@@ -480,9 +472,7 @@ class _RadioCard extends StatelessWidget {
         ),
         title: Text(
           radio?.fullName ?? 'Radio associée',
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Text(
           radio == null || radio!.protocols.isEmpty
@@ -503,18 +493,12 @@ class _NoRadioState extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       children: const [
         SizedBox(height: 100),
-        Icon(
-          Icons.settings_remote_outlined,
-          size: 72,
-        ),
+        Icon(Icons.settings_remote_outlined, size: 72),
         SizedBox(height: 16),
         Text(
           'Aucune radio associée',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         SizedBox(height: 8),
         Text(
@@ -528,10 +512,7 @@ class _NoRadioState extends StatelessWidget {
 }
 
 class _ErrorState extends StatelessWidget {
-  const _ErrorState({
-    required this.message,
-    required this.onRetry,
-  });
+  const _ErrorState({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;
@@ -544,15 +525,9 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.error_outline,
-              size: 56,
-            ),
+            const Icon(Icons.error_outline, size: 56),
             const SizedBox(height: 16),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-            ),
+            Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: onRetry,
