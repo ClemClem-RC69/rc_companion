@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/radio_catalog.dart';
 import '../models/radio.dart';
 import '../models/radio_catalog_item.dart';
+import 'radio_manual_viewer_page.dart';
 import '../services/radio_service.dart';
 
 class RadiosPage extends StatefulWidget {
@@ -16,6 +19,7 @@ class _RadiosPageState extends State<RadiosPage> {
   final RadioService _radioService = RadioService();
 
   List<RcRadio> _radios = [];
+  StreamSubscription<List<RcRadio>>? _radioSubscription;
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -23,7 +27,26 @@ class _RadiosPageState extends State<RadiosPage> {
   @override
   void initState() {
     super.initState();
+    _radioSubscription = _radioService.watchRadios().listen(
+      (radios) {
+        if (!mounted) return;
+        setState(() {
+          _radios = radios;
+          _isLoading = false;
+          _errorMessage = null;
+        });
+      },
+      onError: (_) {
+        // Le cache local reste utilisable hors ligne.
+      },
+    );
     _loadRadios();
+  }
+
+  @override
+  void dispose() {
+    _radioSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadRadios() async {
@@ -76,9 +99,7 @@ class _RadiosPageState extends State<RadiosPage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('Supprimer la radio'),
-          content: Text(
-            'Supprimer ${radio.fullName} de vos radios ?',
-          ),
+          content: Text('Supprimer ${radio.fullName} de vos radios ?'),
           actions: [
             TextButton(
               onPressed: () {
@@ -105,9 +126,7 @@ class _RadiosPageState extends State<RadiosPage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${radio.fullName} a été supprimée.'),
-        ),
+        SnackBar(content: Text('${radio.fullName} a été supprimée.')),
       );
 
       await _loadRadios();
@@ -115,20 +134,126 @@ class _RadiosPageState extends State<RadiosPage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible de supprimer la radio : $error')),
+      );
+    }
+  }
+
+  Future<void> _addOrReplaceManual(RcRadio radio) async {
+    try {
+      final changed = await _radioService.addOrReplaceManual(radio);
+      if (!mounted || !changed) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Impossible de supprimer la radio : $error',
+            radio.hasManual
+                ? 'Le manuel de ${radio.fullName} a été remplacé.'
+                : 'Le manuel de ${radio.fullName} a été ajouté.',
           ),
         ),
       );
+      await _loadRadios();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible d’enregistrer le manuel : $error')),
+      );
+    }
+  }
+
+  Future<void> _openManual(RcRadio radio) async {
+    try {
+      final path = await _radioService.getManualLocalPath(radio);
+      if (!mounted) return;
+
+      final action = await Navigator.of(context).push<RadioManualViewerAction>(
+        MaterialPageRoute<RadioManualViewerAction>(
+          builder: (_) => RadioManualViewerPage(
+            path: path,
+            filename: radio.manualName ?? 'Manuel',
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+
+      switch (action) {
+        case RadioManualViewerAction.replace:
+          await _addOrReplaceManual(radio);
+          break;
+        case RadioManualViewerAction.delete:
+          await _deleteManual(radio);
+          break;
+        case null:
+          await _loadRadios();
+          break;
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible d’ouvrir le manuel : $error')),
+      );
+    }
+  }
+
+  Future<void> _deleteManual(RcRadio radio) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Supprimer le manuel'),
+        content: Text(
+          'Supprimer le manuel enregistré pour ${radio.fullName} ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _radioService.deleteManual(radio);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Le manuel de ${radio.fullName} a été supprimé.'),
+        ),
+      );
+      await _loadRadios();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossible de supprimer le manuel : $error')),
+      );
+    }
+  }
+
+  void _handleRadioMenu(String value, RcRadio radio) {
+    switch (value) {
+      case 'manual_add':
+        _addOrReplaceManual(radio);
+        return;
+      case 'manual_open':
+        _openManual(radio);
+        return;
+      case 'delete':
+        _deleteRadio(radio);
+        return;
     }
   }
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_errorMessage != null) {
@@ -138,15 +263,9 @@ class _RadiosPageState extends State<RadiosPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.error_outline,
-                size: 56,
-              ),
+              const Icon(Icons.error_outline, size: 56),
               const SizedBox(height: 16),
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-              ),
+              Text(_errorMessage!, textAlign: TextAlign.center),
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: _loadRadios,
@@ -218,9 +337,7 @@ class _RadiosPageState extends State<RadiosPage> {
               ),
               title: Text(
                 radio.fullName,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               subtitle: Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -231,14 +348,42 @@ class _RadiosPageState extends State<RadiosPage> {
                 ),
               ),
               trailing: PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'delete') {
-                    _deleteRadio(radio);
-                  }
-                },
+                onSelected: (value) => _handleRadioMenu(value, radio),
                 itemBuilder: (context) {
-                  return const [
-                    PopupMenuItem<String>(
+                  final items = <PopupMenuEntry<String>>[];
+
+                  if (radio.hasManual) {
+                    items.addAll(const [
+                      PopupMenuItem<String>(
+                        value: 'manual_open',
+                        child: Row(
+                          children: [
+                            Icon(Icons.menu_book_outlined),
+                            SizedBox(width: 12),
+                            Text('Ouvrir le manuel'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuDivider(),
+                    ]);
+                  } else {
+                    items.add(
+                      const PopupMenuItem<String>(
+                        value: 'manual_add',
+                        child: Row(
+                          children: [
+                            Icon(Icons.note_add_outlined),
+                            SizedBox(width: 12),
+                            Text('Ajouter le manuel'),
+                          ],
+                        ),
+                      ),
+                    );
+                    items.add(const PopupMenuDivider());
+                  }
+
+                  items.add(
+                    const PopupMenuItem<String>(
                       value: 'delete',
                       child: Row(
                         children: [
@@ -248,7 +393,8 @@ class _RadiosPageState extends State<RadiosPage> {
                         ],
                       ),
                     ),
-                  ];
+                  );
+                  return items;
                 },
               ),
             ),
@@ -261,9 +407,7 @@ class _RadiosPageState extends State<RadiosPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Radios'),
-      ),
+      appBar: AppBar(title: const Text('Radios')),
       floatingActionButton: _radios.isEmpty || _isLoading
           ? null
           : FloatingActionButton.extended(
@@ -275,7 +419,6 @@ class _RadiosPageState extends State<RadiosPage> {
     );
   }
 }
-
 
 class _RadioThumbnail extends StatelessWidget {
   const _RadioThumbnail({
@@ -300,16 +443,11 @@ class _RadioThumbnail extends StatelessWidget {
       width: 52,
       height: 52,
       decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       alignment: Alignment.center,
-      child: Icon(
-        icon,
-        size: 30,
-      ),
+      child: Icon(icon, size: 30),
     );
   }
 }
@@ -332,10 +470,7 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
   String? _addingRadioId;
 
   List<String> get _brands {
-    final brands = radioCatalog
-        .map((radio) => radio.brand)
-        .toSet()
-        .toList();
+    final brands = radioCatalog.map((radio) => radio.brand).toSet().toList();
 
     brands.sort();
 
@@ -356,21 +491,14 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
           );
 
       final matchesBrand =
-          _selectedBrand == null ||
-          radio.brand == _selectedBrand;
+          _selectedBrand == null || radio.brand == _selectedBrand;
 
       final matchesLevel =
-          _selectedLevel == null ||
-          radio.level == _selectedLevel;
+          _selectedLevel == null || radio.level == _selectedLevel;
 
-      final matchesType =
-          _selectedType == null ||
-          radio.type == _selectedType;
+      final matchesType = _selectedType == null || radio.type == _selectedType;
 
-      return matchesSearch &&
-          matchesBrand &&
-          matchesLevel &&
-          matchesType;
+      return matchesSearch && matchesBrand && matchesLevel && matchesType;
     }).toList();
 
     radios.sort((a, b) {
@@ -419,9 +547,7 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
       if (alreadyExists) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              '${radio.fullName} est déjà dans vos radios.',
-            ),
+            content: Text('${radio.fullName} est déjà dans vos radios.'),
           ),
         );
 
@@ -441,11 +567,7 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${radio.fullName} a été ajoutée.',
-          ),
-        ),
+        SnackBar(content: Text('${radio.fullName} a été ajoutée.')),
       );
 
       Navigator.of(context).pop(true);
@@ -453,11 +575,7 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impossible d’ajouter la radio : $error',
-          ),
-        ),
+        SnackBar(content: Text('Impossible d’ajouter la radio : $error')),
       );
     } finally {
       if (mounted) {
@@ -483,10 +601,7 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
                 const Expanded(
                   child: Text(
                     'Ajouter une radio',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   ),
                 ),
                 IconButton(
@@ -645,17 +760,10 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
           Expanded(
             child: filteredRadios.isEmpty
                 ? const Center(
-                    child: Text(
-                      'Aucune radio ne correspond à la recherche.',
-                    ),
+                    child: Text('Aucune radio ne correspond à la recherche.'),
                   )
                 : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(
-                      16,
-                      0,
-                      16,
-                      24,
-                    ),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                     itemCount: filteredRadios.length,
                     separatorBuilder: (context, index) {
                       return const SizedBox(height: 8);
@@ -673,9 +781,7 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
                           ),
                           title: Text(
                             radio.fullName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           subtitle: Padding(
                             padding: const EdgeInsets.only(top: 6),
@@ -683,7 +789,7 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
                               radio.protocols.isEmpty
                                   ? 'Protocole non renseigné'
                                   : 'Protocole : '
-                                      '${radio.protocols.join(' • ')}',
+                                        '${radio.protocols.join(' • ')}',
                             ),
                           ),
                           trailing: isAdding
@@ -694,9 +800,7 @@ class _RadioCatalogSheetState extends State<_RadioCatalogSheet> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(
-                                  Icons.add_circle_outline,
-                                ),
+                              : const Icon(Icons.add_circle_outline),
                           onTap: isAdding
                               ? null
                               : () {

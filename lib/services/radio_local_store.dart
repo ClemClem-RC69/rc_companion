@@ -147,11 +147,55 @@ class RadioLocalStore {
       throw StateError('La radio doit posséder un identifiant.');
     }
 
+    final existing =
+        await (_database.select(_database.localRadios)
+              ..where(
+                (item) =>
+                    item.userId.equals(userId) & item.radioId.equals(radioId),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+
+    final mergedRow = Map<String, dynamic>.from(row);
+    if (existing != null) {
+      final existingPayload = Map<String, dynamic>.from(
+        jsonDecode(existing.payloadJson) as Map,
+      );
+
+      final incomingStorage = mergedRow['manual_storage_path']
+          ?.toString()
+          .trim();
+      final existingStorage = existingPayload['manual_storage_path']
+          ?.toString()
+          .trim();
+
+      final existingLocalPath = existingPayload['manual_local_path']
+          ?.toString()
+          .trim();
+      final incomingLocalPath = mergedRow['manual_local_path']
+          ?.toString()
+          .trim();
+
+      if ((incomingLocalPath == null || incomingLocalPath.isEmpty) &&
+          existingLocalPath != null &&
+          existingLocalPath.isNotEmpty &&
+          incomingStorage != null &&
+          incomingStorage.isNotEmpty &&
+          incomingStorage == existingStorage) {
+        mergedRow['manual_local_path'] = existingLocalPath;
+      }
+
+      final existingPending = existingPayload['manual_pending_upload'] == true;
+      if (!mergedRow.containsKey('manual_pending_upload')) {
+        mergedRow['manual_pending_upload'] = existingPending;
+      }
+    }
+
     final now = DateTime.now();
-    final brand = row['brand']?.toString().trim() ?? '';
-    final model = row['model']?.toString().trim() ?? '';
-    final createdAt = _parseDate(row['created_at']) ?? now;
-    final updatedAt = _parseDate(row['updated_at']) ?? now;
+    final brand = mergedRow['brand']?.toString().trim() ?? '';
+    final model = mergedRow['model']?.toString().trim() ?? '';
+    final createdAt = _parseDate(mergedRow['created_at']) ?? now;
+    final updatedAt = _parseDate(mergedRow['updated_at']) ?? now;
 
     await _database
         .into(_database.localRadios)
@@ -162,7 +206,7 @@ class RadioLocalStore {
             radioId: radioId,
             brand: brand,
             model: model,
-            payloadJson: jsonEncode(row),
+            payloadJson: jsonEncode(mergedRow),
             createdAt: Value(createdAt),
             updatedAt: Value(updatedAt),
             isDeleted: Value(isDeleted),
@@ -194,6 +238,10 @@ class RadioLocalStore {
       'protocols': radio.protocols,
       'programmable': radio.programmable,
       'created_at': radio.createdAt.toUtc().toIso8601String(),
+      'manual_name': radio.manualName,
+      'manual_storage_path': radio.manualStoragePath,
+      'manual_local_path': radio.manualLocalPath,
+      'manual_pending_upload': radio.manualPendingUpload,
       'updated_at': (updatedAt ?? DateTime.now()).toUtc().toIso8601String(),
     };
   }
