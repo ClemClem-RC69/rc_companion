@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -1919,9 +1920,19 @@ class _DashboardPageState extends State<DashboardPage>
             height: 145,
             child: Center(
               child: Transform.translate(
-                offset: const Offset(-26, 0),
+                offset: Offset(
+                  defaultTargetPlatform == TargetPlatform.iOS ||
+                          defaultTargetPlatform == TargetPlatform.android
+                      ? 0
+                      : -26,
+                  0,
+                ),
                 child: Transform.scale(
-                  scale: 1.85,
+                  scale:
+                      defaultTargetPlatform == TargetPlatform.iOS ||
+                          defaultTargetPlatform == TargetPlatform.android
+                      ? 1.40
+                      : 1.85,
                   child: Image.asset(
                     _categoryAsset(lastModelCategory),
                     fit: BoxFit.contain,
