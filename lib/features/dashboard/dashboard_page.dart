@@ -1346,7 +1346,7 @@ class _DashboardPageState extends State<DashboardPage>
                             width: metricWidth,
                             child: _CompactMetricCard(
                               value: 0,
-                              label: 'COMMANDE\nRADIO',
+                              label: 'COMMANDE RADIO\n& NOTICE',
                               asset: 'assets/images/rc_icon_radio_nb4_hd.png',
                               color: const Color(0xFFD9DEE8),
                               loading: false,
@@ -1824,7 +1824,7 @@ class _DashboardPageState extends State<DashboardPage>
       ),
       _MetricCardData(
         value: 0,
-        label: 'COMMANDE\nRADIO',
+        label: 'COMMANDE RADIO\n& NOTICE',
         asset: 'assets/images/rc_icon_radio_nb4_hd.png',
         color: const Color(0xFFD9DEE8),
         showValue: false,
@@ -3559,12 +3559,19 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mobileLandscape =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android;
+
     return InkWell(
       onTap: data.onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
         height: 120,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: EdgeInsets.symmetric(
+          horizontal: mobileLandscape ? 8 : 14,
+          vertical: mobileLandscape ? 7 : 12,
+        ),
         decoration: BoxDecoration(
           color: const Color(0xFF0B1A2D),
           borderRadius: BorderRadius.circular(14),
@@ -3577,56 +3584,113 @@ class _MetricCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 70,
-              height: 70,
-              child: Image.asset(
-                data.asset,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: loading
-                  ? const LinearProgressIndicator()
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        child: mobileLandscape
+            ? loading
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Stack(
                       children: [
-                        if (data.showValue) ...[
-                          Text(
-                            '${data.value}',
-                            style: TextStyle(
-                              color: data.color,
-                              fontSize: 29,
-                              height: 1,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                        ],
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
+                        Align(
                           alignment: Alignment.centerLeft,
-                          child: Text(
-                            data.label,
-                            maxLines: 2,
-                            textAlign: TextAlign.left,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              height: 1,
-                              fontWeight: FontWeight.w900,
-                            ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 62,
+                                height: 62,
+                                child: Image.asset(
+                                  data.asset,
+                                  fit: BoxFit.contain,
+                                  filterQuality: FilterQuality.high,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              SizedBox(
+                                width: 110,
+                                child: Text(
+                                  data.label,
+                                  maxLines: 2,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    height: 1,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                        if (data.showValue)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Text(
+                                '${data.value}',
+                                style: TextStyle(
+                                  color: data.color,
+                                  fontSize: 24,
+                                  height: 1,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
+                    )
+            : Row(
+                children: [
+                  SizedBox(
+                    width: 70,
+                    height: 70,
+                    child: Image.asset(
+                      data.asset,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
                     ),
-            ),
-          ],
-        ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: loading
+                        ? const LinearProgressIndicator()
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (data.showValue) ...[
+                                Text(
+                                  '${data.value}',
+                                  style: TextStyle(
+                                    color: data.color,
+                                    fontSize: 29,
+                                    height: 1,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                              ],
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  data.label,
+                                  maxLines: 2,
+                                  textAlign: TextAlign.left,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    height: 1,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
       ),
     );
   }
