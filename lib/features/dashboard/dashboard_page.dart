@@ -1078,8 +1078,9 @@ class _TopBar extends StatelessWidget {
             icon: const Icon(Icons.refresh_rounded),
           ),
           IconButton(
+            tooltip: 'Informations & Références',
             onPressed: onInfo,
-            icon: const Icon(Icons.notifications_none_rounded),
+            icon: const Icon(Icons.info_outline_rounded),
           ),
           if (desktop) ...[
             const SizedBox(width: 8),
