@@ -1487,10 +1487,33 @@ class _DashboardPageState extends State<DashboardPage>
                 flex: 2,
                 child: Padding(
                   padding: EdgeInsets.all(veryTight ? 2 : 4),
-                  child: Image.asset(
-                    _categoryAsset(lastModelCategory),
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
+                  child: Center(
+                    child: Transform.translate(
+                      offset: Offset(
+                        isPhone
+                            ? 0
+                            : veryTight
+                            ? -18
+                            : tight
+                            ? -22
+                            : -26,
+                        0,
+                      ),
+                      child: Transform.scale(
+                        scale: isPhone
+                            ? 1.12
+                            : veryTight
+                            ? 1.85
+                            : tight
+                            ? 1.95
+                            : 2.05,
+                        child: Image.asset(
+                          _categoryAsset(lastModelCategory),
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1569,10 +1592,21 @@ class _DashboardPageState extends State<DashboardPage>
                 flex: 2,
                 child: Padding(
                   padding: EdgeInsets.all(veryTight ? 2 : 4),
-                  child: Image.asset(
-                    'assets/images/rc_battery_dashboard_hd.png',
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
+                  child: Center(
+                    child: Transform.scale(
+                      scale: isPhone
+                          ? 1.00
+                          : veryTight
+                          ? 1.45
+                          : tight
+                          ? 1.55
+                          : 1.65,
+                      child: Image.asset(
+                        'assets/images/rc_battery_dashboard_hd.png',
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1884,12 +1918,15 @@ class _DashboardPageState extends State<DashboardPage>
             width: 210,
             height: 145,
             child: Center(
-              child: Transform.scale(
-                scale: 1.65,
-                child: Image.asset(
-                  _categoryAsset(lastModelCategory),
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
+              child: Transform.translate(
+                offset: const Offset(-26, 0),
+                child: Transform.scale(
+                  scale: 1.85,
+                  child: Image.asset(
+                    _categoryAsset(lastModelCategory),
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                  ),
                 ),
               ),
             ),
