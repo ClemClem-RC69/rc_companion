@@ -5,9 +5,14 @@ import '../../../models/model_setup.dart';
 import '../../../services/model_setup_service.dart';
 
 class ModelSetupTab extends StatefulWidget {
-  const ModelSetupTab({super.key, required this.modelId});
+  const ModelSetupTab({
+    super.key,
+    required this.modelId,
+    required this.category,
+  });
 
   final String modelId;
+  final String category;
 
   @override
   State<ModelSetupTab> createState() => _ModelSetupTabState();
@@ -27,7 +32,17 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
   final Map<String, TextEditingController> originalControllers = {};
   final Map<String, TextEditingController> currentControllers = {};
 
-  static const List<_SetupSection> sections = [
+  // ---------------------------------------------------------------------------
+  // BIBLIOTHÈQUE DES CHAMPS DE SETUP PAR CATÉGORIE
+  // ---------------------------------------------------------------------------
+  //
+  // La voiture conserve STRICTEMENT les champs historiques de RC Companion.
+  // Bateau et Moto utilisent des champs adaptés aux réglages réellement utiles
+  // en RC. Le stockage reste générique (enabledFields/original/current), donc
+  // aucune migration de base n'est nécessaire.
+  // ---------------------------------------------------------------------------
+
+  static const List<_SetupSection> carSections = [
     _SetupSection(
       title: 'Transmission',
       icon: Icons.settings,
@@ -146,6 +161,216 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       ],
     ),
   ];
+
+  static const List<_SetupSection> boatSections = [
+    _SetupSection(
+      title: 'Propulsion',
+      icon: Icons.settings,
+      fields: [
+        _SetupField(
+          keyName: 'boat_propeller',
+          label: 'Hélice',
+          hint: 'Ex. 42 x 1,6 / 2 pales',
+        ),
+        _SetupField(
+          keyName: 'boat_strut_height',
+          label: 'Strut — hauteur',
+          hint: 'Ex. +2 mm',
+        ),
+        _SetupField(
+          keyName: 'boat_strut_angle',
+          label: 'Strut — angle',
+          hint: 'Ex. 0° / -1°',
+        ),
+        _SetupField(
+          keyName: 'boat_jet_impeller',
+          label: 'Turbine / Impeller',
+          hint: 'Référence ou configuration',
+        ),
+        _SetupField(
+          keyName: 'boat_jet_nozzle_trim',
+          label: 'Buse jet — trim',
+          hint: 'Ex. neutre / +1 cran',
+        ),
+      ],
+    ),
+    _SetupSection(
+      title: 'Comportement coque',
+      icon: Icons.directions_boat_outlined,
+      fields: [
+        _SetupField(
+          keyName: 'boat_trim_tab_left',
+          label: 'Trim tab gauche',
+          hint: 'Ex. neutre / -1 mm',
+        ),
+        _SetupField(
+          keyName: 'boat_trim_tab_right',
+          label: 'Trim tab droit',
+          hint: 'Ex. neutre / -1 mm',
+        ),
+        _SetupField(
+          keyName: 'boat_turn_fin_left',
+          label: 'Turn fin gauche',
+          hint: 'Position / réglage',
+        ),
+        _SetupField(
+          keyName: 'boat_turn_fin_right',
+          label: 'Turn fin droit',
+          hint: 'Position / réglage',
+        ),
+        _SetupField(
+          keyName: 'boat_battery_position',
+          label: 'Position batterie',
+          hint: 'Ex. 20 mm vers l’avant',
+        ),
+      ],
+    ),
+    _SetupSection(
+      title: 'Électronique',
+      icon: Icons.electric_bolt_outlined,
+      fields: [
+        _SetupField(keyName: 'motor', label: 'Moteur', hint: 'Ex. 3660 2300KV'),
+        _SetupField(
+          keyName: 'esc',
+          label: 'ESC',
+          hint: 'Ex. Spektrum Firma 100A',
+        ),
+      ],
+    ),
+    _SetupSection(
+      title: 'Autres',
+      icon: Icons.notes,
+      fields: [
+        _SetupField(
+          keyName: 'notes',
+          label: 'Notes',
+          hint: 'Informations complémentaires',
+          multiline: true,
+        ),
+      ],
+    ),
+  ];
+
+  static const List<_SetupSection> motorcycleSections = [
+    _SetupSection(
+      title: 'Fourche avant',
+      icon: Icons.compress,
+      fields: [
+        _SetupField(
+          keyName: 'moto_fork_spring',
+          label: 'Ressort de fourche',
+          hint: 'Ex. Soft / Medium / Hard',
+        ),
+        _SetupField(
+          keyName: 'moto_fork_oil',
+          label: 'Huile de fourche',
+          hint: 'Ex. 500 cSt',
+        ),
+        _SetupField(
+          keyName: 'moto_fork_spacers',
+          label: 'Entretoises / hauteur',
+          hint: 'Ex. 2 mm',
+        ),
+      ],
+    ),
+    _SetupSection(
+      title: 'Suspension arrière',
+      icon: Icons.compress,
+      fields: [
+        _SetupField(
+          keyName: 'moto_rear_shock_spring',
+          label: 'Ressort arrière',
+          hint: 'Ex. Medium',
+        ),
+        _SetupField(
+          keyName: 'moto_rear_shock_oil',
+          label: 'Huile amortisseur arrière',
+          hint: 'Ex. 450 cSt',
+        ),
+        _SetupField(
+          keyName: 'moto_rear_preload',
+          label: 'Précharge arrière',
+          hint: 'Ex. 3 mm',
+        ),
+      ],
+    ),
+    _SetupSection(
+      title: 'Transmission',
+      icon: Icons.settings,
+      fields: [
+        // Ces deux clés sont communes à la voiture pour conserver une
+        // représentation cohérente de la transmission dans les données.
+        _SetupField(
+          keyName: 'pinion',
+          label: 'Pignon moteur',
+          hint: 'Ex. 12 dents',
+        ),
+        _SetupField(keyName: 'spur', label: 'Couronne', hint: 'Ex. 60 dents'),
+        _SetupField(
+          keyName: 'moto_gear_ratio',
+          label: 'Rapport',
+          hint: 'Ex. 15,5:1',
+        ),
+        _SetupField(
+          keyName: 'moto_chain_tension',
+          label: 'Tension chaîne',
+          hint: 'Ex. position 2 / jeu 3 mm',
+        ),
+      ],
+    ),
+    _SetupSection(
+      title: 'Roues',
+      icon: Icons.tire_repair,
+      fields: [
+        _SetupField(
+          keyName: 'moto_front_tire',
+          label: 'Pneu avant',
+          hint: 'Référence / gomme',
+        ),
+        _SetupField(
+          keyName: 'moto_rear_tire',
+          label: 'Pneu arrière',
+          hint: 'Référence / gomme',
+        ),
+      ],
+    ),
+    _SetupSection(
+      title: 'Électronique',
+      icon: Icons.electric_bolt_outlined,
+      fields: [
+        _SetupField(keyName: 'motor', label: 'Moteur', hint: 'Ex. 3800KV'),
+        _SetupField(keyName: 'esc', label: 'ESC', hint: 'Référence / réglage'),
+      ],
+    ),
+    _SetupSection(
+      title: 'Autres',
+      icon: Icons.notes,
+      fields: [
+        _SetupField(
+          keyName: 'notes',
+          label: 'Notes',
+          hint: 'Informations complémentaires',
+          multiline: true,
+        ),
+      ],
+    ),
+  ];
+
+  List<_SetupSection> get sections {
+    final category = widget.category.trim().toLowerCase();
+
+    if (category.contains('bateau')) {
+      return boatSections;
+    }
+
+    if (category.contains('moto')) {
+      return motorcycleSections;
+    }
+
+    // Voiture + sécurité pour les anciennes catégories inconnues :
+    // comportement historique inchangé.
+    return carSections;
+  }
 
   List<_SetupField> get allFields {
     return sections.expand((section) => section.fields).toList();

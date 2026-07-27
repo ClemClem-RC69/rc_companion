@@ -569,7 +569,10 @@ class _ModelDetailPageState extends State<ModelDetailPage>
         children: [
           _InformationTab(model: widget.model),
           buildDocumentsTab(),
-          ModelSetupTab(modelId: widget.modelId),
+          ModelSetupTab(
+            modelId: widget.modelId,
+            category: widget.model.category,
+          ),
           ModelRadioSetupTab(modelId: widget.modelId, model: widget.model),
           ModelRadioControlsTab(modelId: widget.modelId, model: widget.model),
           ModelHistoryTab(modelId: widget.modelId, model: widget.model),
