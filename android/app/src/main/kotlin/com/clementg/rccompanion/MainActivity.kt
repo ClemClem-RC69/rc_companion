@@ -1,4 +1,4 @@
-package com.example.rc_companion
+package com.clementg.rccompanion
 
 import io.flutter.embedding.android.FlutterActivity
 

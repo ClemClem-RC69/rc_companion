@@ -477,8 +477,8 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     final usesResistance = measurementType != BatteryMeasurement.endOfRunType;
 
     final chargeController = TextEditingController(
-  text: initialMeasurement?.chargePercent.toString() ?? '',
-);
+      text: initialMeasurement?.chargePercent.toString() ?? '',
+    );
     final temperatureController = TextEditingController(
       text: initialMeasurement?.batteryTemperature == null
           ? ''
@@ -518,6 +518,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
+            final isCompactMeasurementDialog =
+                MediaQuery.sizeOf(dialogContext).width < 700;
+
             double? parseDecimal(String value) {
               return double.tryParse(value.trim().replaceAll(',', '.'));
             }
@@ -682,7 +685,9 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                     : 'Modifier — $measurementType',
               ),
               content: SizedBox(
-                width: usesResistance ? 720 : 610,
+                width: isCompactMeasurementDialog
+                    ? double.maxFinite
+                    : (usesResistance ? 720 : 610),
                 child: Form(
                   key: formKey,
                   child: Column(
@@ -693,107 +698,147 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                         '• ${battery.capacity} mAh • ${battery.cells}',
                       ),
                       const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: chargeController,
-                              enabled: !isSaving,
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                labelText: usesResistance
-                                    ? 'Niveau de charge'
-                                    : 'Capacité restante',
-                                    floatingLabelBehavior: FloatingLabelBehavior.always,
-                                border: const OutlineInputBorder(),
-                                suffixText: '%',
-                                isDense: true,
-                              ),
-                              validator: (value) {
-                                final percent = int.tryParse(
-                                  value?.trim() ?? '',
-                                );
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final fieldWidth = isCompactMeasurementDialog
+                              ? (constraints.maxWidth - 12) / 2
+                              : null;
 
-                                if (percent == null ||
-                                    percent < 0 ||
-                                    percent > 100) {
-                                  return 'Pourcentage entre 0 et 100';
-                                }
+                          Widget sizedField(Widget child) {
+                            if (fieldWidth != null) {
+                              return SizedBox(width: fieldWidth, child: child);
+                            }
+                            return Expanded(child: child);
+                          }
 
-                                return null;
-                              },
-                            ),
-                          ),
-                          if (!usesResistance) ...[
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextFormField(
-                                controller: temperatureController,
+                          final fields = <Widget>[
+                            sizedField(
+                              TextFormField(
+                                controller: chargeController,
                                 enabled: !isSaving,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                decoration: const InputDecoration(
-                                  labelText: 'Température (facultative)',
-                                  suffixText: '°C',
-                                  border: OutlineInputBorder(),
-                                  isDense: true,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  labelText: usesResistance
+                                      ? 'Niveau de charge'
+                                      : 'Capacité restante',
+                                  floatingLabelBehavior:
+                                      FloatingLabelBehavior.always,
+                                  border: const OutlineInputBorder(),
+                                  suffixText: '%',
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
                                 ),
                                 validator: (value) {
-                                  if (value == null || value.trim().isEmpty) {
-                                    return null;
+                                  final percent = int.tryParse(
+                                    value?.trim() ?? '',
+                                  );
+                                  if (percent == null ||
+                                      percent < 0 ||
+                                      percent > 100) {
+                                    return 'Pourcentage entre 0 et 100';
                                   }
-
-                                  return parseDecimal(value) == null
-                                      ? 'Température invalide'
-                                      : null;
+                                  return null;
                                 },
                               ),
                             ),
-                          ],
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: InputDecorator(
-                              decoration: const InputDecoration(
-                                labelText: 'Tension totale automatique',
-                                border: OutlineInputBorder(),
-                                isDense: true,
+                            if (!usesResistance)
+                              sizedField(
+                                TextFormField(
+                                  controller: temperatureController,
+                                  enabled: !isSaving,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Température',
+                                    suffixText: '°C',
+                                    border: OutlineInputBorder(),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 14,
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return null;
+                                    }
+                                    return parseDecimal(value) == null
+                                        ? 'Température invalide'
+                                        : null;
+                                  },
+                                ),
                               ),
-                              child: Text(
-                                '${_formatDecimal(enteredTotalVoltage())} V',
-                                textAlign: TextAlign.end,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+                            sizedField(
+                              InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Tension totale',
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
+                                ),
+                                child: Text(
+                                  '${_formatDecimal(enteredTotalVoltage())} V',
+                                  textAlign: TextAlign.end,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: InputDecorator(
-                              decoration: const InputDecoration(
-                                labelText: 'Écart maximal entre cellules',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                              ),
-                              child: Text(
-                                '${_formatDecimal(enteredMaximumDifference())} V',
-                                textAlign: TextAlign.end,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+                            sizedField(
+                              InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Écart cellules',
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 14,
+                                  ),
+                                ),
+                                child: Text(
+                                  '${_formatDecimal(enteredMaximumDifference())} V',
+                                  textAlign: TextAlign.end,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ];
+
+                          if (isCompactMeasurementDialog) {
+                            return Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: fields,
+                            );
+                          }
+
+                          return Row(
+                            children: [
+                              for (
+                                var index = 0;
+                                index < fields.length;
+                                index++
+                              ) ...[
+                                if (index > 0) const SizedBox(width: 12),
+                                fields[index],
+                              ],
+                            ],
+                          );
+                        },
                       ),
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          const SizedBox(
-                            width: 90,
-                            child: Text(
+                          SizedBox(
+                            width: isCompactMeasurementDialog ? 64 : 90,
+                            child: const Text(
                               'Cellule',
                               style: TextStyle(fontWeight: FontWeight.w700),
                             ),
@@ -824,9 +869,11 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                           child: Row(
                             children: [
                               SizedBox(
-                                width: 90,
+                                width: isCompactMeasurementDialog ? 64 : 90,
                                 child: Text(
-                                  'Cellule ${index + 1}',
+                                  isCompactMeasurementDialog
+                                      ? 'C${index + 1}'
+                                      : 'Cellule ${index + 1}',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -844,7 +891,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                                     hintText: '0,000',
                                     suffixText: 'V',
                                     border: OutlineInputBorder(),
-                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 14,
+                                    ),
                                   ),
                                   onChanged: (_) => setDialogState(() {}),
                                   validator: (value) => validatePositiveDecimal(
@@ -867,7 +917,10 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
                                       hintText: '0,0',
                                       suffixText: 'mΩ',
                                       border: OutlineInputBorder(),
-                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 14,
+                                      ),
                                     ),
                                     validator: (value) =>
                                         validateNonNegativeDecimal(

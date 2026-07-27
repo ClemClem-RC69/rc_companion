@@ -129,7 +129,7 @@ class StorageService {
   // ---------------------------------------------------------------------------
 
   static Future<PickedModelDocument?> pickModelDocument() async {
-    final result = await FilePicker.pickFiles(
+    final result = await FilePicker.platform.pickFiles(
       dialogTitle: 'Choisir un document',
       type: FileType.any,
       allowMultiple: false,
