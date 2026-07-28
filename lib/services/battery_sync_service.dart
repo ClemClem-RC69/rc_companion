@@ -67,12 +67,17 @@ class BatterySyncService {
       return;
     }
 
-    final connectivity = await Connectivity().checkConnectivity();
-    if (connectivity.isEmpty ||
-        connectivity.every((result) => result == ConnectivityResult.none)) {
-      return;
-    }
-
+    // Ne bloque pas la synchronisation sur la valeur retournée par
+    // connectivity_plus.
+    //
+    // Sur certaines plateformes desktop, notamment Windows, l'interface
+    // réseau peut être signalée comme absente/indéterminée alors que Supabase
+    // est réellement joignable. Dans ce cas, l'ancien contrôle empêchait
+    // l'envoi automatique de la SyncQueue jusqu'à une synchronisation manuelle.
+    //
+    // On tente donc directement la synchronisation. Si le réseau est réellement
+    // indisponible, l'opération distante échoue, reste dans la queue et le
+    // mécanisme de retry existant la reprendra plus tard.
     _retryTimer?.cancel();
     _retryTimer = null;
     _retryDueAt = null;
