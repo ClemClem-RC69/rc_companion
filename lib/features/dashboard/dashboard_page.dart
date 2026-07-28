@@ -1186,6 +1186,17 @@ class _DashboardPageState extends State<DashboardPage>
       builder: (context, constraints) {
         final desktop =
             constraints.maxWidth >= 860 && constraints.maxHeight >= 640;
+        final mobilePlatform =
+            defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.android;
+        final compactLandscape =
+            !desktop &&
+            mobilePlatform &&
+            constraints.maxWidth > constraints.maxHeight;
+        final landscapeSidebarWidth = constraints.maxHeight < 500
+            ? 118.0
+            : 150.0;
+
         return Scaffold(
           backgroundColor: const Color(0xFF050D18),
           body: SafeArea(
@@ -1205,9 +1216,33 @@ class _DashboardPageState extends State<DashboardPage>
                       Expanded(child: _dashboardContent(desktop: true)),
                     ],
                   )
+                : compactLandscape
+                ? Row(
+                    children: [
+                      SizedBox(
+                        width: landscapeSidebarWidth,
+                        child: _CompactLandscapeSidebar(
+                          dense: constraints.maxHeight < 500,
+                          onHome: () {},
+                          onModels: () => _open(const ModelsPage()),
+                          onBatteries: () => _open(const BatteriesPage()),
+                          onSessions: () =>
+                              _open(const SessionsPage(historyOnly: true)),
+                          onMaintenance: () => _open(const MaintenancePage()),
+                          onRadios: () => _open(const RadiosPage()),
+                          onInfo: () => _open(const InfoPage()),
+                        ),
+                      ),
+                      Expanded(
+                        child: _compactMobileDashboard(
+                          landscapeWithSidebar: true,
+                        ),
+                      ),
+                    ],
+                  )
                 : _compactMobileDashboard(),
           ),
-          bottomNavigationBar: desktop
+          bottomNavigationBar: desktop || compactLandscape
               ? null
               : _MobileNavigation(
                   onHome: () {},
@@ -1222,7 +1257,7 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _compactMobileDashboard() {
+  Widget _compactMobileDashboard({bool landscapeWithSidebar = false}) {
     final email = Supabase.instance.client.auth.currentUser?.email;
     final name = (accountPseudo != null && accountPseudo!.isNotEmpty)
         ? accountPseudo!
@@ -1232,17 +1267,27 @@ class _DashboardPageState extends State<DashboardPage>
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
-        final isPhone = width < 600;
         final isPortrait = height >= width;
+        final compactLandscape = landscapeWithSidebar && !isPortrait;
+        final shortLandscape = compactLandscape && height < 500;
+        final isPhone = compactLandscape ? shortLandscape : width < 600;
 
-        final horizontalPadding = isPhone ? 8.0 : 14.0;
-        final gap = isPhone ? 6.0 : 10.0;
-        final topBarHeight = isPhone ? 48.0 : 56.0;
-        final copyrightHeight = isPhone ? 15.0 : 18.0;
+        final horizontalPadding = compactLandscape
+            ? (shortLandscape ? 6.0 : 10.0)
+            : (isPhone ? 8.0 : 14.0);
+        final gap = compactLandscape
+            ? (shortLandscape ? 5.0 : 7.0)
+            : (isPhone ? 6.0 : 10.0);
+        final topBarHeight = compactLandscape
+            ? (shortLandscape ? 42.0 : 50.0)
+            : (isPhone ? 48.0 : 56.0);
+        final copyrightHeight = compactLandscape
+            ? (shortLandscape ? 11.0 : 14.0)
+            : (isPhone ? 15.0 : 18.0);
 
-        // Les blocs occupent tout l'espace vertical disponible.
-        // Sur un grand écran portrait, ils grandissent au lieu de laisser
-        // une grande zone vide sous les statistiques.
+        // Le paysage mobile/tablette n'utilise plus de barre de navigation
+        // inférieure : l'espace vertical libéré est réparti explicitement
+        // entre les cinq raccourcis, les deux cartes centrales et le graphe.
         final usableHeight =
             height - topBarHeight - copyrightHeight - gap * 4 - 4;
 
@@ -1250,30 +1295,51 @@ class _DashboardPageState extends State<DashboardPage>
             defaultTargetPlatform == TargetPlatform.iOS ||
             defaultTargetPlatform == TargetPlatform.android;
 
-        final metricsFlex = isPhone
-            ? 14
-            : (mobilePlatform && isPortrait ? 23 : 16);
-        final middleFlex = isPhone
-            ? 34
-            : (mobilePlatform && isPortrait ? 31 : 36);
-        final statsFlex = isPhone
-            ? 52
-            : (mobilePlatform && isPortrait ? 46 : 48);
-        final totalFlex = metricsFlex + middleFlex + statsFlex;
+        late final double metricHeight;
+        late final double middleHeight;
+        late final double statsHeight;
 
-        final metricHeight = usableHeight * metricsFlex / totalFlex;
+        if (compactLandscape) {
+          if (shortLandscape) {
+            // Téléphone en paysage : tout doit tenir dans la hauteur réellement
+            // disponible. On utilise donc des proportions qui totalisent 100 %,
+            // sans minimum fixe susceptible de dépasser la hauteur de l'écran.
+            metricHeight = usableHeight * 0.20;
+            middleHeight = usableHeight * 0.37;
+            statsHeight = usableHeight - metricHeight - middleHeight;
+          } else {
+            // Tablette en paysage : on conserve des blocs plus généreux, tout en
+            // garantissant que la zone statistiques récupère exactement le reste.
+            metricHeight = usableHeight * 0.18;
+            middleHeight = usableHeight * 0.36;
+            statsHeight = usableHeight - metricHeight - middleHeight;
+          }
+        } else {
+          final metricsFlex = isPhone
+              ? 14
+              : (mobilePlatform && isPortrait ? 23 : 16);
+          final middleFlex = isPhone
+              ? 34
+              : (mobilePlatform && isPortrait ? 31 : 36);
+          final statsFlex = isPhone
+              ? 52
+              : (mobilePlatform && isPortrait ? 46 : 48);
+          final totalFlex = metricsFlex + middleFlex + statsFlex;
 
-        final calculatedMiddleHeight = usableHeight * middleFlex / totalFlex;
-        final minMiddleHeight = isPhone ? 118.0 : 138.0;
-        final middleHeight = calculatedMiddleHeight < minMiddleHeight
-            ? minMiddleHeight
-            : calculatedMiddleHeight;
+          metricHeight = usableHeight * metricsFlex / totalFlex;
 
-        final remainingForStats = usableHeight - metricHeight - middleHeight;
-        final minStatsHeight = isPhone ? 120.0 : 150.0;
-        final statsHeight = remainingForStats < minStatsHeight
-            ? minStatsHeight
-            : remainingForStats;
+          final calculatedMiddleHeight = usableHeight * middleFlex / totalFlex;
+          final minMiddleHeight = isPhone ? 118.0 : 138.0;
+          middleHeight = calculatedMiddleHeight < minMiddleHeight
+              ? minMiddleHeight
+              : calculatedMiddleHeight;
+
+          final remainingForStats = usableHeight - metricHeight - middleHeight;
+          final minStatsHeight = isPhone ? 120.0 : 150.0;
+          statsHeight = remainingForStats < minStatsHeight
+              ? minStatsHeight
+              : remainingForStats;
+        }
 
         final metricWidth = (width - horizontalPadding * 2 - gap * 4) / 5;
 
@@ -1315,6 +1381,7 @@ class _DashboardPageState extends State<DashboardPage>
                             width: metricWidth,
                             child: _CompactMetricCard(
                               value: modelCount,
+                              compactLandscape: compactLandscape,
                               label: 'MODÈLES',
                               asset: 'assets/images/rc_icon_models_hd.png',
                               color: const Color(0xFF218BFF),
@@ -1327,6 +1394,7 @@ class _DashboardPageState extends State<DashboardPage>
                             width: metricWidth,
                             child: _CompactMetricCard(
                               value: batteryCount,
+                              compactLandscape: compactLandscape,
                               label: 'BATTERIES',
                               asset: 'assets/images/rc_icon_batteries_hd.png',
                               color: const Color(0xFFFF3D36),
@@ -1339,6 +1407,7 @@ class _DashboardPageState extends State<DashboardPage>
                             width: metricWidth,
                             child: _CompactMetricCard(
                               value: sessionCount,
+                              compactLandscape: compactLandscape,
                               label: 'SESSIONS',
                               asset: 'assets/images/rc_icon_sessions_hd.png',
                               color: const Color(0xFF168CFF),
@@ -1351,6 +1420,7 @@ class _DashboardPageState extends State<DashboardPage>
                             width: metricWidth,
                             child: _CompactMetricCard(
                               value: maintenanceCount,
+                              compactLandscape: compactLandscape,
                               label: 'MAINTENANCE',
                               asset: 'assets/images/rc_icon_maintenance_hd.png',
                               color: const Color(0xFFD9DEE8),
@@ -1363,6 +1433,7 @@ class _DashboardPageState extends State<DashboardPage>
                             width: metricWidth,
                             child: _CompactMetricCard(
                               value: 0,
+                              compactLandscape: compactLandscape,
                               label: 'COMMANDE RADIO\n& NOTICE',
                               asset: 'assets/images/rc_icon_radio_nb4_hd.png',
                               color: const Color(0xFFD9DEE8),
@@ -1380,11 +1451,17 @@ class _DashboardPageState extends State<DashboardPage>
                       child: Row(
                         children: [
                           Expanded(
-                            child: _compactLastSessionCard(isPhone: isPhone),
+                            child: _compactLastSessionCard(
+                              isPhone: isPhone,
+                              compactLandscape: compactLandscape,
+                            ),
                           ),
                           SizedBox(width: gap),
                           Expanded(
-                            child: _compactBatteryChargeCard(isPhone: isPhone),
+                            child: _compactBatteryChargeCard(
+                              isPhone: isPhone,
+                              compactLandscape: compactLandscape,
+                            ),
                           ),
                         ],
                       ),
@@ -1392,7 +1469,10 @@ class _DashboardPageState extends State<DashboardPage>
                     SizedBox(height: gap),
                     SizedBox(
                       height: statsHeight,
-                      child: _compactStatisticsCard(isPhone: isPhone),
+                      child: _compactStatisticsCard(
+                        isPhone: isPhone,
+                        compactLandscape: compactLandscape,
+                      ),
                     ),
                     SizedBox(height: gap),
                     SizedBox(
@@ -1419,7 +1499,10 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _compactLastSessionCard({required bool isPhone}) {
+  Widget _compactLastSessionCard({
+    required bool isPhone,
+    bool compactLandscape = false,
+  }) {
     final row = lastSession;
     final date = _formatSessionDate(row);
     final model =
@@ -1445,7 +1528,138 @@ class _DashboardPageState extends State<DashboardPage>
         builder: (context, constraints) {
           final veryTight = constraints.maxHeight < 95;
           final tight = constraints.maxHeight < 120;
-          final landscapeLike = constraints.maxWidth >= 430;
+          final landscapeLike =
+              constraints.maxWidth >= 520 && constraints.maxHeight >= 180;
+
+          if (compactLandscape) {
+            final short = constraints.maxHeight < 135;
+            final modelSize = short ? 11.0 : 14.0;
+            final detailSize = short ? 8.0 : 10.0;
+            final buttonHeight = short ? 23.0 : 30.0;
+
+            return Row(
+              children: [
+                Expanded(
+                  flex: 48,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!short)
+                        Text(
+                          date,
+                          maxLines: 1,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 9,
+                          ),
+                        ),
+                      if (!short) const SizedBox(height: 3),
+                      if (short)
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                model,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: modelSize,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              duration,
+                              maxLines: 1,
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        Text(
+                          model,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: modelSize,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          duration,
+                          maxLines: 1,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: short ? 1 : 3),
+                      Text(
+                        incidentText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFF7F8DA0),
+                          fontSize: detailSize,
+                        ),
+                      ),
+                      SizedBox(height: short ? 1 : 2),
+                      Text(
+                        place,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFF65758A),
+                          fontSize: detailSize - 1,
+                        ),
+                      ),
+                      const Spacer(),
+                      SizedBox(
+                        height: buttonHeight,
+                        child: OutlinedButton(
+                          onPressed: () => _open(const SessionsPage()),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                          ),
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Voir la session',
+                              style: TextStyle(fontSize: 9),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  flex: 52,
+                  child: Center(
+                    child: FractionallySizedBox(
+                      widthFactor: short ? 0.80 : 1.0,
+                      heightFactor: short ? 0.78 : 1.0,
+                      child: Transform.scale(
+                        scale: short ? 1.60 : 2.0,
+                        child: Image.asset(
+                          _categoryAsset(lastModelCategory),
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
 
           if (!mobilePlatform) {
             return Row(
@@ -1582,47 +1796,73 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                       SizedBox(height: landscapeLike ? 8 : 2),
                     ],
-                    Text(
-                      model,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: modelSize,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    if (!veryTight) ...[
-                      SizedBox(height: landscapeLike ? 6 : 2),
-                      Text(
-                        duration,
-                        maxLines: 1,
-                        style: TextStyle(
-                          fontSize: durationSize,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      if (!isPhone) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          incidentText,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: const Color(0xFF7F8DA0),
-                            fontSize: detailSize,
+                    if (isPhone && landscapeLike)
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              model,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: modelSize,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
                           ),
+                          const SizedBox(width: 6),
+                          Text(
+                            duration,
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: durationSize,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        model,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: modelSize,
+                          fontWeight: FontWeight.w900,
                         ),
-                        const SizedBox(height: 4),
+                      ),
+                    if (!veryTight) ...[
+                      if (!(isPhone && landscapeLike)) ...[
+                        SizedBox(height: landscapeLike ? 6 : 2),
                         Text(
-                          place,
+                          duration,
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: const Color(0xFF65758A),
-                            fontSize: detailSize - 1,
+                            fontSize: durationSize,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ],
+                      SizedBox(height: isPhone ? 3 : 6),
+                      Text(
+                        incidentText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFF7F8DA0),
+                          fontSize: detailSize,
+                        ),
+                      ),
+                      SizedBox(height: isPhone ? 2 : 4),
+                      Text(
+                        place,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFF65758A),
+                          fontSize: detailSize - 1,
+                        ),
+                      ),
                     ],
                     const Spacer(),
                     SizedBox(
@@ -1655,7 +1895,7 @@ class _DashboardPageState extends State<DashboardPage>
                       landscapeLike ? 4 : 0,
                     ),
                     child: Transform.scale(
-                      scale: isPhone ? 0.88 : (landscapeLike ? 1.34 : 1.08),
+                      scale: isPhone ? 1.30 : (landscapeLike ? 1.34 : 1.08),
                       child: Image.asset(
                         _categoryAsset(lastModelCategory),
                         fit: BoxFit.contain,
@@ -1672,7 +1912,10 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _compactBatteryChargeCard({required bool isPhone}) {
+  Widget _compactBatteryChargeCard({
+    required bool isPhone,
+    bool compactLandscape = false,
+  }) {
     final mobilePlatform =
         defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.android;
@@ -1684,7 +1927,88 @@ class _DashboardPageState extends State<DashboardPage>
         builder: (context, constraints) {
           final veryTight = constraints.maxHeight < 95;
           final tight = constraints.maxHeight < 120;
-          final landscapeLike = constraints.maxWidth >= 430;
+          final landscapeLike =
+              constraints.maxWidth >= 520 && constraints.maxHeight >= 180;
+
+          if (compactLandscape) {
+            final short = constraints.maxHeight < 135;
+            final lineGap = short ? 1.0 : 4.0;
+            final buttonHeight = short ? 23.0 : 30.0;
+
+            return Row(
+              children: [
+                Expanded(
+                  flex: 58,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _compactBatteryStateLine(
+                        label: 'Chargées',
+                        value: chargedBatteries,
+                        color: const Color(0xFF2E9B57),
+                        isPhone: true,
+                      ),
+                      SizedBox(height: lineGap),
+                      _compactBatteryStateLine(
+                        label: 'Storage',
+                        value: storageBatteries,
+                        color: const Color(0xFF3578C8),
+                        isPhone: true,
+                      ),
+                      SizedBox(height: lineGap),
+                      _compactBatteryStateLine(
+                        label: 'À charger',
+                        value: batteriesToCharge,
+                        color: const Color(0xFFE28A2B),
+                        isPhone: true,
+                      ),
+                      const Spacer(),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          height: buttonHeight,
+                          child: OutlinedButton(
+                            onPressed: () => _open(const BatteriesPage()),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                              ),
+                            ),
+                            child: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Voir mes batteries',
+                                style: TextStyle(fontSize: 8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  flex: 42,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FractionallySizedBox(
+                      widthFactor: short ? 0.80 : 1.0,
+                      heightFactor: short ? 0.78 : 1.0,
+                      child: Transform.scale(
+                        scale: short ? 1.50 : 1.80,
+                        child: Image.asset(
+                          'assets/images/rc_battery_dashboard_hd.png',
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
 
           if (!mobilePlatform) {
             return Row(
@@ -1845,7 +2169,7 @@ class _DashboardPageState extends State<DashboardPage>
                       landscapeLike ? 4 : 0,
                     ),
                     child: Transform.scale(
-                      scale: isPhone ? 0.86 : (landscapeLike ? 1.28 : 1.06),
+                      scale: isPhone ? 1.00 : (landscapeLike ? 1.28 : 1.08),
                       child: Image.asset(
                         'assets/images/rc_battery_dashboard_hd.png',
                         fit: BoxFit.contain,
@@ -1912,7 +2236,10 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _compactStatisticsCard({required bool isPhone}) {
+  Widget _compactStatisticsCard({
+    required bool isPhone,
+    bool compactLandscape = false,
+  }) {
     final hours = totalRunMinutes ~/ 60;
     final minutes = totalRunMinutes % 60;
 
@@ -1934,7 +2261,7 @@ class _DashboardPageState extends State<DashboardPage>
       child: Row(
         children: [
           Expanded(
-            flex: isPhone ? 4 : 3,
+            flex: compactLandscape ? 2 : (isPhone ? 4 : 3),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -1954,13 +2281,13 @@ class _DashboardPageState extends State<DashboardPage>
               ],
             ),
           ),
-          SizedBox(width: isPhone ? 6 : 10),
+          SizedBox(width: compactLandscape ? 6 : (isPhone ? 6 : 10)),
           Expanded(
-            flex: isPhone ? 5 : 6,
+            flex: compactLandscape ? 5 : (isPhone ? 5 : 6),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _ChartLegend(compact: isPhone),
+                _ChartLegend(compact: isPhone || compactLandscape),
                 SizedBox(height: isPhone ? 2 : 4),
                 Expanded(
                   child: CustomPaint(
@@ -1968,7 +2295,7 @@ class _DashboardPageState extends State<DashboardPage>
                       minutesValues: chartValues,
                       packValues: chartPackValues,
                       dateLabels: chartDateLabels,
-                      compact: isPhone,
+                      compact: isPhone || compactLandscape,
                     ),
                     child: const SizedBox.expand(),
                   ),
@@ -3598,6 +3925,7 @@ class _CompactMetricCard extends StatelessWidget {
     required this.loading,
     required this.onTap,
     this.showValue = true,
+    this.compactLandscape = false,
   });
 
   final int value;
@@ -3607,6 +3935,7 @@ class _CompactMetricCard extends StatelessWidget {
   final bool loading;
   final VoidCallback onTap;
   final bool showValue;
+  final bool compactLandscape;
 
   @override
   Widget build(BuildContext context) {
@@ -3630,6 +3959,59 @@ class _CompactMetricCard extends StatelessWidget {
             ),
             child: loading
                 ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                : compactLandscape
+                ? Row(
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: Padding(
+                          padding: const EdgeInsets.all(2),
+                          child: Image.asset(
+                            asset,
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.high,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 3),
+                      Expanded(
+                        flex: 6,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (showValue) ...[
+                              Text(
+                                '$value',
+                                maxLines: 1,
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: constraints.maxHeight < 58
+                                      ? 14
+                                      : 17,
+                                  height: 1,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                            ],
+                            Text(
+                              label,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: constraints.maxHeight < 58
+                                    ? 6.5
+                                    : 7.5,
+                                height: 1.0,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
                 : portraitLike
                 ? Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -3752,14 +4134,17 @@ class _CompactPanel extends StatelessWidget {
       builder: (context, constraints) {
         final veryTight = constraints.maxHeight < 110;
         final landscapeLike =
-            mobilePlatform && !isPhone && constraints.maxWidth >= 430;
+            mobilePlatform &&
+            !isPhone &&
+            constraints.maxWidth >= 520 &&
+            constraints.maxHeight >= 180;
 
         final padding = veryTight
             ? 6.0
-            : (isPhone ? 8.0 : (landscapeLike ? 16.0 : 10.0));
+            : (isPhone ? 8.0 : (landscapeLike ? 16.0 : 8.0));
         final titleGap = veryTight
             ? 3.0
-            : (isPhone ? 5.0 : (landscapeLike ? 14.0 : 7.0));
+            : (isPhone ? 5.0 : (landscapeLike ? 14.0 : 5.0));
 
         return Container(
           padding: EdgeInsets.all(padding),
@@ -3783,7 +4168,7 @@ class _CompactPanel extends StatelessWidget {
                         style: TextStyle(
                           fontSize: veryTight
                               ? 8
-                              : (isPhone ? 9 : (landscapeLike ? 19 : 11)),
+                              : (isPhone ? 9 : (landscapeLike ? 19 : 13)),
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -4666,6 +5051,193 @@ class _DashboardChartPainter extends CustomPainter {
         oldDelegate.packValues != packValues ||
         oldDelegate.dateLabels != dateLabels ||
         oldDelegate.compact != compact;
+  }
+}
+
+class _CompactLandscapeSidebar extends StatelessWidget {
+  const _CompactLandscapeSidebar({
+    required this.dense,
+    required this.onHome,
+    required this.onModels,
+    required this.onBatteries,
+    required this.onSessions,
+    required this.onMaintenance,
+    required this.onRadios,
+    required this.onInfo,
+  });
+
+  final bool dense;
+  final VoidCallback onHome;
+  final VoidCallback onModels;
+  final VoidCallback onBatteries;
+  final VoidCallback onSessions;
+  final VoidCallback onMaintenance;
+  final VoidCallback onRadios;
+  final VoidCallback onInfo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF061222),
+        border: Border(right: BorderSide(color: Color(0xFF17314D))),
+      ),
+      child: Column(
+        children: [
+          SizedBox(
+            height: dense ? 42 : 72,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: dense ? 5 : 8,
+                vertical: dense ? 2 : 5,
+              ),
+              child: Transform.scale(
+                scale: 2.0,
+                child: Image.asset(
+                  'assets/images/rc_logo_login_hd.png',
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _CompactLandscapeSideItem(
+                  dense: dense,
+                  icon: Icons.home_rounded,
+                  label: 'Accueil',
+                  selected: true,
+                  onTap: onHome,
+                ),
+                _CompactLandscapeSideItem(
+                  dense: dense,
+                  asset: 'assets/images/rc_icon_models_hd.png',
+                  icon: Icons.directions_car_filled_rounded,
+                  label: 'Modèles',
+                  onTap: onModels,
+                ),
+                _CompactLandscapeSideItem(
+                  dense: dense,
+                  asset: 'assets/images/rc_icon_batteries_hd.png',
+                  icon: Icons.battery_charging_full_rounded,
+                  label: 'Batteries',
+                  onTap: onBatteries,
+                ),
+                _CompactLandscapeSideItem(
+                  dense: dense,
+                  asset: 'assets/images/rc_icon_sessions_hd.png',
+                  icon: Icons.calendar_month_rounded,
+                  label: 'Sessions',
+                  onTap: onSessions,
+                ),
+                _CompactLandscapeSideItem(
+                  dense: dense,
+                  asset: 'assets/images/rc_icon_maintenance_hd.png',
+                  icon: Icons.build_rounded,
+                  label: 'Maintenance',
+                  onTap: onMaintenance,
+                ),
+                _CompactLandscapeSideItem(
+                  dense: dense,
+                  asset: 'assets/images/rc_icon_radio_nb4_hd.png',
+                  icon: Icons.settings_remote_rounded,
+                  label: 'Radios',
+                  onTap: onRadios,
+                ),
+              ],
+            ),
+          ),
+          _CompactLandscapeSideItem(
+            dense: dense,
+            icon: Icons.info_outline_rounded,
+            label: 'Informations',
+            onTap: onInfo,
+          ),
+          SizedBox(height: dense ? 2 : 6),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactLandscapeSideItem extends StatelessWidget {
+  const _CompactLandscapeSideItem({
+    required this.dense,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.asset,
+    this.selected = false,
+  });
+
+  final bool dense;
+  final IconData icon;
+  final String? asset;
+  final String label;
+  final VoidCallback onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final itemHeight = dense ? 34.0 : 42.0;
+    final imageSize = dense ? 23.0 : 29.0;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: dense ? 4 : 6),
+      child: Material(
+        color: selected ? const Color(0xFF092F67) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            height: itemHeight,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: dense ? 32 : 38,
+                  child: Center(
+                    child: asset == null
+                        ? Icon(
+                            icon,
+                            size: dense ? 20 : 24,
+                            color: selected
+                                ? const Color(0xFF168CFF)
+                                : Colors.white70,
+                          )
+                        : SizedBox(
+                            width: imageSize,
+                            height: imageSize,
+                            child: Image.asset(
+                              asset!,
+                              fit: BoxFit.contain,
+                              filterQuality: FilterQuality.high,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 3),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: dense ? 8.5 : 10.5,
+                      fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 3),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
