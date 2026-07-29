@@ -530,9 +530,7 @@ class BatteryService {
         entityType: 'battery_measurement',
         entityId: duplicateEntityId,
         operation: 'delete',
-        payloadJson: jsonEncode({
-          if (duplicate.id != null) 'id': duplicate.id,
-        }),
+        payloadJson: jsonEncode({if (duplicate.id != null) 'id': duplicate.id}),
       );
     }
 
