@@ -24,8 +24,77 @@ class SessionsPage extends StatefulWidget {
 }
 
 class _SessionsPageState extends State<SessionsPage> {
-  Battery? _battery1;
-  Battery? _battery2;
+  final Map<String, Battery?> _battery1BySession = {};
+  final Map<String, Battery?> _battery2BySession = {};
+
+  String _sessionKey(RcSession session) {
+    final id = session.id?.trim();
+    if (id != null && id.isNotEmpty) {
+      return id;
+    }
+    return '${session.model.id}|${session.startedAt.microsecondsSinceEpoch}';
+  }
+
+  Battery? _battery1For(RcSession session) =>
+      _battery1BySession[_sessionKey(session)];
+
+  Battery? _battery2For(RcSession session) =>
+      _battery2BySession[_sessionKey(session)];
+
+  void _setBattery1For(RcSession session, Battery? battery) {
+    final key = _sessionKey(session);
+    _battery1BySession[key] = battery;
+    if (battery == null) {
+      _battery2BySession[key] = null;
+    }
+  }
+
+  void _setBattery2For(RcSession session, Battery? battery) {
+    _battery2BySession[_sessionKey(session)] = battery;
+  }
+
+  void _clearBatteriesFor(RcSession session) {
+    final key = _sessionKey(session);
+    _battery1BySession.remove(key);
+    _battery2BySession.remove(key);
+  }
+
+  Set<String> _batteryIdsReservedByOtherSessions(RcSession session) {
+    final currentKey = _sessionKey(session);
+    final reserved = <String>{};
+
+    for (final other in _activeSessions) {
+      if (_sessionKey(other) == currentKey) {
+        continue;
+      }
+
+      for (final run in other.runs) {
+        for (final battery in run.batteries) {
+          reserved.add(battery.id);
+        }
+      }
+
+      final selected1 = _battery1For(other);
+      final selected2 = _battery2For(other);
+
+      if (selected1 != null) {
+        reserved.add(selected1.id);
+      }
+      if (selected2 != null) {
+        reserved.add(selected2.id);
+      }
+    }
+
+    return reserved;
+  }
+
+  List<Battery> _availableBatteriesFor(RcSession session) {
+    final reserved = _batteryIdsReservedByOtherSessions(session);
+
+    return _availableBatteries
+        .where((battery) => !reserved.contains(battery.id))
+        .toList(growable: false);
+  }
 
   List<RcModel> _availableModels = [];
   List<Battery> _availableBatteries = [];
@@ -36,6 +105,8 @@ class _SessionsPageState extends State<SessionsPage> {
       TextEditingController();
   String _historySearch = '';
   String _historyCategory = 'Tous';
+
+  String? _focusedSessionKey;
 
   StreamSubscription<List<Map<String, dynamic>>>? _sessionSubscription;
 
@@ -206,13 +277,47 @@ class _SessionsPageState extends State<SessionsPage> {
     }
   }
 
+  List<RcSession> get _activeSessions {
+    final active =
+        sessions
+            .where(
+              (session) => !session.isClosed && !_isHistoricalSession(session),
+            )
+            .toList()
+          ..sort((a, b) => a.startedAt.compareTo(b.startedAt));
+    return List<RcSession>.unmodifiable(active);
+  }
+
   RcSession? get _activeSession {
-    for (final session in sessions.reversed) {
-      if (!session.isClosed && !_isHistoricalSession(session)) {
+    final active = _activeSessions;
+    return active.isEmpty ? null : active.first;
+  }
+
+  RcSession? get _focusedSession {
+    final key = _focusedSessionKey;
+    if (key == null) {
+      return null;
+    }
+
+    for (final session in _activeSessions) {
+      if (_sessionKey(session) == key) {
         return session;
       }
     }
+
     return null;
+  }
+
+  void _focusSession(RcSession session) {
+    setState(() {
+      _focusedSessionKey = _sessionKey(session);
+    });
+  }
+
+  void _clearFocusedSession() {
+    setState(() {
+      _focusedSessionKey = null;
+    });
   }
 
   bool _isHistoricalSession(RcSession session) {
@@ -289,7 +394,7 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   bool _canAddSecondBattery(RcSession session) {
-    final first = _battery1;
+    final first = _battery1For(session);
 
     if (first == null) {
       return false;
@@ -333,11 +438,6 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   Future<void> _openSession() async {
-    if (_activeSession != null) {
-      _showMessage('Une session est déjà ouverte.');
-      return;
-    }
-
     if (_availableModels.isEmpty) {
       _showMessage('Enregistre d’abord un modèle.');
       return;
@@ -345,10 +445,22 @@ class _SessionsPageState extends State<SessionsPage> {
 
     final result = await showDialog<_OpenSessionResult>(
       context: context,
-      builder: (context) => _OpenSessionDialog(models: _availableModels),
+      builder: (context) => _OpenSessionDialog(
+        models: _availableModels,
+        activeModelIds: _activeSessions
+            .map((session) => session.model.id?.trim())
+            .whereType<String>()
+            .where((id) => id.isNotEmpty)
+            .toSet(),
+      ),
     );
 
     if (result == null) {
+      return;
+    }
+
+    if (!result.isHistorical && _activeSessions.length >= 2) {
+      _showMessage('Deux sessions sont déjà ouvertes.');
       return;
     }
 
@@ -372,8 +484,6 @@ class _SessionsPageState extends State<SessionsPage> {
 
       setState(() {
         sessions.add(savedSession);
-        _battery1 = null;
-        _battery2 = null;
       });
     } catch (error) {
       _showMessage('Ouverture de la session impossible : $error');
@@ -442,8 +552,6 @@ class _SessionsPageState extends State<SessionsPage> {
 
       setState(() {
         sessions.add(savedSession);
-        _battery1 = null;
-        _battery2 = null;
       });
 
       _showMessage('Session antérieure enregistrée.');
@@ -454,7 +562,10 @@ class _SessionsPageState extends State<SessionsPage> {
     }
   }
 
-  Future<void> _scanBattery({required int position}) async {
+  Future<void> _scanBattery({
+    required RcSession session,
+    required int position,
+  }) async {
     final scannedValue = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => BatteryScannerPage(
@@ -483,19 +594,24 @@ class _SessionsPageState extends State<SessionsPage> {
       return;
     }
 
+    if (_batteryIdsReservedByOtherSessions(session).contains(battery.id)) {
+      _showMessage(
+        '${battery.id} est déjà utilisée par l’autre session ouverte.',
+      );
+      return;
+    }
+
     setState(() {
       if (position == 1) {
-        _battery1 = battery;
-        _battery2 = null;
+        _setBattery1For(session, battery);
+        _setBattery2For(session, null);
       } else {
-        _battery2 = battery;
+        _setBattery2For(session, battery);
       }
     });
 
-    final activeSession = _activeSession;
-
-    if (position == 1 && activeSession != null && mounted) {
-      if (_canAddSecondBattery(activeSession)) {
+    if (position == 1 && mounted) {
+      if (_canAddSecondBattery(session)) {
         _showMessage(
           'Première batterie reconnue. Tu peux ajouter une deuxième batterie compatible.',
         );
@@ -528,7 +644,7 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   List<Battery> _compatibleSecondBatteries(RcSession session) {
-    final first = _battery1;
+    final first = _battery1For(session);
 
     if (first == null) {
       return const [];
@@ -536,7 +652,7 @@ class _SessionsPageState extends State<SessionsPage> {
 
     final modelTotalCells = _modelTotalCells(session.model);
 
-    final compatible = _availableBatteries.where((battery) {
+    final compatible = _availableBatteriesFor(session).where((battery) {
       if (battery.id == first.id) {
         return false;
       }
@@ -580,6 +696,7 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   Future<void> _selectBatteryManually({
+    required RcSession session,
     required int position,
     required List<Battery> choices,
   }) async {
@@ -598,10 +715,10 @@ class _SessionsPageState extends State<SessionsPage> {
 
     setState(() {
       if (position == 1) {
-        _battery1 = selected;
-        _battery2 = null;
+        _setBattery1For(session, selected);
+        _setBattery2For(session, null);
       } else {
-        _battery2 = selected;
+        _setBattery2For(session, selected);
       }
     });
   }
@@ -616,7 +733,7 @@ class _SessionsPageState extends State<SessionsPage> {
       );
     }
 
-    final first = _battery1;
+    final first = _battery1For(session);
 
     if (first == null) {
       if (_isHistoricalSession(session)) {
@@ -652,7 +769,7 @@ class _SessionsPageState extends State<SessionsPage> {
       );
     }
 
-    final second = _battery2;
+    final second = _battery2For(session);
 
     if (second == null) {
       if (_canAddSecondBattery(session)) {
@@ -812,12 +929,12 @@ class _SessionsPageState extends State<SessionsPage> {
 
     final selectedBatteries = <Battery>[];
 
-    if (_battery1 != null) {
-      selectedBatteries.add(_battery1!);
+    if (_battery1For(session) != null) {
+      selectedBatteries.add(_battery1For(session)!);
     }
 
-    if (_battery2 != null) {
-      selectedBatteries.add(_battery2!);
+    if (_battery2For(session) != null) {
+      selectedBatteries.add(_battery2For(session)!);
     }
 
     final updatedRuns = List<RcRun>.from(session.runs)
@@ -840,8 +957,7 @@ class _SessionsPageState extends State<SessionsPage> {
     }
 
     setState(() {
-      _battery1 = null;
-      _battery2 = null;
+      _clearBatteriesFor(session);
     });
 
     _showMessage('Roulage démarré.');
@@ -1188,8 +1304,10 @@ class _SessionsPageState extends State<SessionsPage> {
     }
 
     setState(() {
-      _battery1 = null;
-      _battery2 = null;
+      _clearBatteriesFor(session);
+      if (_focusedSessionKey == _sessionKey(session)) {
+        _focusedSessionKey = null;
+      }
     });
 
     _showMessage('Session clôturée.');
@@ -1243,8 +1361,10 @@ class _SessionsPageState extends State<SessionsPage> {
 
       setState(() {
         sessions.removeWhere((item) => item.id == sessionId);
-        _battery1 = null;
-        _battery2 = null;
+        _clearBatteriesFor(session);
+        if (_focusedSessionKey == _sessionKey(session)) {
+          _focusedSessionKey = null;
+        }
       });
 
       _showMessage('Session annulée.');
@@ -1340,7 +1460,7 @@ class _SessionsPageState extends State<SessionsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final activeSession = _activeSession;
+    final activeSessions = _activeSessions;
 
     if (_isLoadingData) {
       return Scaffold(
@@ -1390,28 +1510,34 @@ class _SessionsPageState extends State<SessionsPage> {
           ),
         ],
       ),
-      floatingActionButton: activeSession == null
+      floatingActionButton: !widget.historyOnly && activeSessions.length < 2
           ? FloatingActionButton.extended(
               onPressed: _openSession,
               icon: const Icon(Icons.play_arrow),
-              label: const Text('Ouvrir une session'),
+              label: Text(
+                activeSessions.isEmpty
+                    ? 'Ouvrir une session'
+                    : 'Ouvrir une 2e session',
+              ),
             )
           : null,
       body: widget.historyOnly
           ? _buildSessionHistory()
-          : activeSession == null
+          : activeSessions.isEmpty
           ? _buildSessionHistory()
-          : _buildActiveSession(activeSession),
+          : _focusedSession != null && activeSessions.length > 1
+          ? _buildFocusedSession(_focusedSession!)
+          : _buildActiveSessions(activeSessions),
     );
   }
 
   Widget _buildSessionHistory() {
-    final activeSession = _activeSession;
+    final activeSessions = _activeSessions;
     final allClosedSessions =
         sessions.where((session) => session.isClosed).toList()
           ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
 
-    if (activeSession == null && allClosedSessions.isEmpty) {
+    if (activeSessions.isEmpty && allClosedSessions.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
@@ -1447,7 +1573,7 @@ class _SessionsPageState extends State<SessionsPage> {
           'Historique',
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
-        if (activeSession != null) ...[
+        for (final activeSession in activeSessions) ...[
           const SizedBox(height: 12),
           Card(
             margin: EdgeInsets.zero,
@@ -1649,6 +1775,69 @@ class _SessionsPageState extends State<SessionsPage> {
     );
   }
 
+  Widget _buildFocusedSession(RcSession session) {
+    return Column(
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: SafeArea(
+            bottom: false,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                tooltip: 'Retour aux deux sessions',
+                onPressed: _clearFocusedSession,
+                icon: const Icon(Icons.arrow_back),
+              ),
+            ),
+          ),
+        ),
+        Expanded(child: _buildActiveSession(session)),
+      ],
+    );
+  }
+
+  Widget _buildActiveSessions(List<RcSession> activeSessions) {
+    if (activeSessions.length == 1) {
+      return _buildActiveSession(activeSessions.first);
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isLandscape = constraints.maxWidth > constraints.maxHeight;
+
+        Widget preview(RcSession session) {
+          return InkWell(
+            onTap: () => _focusSession(session),
+            child: IgnorePointer(
+              ignoring: true,
+              child: _buildActiveSession(session),
+            ),
+          );
+        }
+
+        if (isLandscape) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: preview(activeSessions[0])),
+              const VerticalDivider(width: 1),
+              Expanded(child: preview(activeSessions[1])),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            Expanded(child: preview(activeSessions[0])),
+            const Divider(height: 1),
+            Expanded(child: preview(activeSessions[1])),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildActiveSession(RcSession session) {
     final activeRun = session.activeRun;
     final compatibility = _checkCompatibility(session);
@@ -1720,18 +1909,19 @@ class _SessionsPageState extends State<SessionsPage> {
           if (isElectric) ...[
             _BatterySelector(
               number: 1,
-              battery: _battery1,
-              batteries: _availableBatteries,
+              battery: _battery1For(session),
+              batteries: _availableBatteriesFor(session),
               labelBuilder: _batteryLabel,
-              onScan: () => _scanBattery(position: 1),
+              onScan: () => _scanBattery(session: session, position: 1),
               onManualSelect: () => _selectBatteryManually(
+                session: session,
                 position: 1,
-                choices: _availableBatteries,
+                choices: _availableBatteriesFor(session),
               ),
               onChanged: (value) {
                 setState(() {
-                  _battery1 = value;
-                  _battery2 = null;
+                  _setBattery1For(session, value);
+                  _setBattery2For(session, null);
                 });
               },
             ),
@@ -1739,17 +1929,18 @@ class _SessionsPageState extends State<SessionsPage> {
               const SizedBox(height: 14),
               _BatterySelector(
                 number: 2,
-                battery: _battery2,
+                battery: _battery2For(session),
                 batteries: _compatibleSecondBatteries(session),
                 labelBuilder: _batteryLabel,
-                onScan: () => _scanBattery(position: 2),
+                onScan: () => _scanBattery(session: session, position: 2),
                 onManualSelect: () => _selectBatteryManually(
+                  session: session,
                   position: 2,
                   choices: _compatibleSecondBatteries(session),
                 ),
                 onChanged: (value) {
                   setState(() {
-                    _battery2 = value;
+                    _setBattery2For(session, value);
                   });
                 },
               ),
@@ -2189,9 +2380,13 @@ class _HistoryLine extends StatelessWidget {
 }
 
 class _OpenSessionDialog extends StatefulWidget {
-  const _OpenSessionDialog({required this.models});
+  const _OpenSessionDialog({
+    required this.models,
+    this.activeModelIds = const <String>{},
+  });
 
   final List<RcModel> models;
+  final Set<String> activeModelIds;
 
   @override
   State<_OpenSessionDialog> createState() => _OpenSessionDialogState();
@@ -2217,6 +2412,21 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
       _startedAt.day,
     );
     return selectedDay.isBefore(today);
+  }
+
+  List<RcModel> get _selectableModels {
+    if (_isHistorical || widget.activeModelIds.isEmpty) {
+      return widget.models;
+    }
+
+    return widget.models
+        .where((model) {
+          final id = model.id?.trim();
+          return id == null ||
+              id.isEmpty ||
+              !widget.activeModelIds.contains(id);
+        })
+        .toList(growable: false);
   }
 
   DateTime get _firstAllowedDate {
@@ -2270,6 +2480,14 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
         _startedAt.hour,
         _startedAt.minute,
       );
+
+      final selectedModelId = _selectedModel?.id?.trim();
+      if (!_isHistorical &&
+          selectedModelId != null &&
+          selectedModelId.isNotEmpty &&
+          widget.activeModelIds.contains(selectedModelId)) {
+        _selectedModel = null;
+      }
     });
   }
 
@@ -2338,7 +2556,7 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
                   labelText: 'Modèle utilisé',
                   border: OutlineInputBorder(),
                 ),
-                items: widget.models
+                items: _selectableModels
                     .map(
                       (model) => DropdownMenuItem(
                         value: model,
