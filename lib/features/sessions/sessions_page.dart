@@ -208,7 +208,7 @@ class _SessionsPageState extends State<SessionsPage> {
 
   RcSession? get _activeSession {
     for (final session in sessions.reversed) {
-      if (!session.isClosed) {
+      if (!session.isClosed && !_isHistoricalSession(session)) {
         return session;
       }
     }
@@ -365,6 +365,11 @@ class _SessionsPageState extends State<SessionsPage> {
         return;
       }
 
+      if (result.isHistorical) {
+        await _openHistoricalSession(savedSession);
+        return;
+      }
+
       setState(() {
         sessions.add(savedSession);
         _battery1 = null;
@@ -372,6 +377,76 @@ class _SessionsPageState extends State<SessionsPage> {
       });
     } catch (error) {
       _showMessage('Ouverture de la session impossible : $error');
+    }
+  }
+
+  Future<void> _openHistoricalSession(RcSession session) async {
+    final result = await showDialog<_HistoricalSessionResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _HistoricalSessionDialog(session: session),
+    );
+
+    if (result == null) {
+      final sessionId = session.id;
+      if (sessionId != null && sessionId.isNotEmpty) {
+        try {
+          await SessionService.deleteSession(sessionId);
+        } catch (_) {
+          // La création rétroactive annulée ne doit pas laisser une session
+          // ouverte dans l'application.
+        }
+      }
+      return;
+    }
+
+    final runs = <RcRun>[];
+    var cursor = session.startedAt;
+
+    for (final item in result.runs) {
+      final endedAt = cursor.add(Duration(minutes: item.durationMinutes));
+      runs.add(
+        RcRun(
+          startedAt: cursor,
+          endedAt: endedAt,
+          durationMinutes: item.durationMinutes,
+          batteries: const [],
+          notes: item.notes,
+        ),
+      );
+      cursor = endedAt;
+    }
+
+    final closedSession = session.copyWith(
+      runs: runs,
+      endedAt: runs.isEmpty ? session.startedAt : cursor,
+      drivingNotes: result.drivingNotes,
+      breakages: result.breakages,
+      partsReplacedOnSite: result.partsReplacedOnSite,
+      maintenanceToDo: result.maintenanceToDo,
+      partsToOrder: result.partsToOrder,
+      changesBeforeNextSession: result.changesBeforeNextSession,
+      generalNotes: result.generalNotes,
+    );
+
+    try {
+      final savedSession = await SessionService.saveSession(closedSession);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        sessions.add(savedSession);
+        _battery1 = null;
+        _battery2 = null;
+      });
+
+      _showMessage('Session antérieure enregistrée.');
+    } catch (error) {
+      _showMessage(
+        'Enregistrement de la session antérieure impossible : $error',
+      );
     }
   }
 
@@ -1311,7 +1386,7 @@ class _SessionsPageState extends State<SessionsPage> {
           ),
         ],
       ),
-      floatingActionButton: !widget.historyOnly && activeSession == null
+      floatingActionButton: activeSession == null
           ? FloatingActionButton.extended(
               onPressed: _openSession,
               icon: const Icon(Icons.play_arrow),
@@ -2390,6 +2465,7 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
                       model: _selectedModel!,
                       location: _locationController.text.trim(),
                       startedAt: _startedAt,
+                      isHistorical: _isHistorical,
                     ),
                   );
                 },
@@ -3071,11 +3147,343 @@ class _OpenSessionResult {
     required this.model,
     required this.location,
     required this.startedAt,
+    required this.isHistorical,
   });
 
   final RcModel model;
   final String location;
   final DateTime startedAt;
+  final bool isHistorical;
+}
+
+class _HistoricalRunInput {
+  const _HistoricalRunInput({
+    required this.durationMinutes,
+    required this.notes,
+  });
+
+  final int durationMinutes;
+  final String notes;
+}
+
+class _HistoricalSessionResult {
+  const _HistoricalSessionResult({
+    required this.runs,
+    required this.drivingNotes,
+    required this.breakages,
+    required this.partsReplacedOnSite,
+    required this.maintenanceToDo,
+    required this.partsToOrder,
+    required this.changesBeforeNextSession,
+    required this.generalNotes,
+  });
+
+  final List<_HistoricalRunInput> runs;
+  final String drivingNotes;
+  final String breakages;
+  final String partsReplacedOnSite;
+  final String maintenanceToDo;
+  final String partsToOrder;
+  final String changesBeforeNextSession;
+  final String generalNotes;
+}
+
+class _HistoricalSessionDialog extends StatefulWidget {
+  const _HistoricalSessionDialog({required this.session});
+
+  final RcSession session;
+
+  @override
+  State<_HistoricalSessionDialog> createState() =>
+      _HistoricalSessionDialogState();
+}
+
+class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
+  final List<_HistoricalRunInput> _runs = [];
+  final _drivingNotesController = TextEditingController();
+  final _breakagesController = TextEditingController();
+  final _partsReplacedController = TextEditingController();
+  final _maintenanceController = TextEditingController();
+  final _partsToOrderController = TextEditingController();
+  final _changesController = TextEditingController();
+  final _generalNotesController = TextEditingController();
+
+  @override
+  void dispose() {
+    _drivingNotesController.dispose();
+    _breakagesController.dispose();
+    _partsReplacedController.dispose();
+    _maintenanceController.dispose();
+    _partsToOrderController.dispose();
+    _changesController.dispose();
+    _generalNotesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addRun() async {
+    final result = await showDialog<_EndRunResult>(
+      context: context,
+      builder: (context) => const _HistoricalRunDialog(),
+    );
+
+    if (result == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _runs.add(
+        _HistoricalRunInput(
+          durationMinutes: result.durationMinutes,
+          notes: result.notes,
+        ),
+      );
+    });
+  }
+
+  void _save() {
+    Navigator.of(context).pop(
+      _HistoricalSessionResult(
+        runs: List<_HistoricalRunInput>.unmodifiable(_runs),
+        drivingNotes: _drivingNotesController.text.trim(),
+        breakages: _breakagesController.text.trim(),
+        partsReplacedOnSite: _partsReplacedController.text.trim(),
+        maintenanceToDo: _maintenanceController.text.trim(),
+        partsToOrder: _partsToOrderController.text.trim(),
+        changesBeforeNextSession: _changesController.text.trim(),
+        generalNotes: _generalNotesController.text.trim(),
+      ),
+    );
+  }
+
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      border: const OutlineInputBorder(),
+      isDense: true,
+      alignLabelWithHint: true,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      title: Text('Session antérieure — ${widget.session.model.name}'),
+      content: SizedBox(
+        width: 760,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Card(
+                child: ListTile(
+                  leading: Icon(Icons.history),
+                  title: Text('Saisie rétroactive'),
+                  subtitle: Text(
+                    'Ajoute les roulages déjà effectués. Les batteries et les '
+                    'relevés restent facultatifs pour l’historique initial.',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _runs.isEmpty
+                          ? 'Aucun roulage renseigné'
+                          : '${_runs.length} roulage(s) • '
+                                '${_runs.fold<int>(0, (total, run) => total + run.durationMinutes)} min',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _addRun,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Ajouter un roulage'),
+                  ),
+                ],
+              ),
+              if (_runs.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                for (var index = 0; index < _runs.length; index++)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(child: Text('${index + 1}')),
+                    title: Text('${_runs[index].durationMinutes} min'),
+                    subtitle: _runs[index].notes.isEmpty
+                        ? null
+                        : Text(_runs[index].notes),
+                    trailing: IconButton(
+                      tooltip: 'Supprimer ce roulage',
+                      onPressed: () {
+                        setState(() {
+                          _runs.removeAt(index);
+                        });
+                      },
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ),
+              ],
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  SizedBox(
+                    width: 235,
+                    child: TextField(
+                      controller: _drivingNotesController,
+                      maxLines: 2,
+                      decoration: _decoration('Comportement et réglages'),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 235,
+                    child: TextField(
+                      controller: _breakagesController,
+                      maxLines: 2,
+                      decoration: _decoration('Casses'),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 235,
+                    child: TextField(
+                      controller: _partsReplacedController,
+                      maxLines: 2,
+                      decoration: _decoration('Pièces remplacées sur place'),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 235,
+                    child: TextField(
+                      controller: _maintenanceController,
+                      maxLines: 2,
+                      decoration: _decoration('Entretien à effectuer'),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 235,
+                    child: TextField(
+                      controller: _partsToOrderController,
+                      maxLines: 2,
+                      decoration: _decoration('Pièces à commander'),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 235,
+                    child: TextField(
+                      controller: _changesController,
+                      maxLines: 2,
+                      decoration: _decoration(
+                        'Modifications avant prochaine session',
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 235,
+                    child: TextField(
+                      controller: _generalNotesController,
+                      maxLines: 2,
+                      decoration: _decoration('Notes générales'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Annuler'),
+        ),
+        FilledButton.icon(
+          onPressed: _save,
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Enregistrer la session antérieure'),
+        ),
+      ],
+    );
+  }
+}
+
+class _HistoricalRunDialog extends StatefulWidget {
+  const _HistoricalRunDialog();
+
+  @override
+  State<_HistoricalRunDialog> createState() => _HistoricalRunDialogState();
+}
+
+class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
+  final _durationController = TextEditingController();
+  final _notesController = TextEditingController();
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _durationController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final duration = int.tryParse(_durationController.text.trim());
+    if (duration == null || duration <= 0) {
+      setState(() {
+        _errorText = 'Indique une durée valide.';
+      });
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _EndRunResult(
+        durationMinutes: duration,
+        notes: _notesController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Ajouter un roulage antérieur'),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _durationController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Temps de roulage (minutes)',
+                border: const OutlineInputBorder(),
+                errorText: _errorText,
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _notesController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Observations (facultatif)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Ajouter')),
+      ],
+    );
+  }
 }
 
 class _EndRunResult {
