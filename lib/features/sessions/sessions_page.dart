@@ -384,7 +384,10 @@ class _SessionsPageState extends State<SessionsPage> {
     final result = await showDialog<_HistoricalSessionResult>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _HistoricalSessionDialog(session: session),
+      builder: (context) => _HistoricalSessionDialog(
+        session: session,
+        batteries: _availableBatteries,
+      ),
     );
 
     if (result == null) {
@@ -410,7 +413,7 @@ class _SessionsPageState extends State<SessionsPage> {
           startedAt: cursor,
           endedAt: endedAt,
           durationMinutes: item.durationMinutes,
-          batteries: const [],
+          batteries: item.batteries,
           notes: item.notes,
         ),
       );
@@ -3160,10 +3163,12 @@ class _HistoricalRunInput {
   const _HistoricalRunInput({
     required this.durationMinutes,
     required this.notes,
+    required this.batteries,
   });
 
   final int durationMinutes;
   final String notes;
+  final List<Battery> batteries;
 }
 
 class _HistoricalSessionResult {
@@ -3189,9 +3194,13 @@ class _HistoricalSessionResult {
 }
 
 class _HistoricalSessionDialog extends StatefulWidget {
-  const _HistoricalSessionDialog({required this.session});
+  const _HistoricalSessionDialog({
+    required this.session,
+    required this.batteries,
+  });
 
   final RcSession session;
+  final List<Battery> batteries;
 
   @override
   State<_HistoricalSessionDialog> createState() =>
@@ -3221,9 +3230,9 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
   }
 
   Future<void> _addRun() async {
-    final result = await showDialog<_EndRunResult>(
+    final result = await showDialog<_HistoricalRunResult>(
       context: context,
-      builder: (context) => const _HistoricalRunDialog(),
+      builder: (context) => _HistoricalRunDialog(batteries: widget.batteries),
     );
 
     if (result == null || !mounted) {
@@ -3235,6 +3244,7 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
         _HistoricalRunInput(
           durationMinutes: result.durationMinutes,
           notes: result.notes,
+          batteries: result.batteries,
         ),
       );
     });
@@ -3311,9 +3321,13 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
                     contentPadding: EdgeInsets.zero,
                     leading: CircleAvatar(child: Text('${index + 1}')),
                     title: Text('${_runs[index].durationMinutes} min'),
-                    subtitle: _runs[index].notes.isEmpty
-                        ? null
-                        : Text(_runs[index].notes),
+                    subtitle: Text(
+                      [
+                        if (_runs[index].batteries.isNotEmpty)
+                          'Batteries : ${_runs[index].batteries.map((battery) => battery.id).join(' + ')}',
+                        if (_runs[index].notes.isNotEmpty) _runs[index].notes,
+                      ].join('\n'),
+                    ),
                     trailing: IconButton(
                       tooltip: 'Supprimer ce roulage',
                       onPressed: () {
@@ -3410,7 +3424,9 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
 }
 
 class _HistoricalRunDialog extends StatefulWidget {
-  const _HistoricalRunDialog();
+  const _HistoricalRunDialog({required this.batteries});
+
+  final List<Battery> batteries;
 
   @override
   State<_HistoricalRunDialog> createState() => _HistoricalRunDialogState();
@@ -3419,7 +3435,20 @@ class _HistoricalRunDialog extends StatefulWidget {
 class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
   final _durationController = TextEditingController();
   final _notesController = TextEditingController();
+  Battery? _battery1;
+  Battery? _battery2;
   String? _errorText;
+
+  List<Battery> get _secondBatteryChoices {
+    final first = _battery1;
+    if (first == null) {
+      return const [];
+    }
+
+    return widget.batteries
+        .where((battery) => battery.id != first.id)
+        .toList(growable: false);
+  }
 
   @override
   void dispose() {
@@ -3437,10 +3466,16 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
       return;
     }
 
+    final selectedBatteries = <Battery>[
+      if (_battery1 != null) _battery1!,
+      if (_battery2 != null) _battery2!,
+    ];
+
     Navigator.of(context).pop(
-      _EndRunResult(
+      _HistoricalRunResult(
         durationMinutes: duration,
         notes: _notesController.text.trim(),
+        batteries: List<Battery>.unmodifiable(selectedBatteries),
       ),
     );
   }
@@ -3450,29 +3485,95 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
     return AlertDialog(
       title: const Text('Ajouter un roulage antérieur'),
       content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _durationController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Temps de roulage (minutes)',
-                border: const OutlineInputBorder(),
-                errorText: _errorText,
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _durationController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Temps de roulage (minutes)',
+                  border: const OutlineInputBorder(),
+                  errorText: _errorText,
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _notesController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Observations (facultatif)',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<Battery>(
+                initialValue: _battery1,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Batterie 1 (facultative)',
+                  border: OutlineInputBorder(),
+                ),
+                items: widget.batteries
+                    .map(
+                      (battery) => DropdownMenuItem(
+                        value: battery,
+                        child: Text(
+                          battery.id,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _battery1 = value;
+                    if (_battery2?.id == value?.id) {
+                      _battery2 = null;
+                    }
+                  });
+                },
               ),
-            ),
-          ],
+              if (_battery1 != null) ...[
+                const SizedBox(height: 14),
+                DropdownButtonFormField<Battery>(
+                  initialValue: _battery2,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Batterie 2 (facultative)',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _secondBatteryChoices
+                      .map(
+                        (battery) => DropdownMenuItem(
+                          value: battery,
+                          child: Text(
+                            battery.id,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _battery2 = value;
+                    });
+                  },
+                ),
+              ],
+              const SizedBox(height: 8),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Ces batteries documentent uniquement la session antérieure. '
+                  'Aucun relevé ni état de batterie ne sera modifié.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _notesController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Observations (facultatif)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -3484,6 +3585,18 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
       ],
     );
   }
+}
+
+class _HistoricalRunResult {
+  const _HistoricalRunResult({
+    required this.durationMinutes,
+    required this.notes,
+    required this.batteries,
+  });
+
+  final int durationMinutes;
+  final String notes;
+  final List<Battery> batteries;
 }
 
 class _EndRunResult {

@@ -433,6 +433,22 @@ class SessionService {
       return;
     }
 
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final sessionDay = DateTime(
+      session.startedAt.year,
+      session.startedAt.month,
+      session.startedAt.day,
+    );
+
+    if (session.isClosed && sessionDay.isBefore(today)) {
+      await _deleteLocalBatteryHistoryForSession(
+        userId: userId,
+        sessionId: sessionId,
+      );
+      return;
+    }
+
     await _deleteLocalBatteryHistoryForSession(
       userId: userId,
       sessionId: sessionId,
