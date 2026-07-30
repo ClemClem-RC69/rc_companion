@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
@@ -9,10 +11,60 @@ import 'services/supabase_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await AppDatabase.initialize();
-  await SupabaseService.initialize();
-  await BatterySyncService.initialize();
-  await RealtimeSyncService.initialize();
+  try {
+    await AppDatabase.initialize();
+    await SupabaseService.initialize();
+    await BatterySyncService.initialize();
 
-  runApp(const RCCompanionApp());
+    runApp(const RCCompanionApp());
+
+    // Le Realtime ne doit jamais bloquer l'affichage initial.
+    unawaited(RealtimeSyncService.initialize());
+  } catch (error, stackTrace) {
+    debugPrint('Erreur de démarrage RC Companion: $error');
+    debugPrintStack(stackTrace: stackTrace);
+
+    runApp(_StartupErrorApp(error: error));
+  }
+}
+
+class _StartupErrorApp extends StatelessWidget {
+  const _StartupErrorApp({required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline, size: 64),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'RC Companion ne peut pas démarrer.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Vérifie la configuration Supabase et la connexion réseau.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  SelectableText(error.toString(), textAlign: TextAlign.center),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
