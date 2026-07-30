@@ -3453,13 +3453,11 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
   Battery? _battery1;
   Battery? _battery2;
 
-  final _oldName1 = TextEditingController();
   final _oldBrand1 = TextEditingController();
   final _oldCapacity1 = TextEditingController();
   final _oldCells1 = TextEditingController();
   final _oldCRate1 = TextEditingController();
 
-  final _oldName2 = TextEditingController();
   final _oldBrand2 = TextEditingController();
   final _oldCapacity2 = TextEditingController();
   final _oldCells2 = TextEditingController();
@@ -3482,12 +3480,10 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
     _durationController.dispose();
     _notesController.dispose();
     for (final controller in [
-      _oldName1,
       _oldBrand1,
       _oldCapacity1,
       _oldCells1,
       _oldCRate1,
-      _oldName2,
       _oldBrand2,
       _oldCapacity2,
       _oldCells2,
@@ -3499,14 +3495,13 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
   }
 
   HistoricalBattery _historicalBattery(
-    TextEditingController name,
     TextEditingController brand,
     TextEditingController capacity,
     TextEditingController cells,
     TextEditingController cRate,
   ) {
     return HistoricalBattery(
-      name: name.text.trim(),
+      name: '',
       brand: brand.text.trim(),
       capacityMah: int.tryParse(capacity.text.trim()),
       cells: int.tryParse(cells.text.trim()),
@@ -3532,21 +3527,9 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
 
     final historical = <HistoricalBattery>[
       if (_mode1 == _HistoricalBatteryMode.historical)
-        _historicalBattery(
-          _oldName1,
-          _oldBrand1,
-          _oldCapacity1,
-          _oldCells1,
-          _oldCRate1,
-        ),
+        _historicalBattery(_oldBrand1, _oldCapacity1, _oldCells1, _oldCRate1),
       if (_mode2 == _HistoricalBatteryMode.historical)
-        _historicalBattery(
-          _oldName2,
-          _oldBrand2,
-          _oldCapacity2,
-          _oldCells2,
-          _oldCRate2,
-        ),
+        _historicalBattery(_oldBrand2, _oldCapacity2, _oldCells2, _oldCRate2),
     ];
 
     Navigator.of(context).pop(
@@ -3565,7 +3548,6 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
     required ValueChanged<_HistoricalBatteryMode> onModeChanged,
     required Battery? selectedBattery,
     required ValueChanged<Battery?> onBatteryChanged,
-    required TextEditingController name,
     required TextEditingController brand,
     required TextEditingController capacity,
     required TextEditingController cells,
@@ -3634,30 +3616,13 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
             ],
             if (mode == _HistoricalBatteryMode.historical) ...[
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: name,
-                      decoration: const InputDecoration(
-                        labelText: 'Nom / ID',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: brand,
-                      decoration: const InputDecoration(
-                        labelText: 'Marque',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                    ),
-                  ),
-                ],
+              TextField(
+                controller: brand,
+                decoration: const InputDecoration(
+                  labelText: 'Marque',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
               ),
               const SizedBox(height: 8),
               Row(
@@ -3748,7 +3713,6 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
                     }
                   });
                 },
-                name: _oldName1,
                 brand: _oldBrand1,
                 capacity: _oldCapacity1,
                 cells: _oldCells1,
@@ -3771,7 +3735,6 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
                     _battery2 = value;
                   });
                 },
-                name: _oldName2,
                 brand: _oldBrand2,
                 capacity: _oldCapacity2,
                 cells: _oldCells2,
