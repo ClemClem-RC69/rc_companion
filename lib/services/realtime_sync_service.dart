@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'battery_service.dart';
+import 'battery_sync_service.dart';
 import 'maintenance_service.dart';
 import 'model_document_service.dart';
 import 'model_local_store.dart';
@@ -22,7 +25,10 @@ class RealtimeSyncService {
   RealtimeSyncService._();
 
   static StreamSubscription<AuthState>? _authSubscription;
+  static StreamSubscription<List<ConnectivityResult>>?
+  _connectivitySubscription;
   static RealtimeChannel? _channel;
+  static _RealtimeLifecycleObserver? _lifecycleObserver;
 
   static Timer? _modelsDebounce;
   static Timer? _batteriesDebounce;
@@ -32,8 +38,11 @@ class RealtimeSyncService {
   static Timer? _documentsDebounce;
   static Timer? _setupsDebounce;
   static Timer? _radioSetupsDebounce;
+  static Timer? _recoveryDebounce;
 
   static bool _started = false;
+  static bool _restartRunning = false;
+  static bool _restartRequested = false;
   static String? _subscribedUserId;
 
   static Future<void> initialize() async {
@@ -48,23 +57,89 @@ class RealtimeSyncService {
         unawaited(_stopChannel());
         return;
       }
-      if (_subscribedUserId != userId) {
-        unawaited(_startForUser(userId));
+
+      // Un renouvellement de session peut arriver sans changement d'utilisateur.
+      // On profite de tout nouvel état authentifié pour garantir que le canal
+      // Realtime est réellement recréé si le socket a été perdu.
+      unawaited(_restartForUser(userId));
+    });
+
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      results,
+    ) {
+      final online = results.any((result) => result != ConnectivityResult.none);
+      if (online) {
+        _scheduleRecovery();
       }
     });
 
+    _lifecycleObserver = _RealtimeLifecycleObserver(_scheduleRecovery);
+    WidgetsBinding.instance.addObserver(_lifecycleObserver!);
+
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId != null && userId.isNotEmpty) {
-      await _startForUser(userId);
+      await _restartForUser(userId);
     }
   }
 
   static Future<void> dispose() async {
     _cancelDebounces();
+    _recoveryDebounce?.cancel();
+    _recoveryDebounce = null;
     await _authSubscription?.cancel();
     _authSubscription = null;
+    await _connectivitySubscription?.cancel();
+    _connectivitySubscription = null;
+    final observer = _lifecycleObserver;
+    if (observer != null) {
+      WidgetsBinding.instance.removeObserver(observer);
+    }
+    _lifecycleObserver = null;
     await _stopChannel();
     _started = false;
+  }
+
+  static void _scheduleRecovery() {
+    _recoveryDebounce?.cancel();
+    _recoveryDebounce = Timer(const Duration(milliseconds: 250), () {
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null || userId.isEmpty) {
+        return;
+      }
+      unawaited(_restartForUser(userId));
+    });
+  }
+
+  static Future<void> _restartForUser(String userId) async {
+    if (_restartRunning) {
+      _restartRequested = true;
+      return;
+    }
+
+    _restartRunning = true;
+    try {
+      var targetUserId = userId;
+      do {
+        _restartRequested = false;
+        final currentUserId = SupabaseService.client.auth.currentUser?.id;
+        if (currentUserId == null || currentUserId.isEmpty) {
+          await _stopChannel();
+          return;
+        }
+        targetUserId = currentUserId;
+        await _startForUser(targetUserId);
+      } while (_restartRequested);
+    } finally {
+      _restartRunning = false;
+    }
+  }
+
+  static Future<void> _flushPendingWrites() async {
+    try {
+      await BatterySyncService.syncNow();
+    } catch (_) {
+      // Si le réseau vient de disparaître, les opérations restent dans la queue.
+    }
   }
 
   static Future<void> _startForUser(String userId) async {
@@ -152,6 +227,12 @@ class RealtimeSyncService {
     _channel = channel;
     channel.subscribe();
 
+    // Réconciliation immédiate : on envoie d'abord les écritures locales
+    // en attente, puis on recharge les caches Drift depuis le cloud. Cela évite
+    // qu'un retour réseau écrase temporairement une modification locale non
+    // encore envoyée.
+    await _flushPendingWrites();
+
     _scheduleModelsRefresh(immediate: true);
     _scheduleBatteriesRefresh(immediate: true);
     _scheduleSessionsRefresh(immediate: true);
@@ -203,6 +284,7 @@ class RealtimeSyncService {
       immediate ? Duration.zero : const Duration(milliseconds: 120),
       () async {
         try {
+          await _flushPendingWrites();
           await ModelService.refreshModels();
         } catch (_) {}
       },
@@ -215,6 +297,7 @@ class RealtimeSyncService {
       immediate ? Duration.zero : const Duration(milliseconds: 120),
       () async {
         try {
+          await _flushPendingWrites();
           await BatteryService.refreshBatteries();
         } catch (_) {}
       },
@@ -227,6 +310,7 @@ class RealtimeSyncService {
       immediate ? Duration.zero : const Duration(milliseconds: 180),
       () async {
         try {
+          await _flushPendingWrites();
           await _refreshSessionsFromCloud();
         } catch (_) {
           // Hors ligne : le cache Drift existant reste affiché.
@@ -241,6 +325,7 @@ class RealtimeSyncService {
       immediate ? Duration.zero : const Duration(milliseconds: 120),
       () async {
         try {
+          await _flushPendingWrites();
           await MaintenanceService.refreshFromCloud();
         } catch (_) {
           // Hors ligne : le cache Drift existant reste affiché.
@@ -255,6 +340,7 @@ class RealtimeSyncService {
       immediate ? Duration.zero : const Duration(milliseconds: 120),
       () async {
         try {
+          await _flushPendingWrites();
           await RadioService().refreshRadios();
         } catch (_) {}
       },
@@ -270,6 +356,7 @@ class RealtimeSyncService {
         if (user == null) return;
 
         try {
+          await _flushPendingWrites();
           final models = await ModelLocalStore.getModels(userId: user.id);
           for (final model in models) {
             final modelId = model.id?.trim();
@@ -291,6 +378,7 @@ class RealtimeSyncService {
         if (user == null) return;
 
         try {
+          await _flushPendingWrites();
           final models = await ModelLocalStore.getModels(userId: user.id);
           for (final model in models) {
             final modelId = model.id?.trim();
@@ -312,6 +400,7 @@ class RealtimeSyncService {
         if (user == null) return;
 
         try {
+          await _flushPendingWrites();
           final models = await ModelLocalStore.getModels(userId: user.id);
           final service = ModelRadioSetupService();
           for (final model in models) {
@@ -358,5 +447,18 @@ class RealtimeSyncService {
         .toList(growable: false);
 
     await SessionLocalStore.replaceSessions(userId: user.id, rows: rows);
+  }
+}
+
+class _RealtimeLifecycleObserver extends WidgetsBindingObserver {
+  _RealtimeLifecycleObserver(this.onResume);
+
+  final VoidCallback onResume;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResume();
+    }
   }
 }

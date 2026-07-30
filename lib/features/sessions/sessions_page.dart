@@ -108,20 +108,44 @@ class _SessionsPageState extends State<SessionsPage> {
 
   String? _focusedSessionKey;
 
+  StreamSubscription<List<RcModel>>? _modelSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _sessionSubscription;
 
   @override
   void initState() {
     super.initState();
+    _startModelLiveUpdates();
     _startSessionLiveUpdates();
     _loadData();
   }
 
   @override
   void dispose() {
+    _modelSubscription?.cancel();
     _sessionSubscription?.cancel();
     _historySearchController.dispose();
     super.dispose();
+  }
+
+  void _startModelLiveUpdates() {
+    final user = SupabaseService.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    _modelSubscription = ModelLocalStore.watchModels(userId: user.id).listen((
+      models,
+    ) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _availableModels = models;
+      });
+
+      unawaited(_refreshSessionsFromLocal());
+    });
   }
 
   void _startSessionLiveUpdates() {

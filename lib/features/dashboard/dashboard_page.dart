@@ -1505,9 +1505,10 @@ class _DashboardPageState extends State<DashboardPage>
   }) {
     final row = lastSession;
     final date = _formatSessionDate(row);
-    final model =
-        _firstText(row, ['model_name', 'name', 'model', 'title']) ??
-        'Aucun modèle';
+    final model = lastModelName.trim().isNotEmpty
+        ? lastModelName.trim()
+        : (_firstText(row, ['model_name', 'name', 'model', 'title']) ??
+              'Aucun modèle');
     final place =
         _firstText(row, ['location', 'place', 'terrain']) ??
         'Lieu non renseigné';
@@ -2439,9 +2440,10 @@ class _DashboardPageState extends State<DashboardPage>
   Widget _lastSessionCard() {
     final row = lastSession;
     final date = _formatSessionDate(row);
-    final model =
-        _firstText(row, ['model_name', 'name', 'model', 'title']) ??
-        'Aucun modèle';
+    final model = lastModelName.trim().isNotEmpty
+        ? lastModelName.trim()
+        : (_firstText(row, ['model_name', 'name', 'model', 'title']) ??
+              'Aucun modèle');
     final place =
         _firstText(row, ['location', 'place', 'terrain']) ??
         'Lieu non renseigné';
