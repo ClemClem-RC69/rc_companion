@@ -1510,15 +1510,11 @@ class _SessionsPageState extends State<SessionsPage> {
           ),
         ],
       ),
-      floatingActionButton: !widget.historyOnly && activeSessions.length < 2
+      floatingActionButton: !widget.historyOnly && activeSessions.isEmpty
           ? FloatingActionButton.extended(
               onPressed: _openSession,
               icon: const Icon(Icons.play_arrow),
-              label: Text(
-                activeSessions.isEmpty
-                    ? 'Ouvrir une session'
-                    : 'Ouvrir une 2e session',
-              ),
+              label: const Text('Ouvrir une session'),
             )
           : null,
       body: widget.historyOnly
@@ -1854,6 +1850,7 @@ class _SessionsPageState extends State<SessionsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Icon(Icons.flag_circle),
                     const SizedBox(width: 10),
@@ -1863,12 +1860,41 @@ class _SessionsPageState extends State<SessionsPage> {
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Modifier les informations de la session',
-                      onPressed: () => _editSessionGeneral(session),
-                      icon: const Icon(Icons.edit_outlined),
+                    const SizedBox(width: 8),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip:
+                                  'Modifier les informations de la session',
+                              onPressed: () => _editSessionGeneral(session),
+                              icon: const Icon(Icons.edit_outlined),
+                            ),
+                            const Chip(label: Text('EN COURS')),
+                          ],
+                        ),
+                        if (_activeSessions.length == 1) ...[
+                          const SizedBox(height: 6),
+                          OutlinedButton.icon(
+                            onPressed: _openSession,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.primary,
+                              side: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            icon: const Icon(Icons.add_circle_outline),
+                            label: const Text('Ouvrir une 2e session'),
+                          ),
+                        ],
+                      ],
                     ),
-                    const Chip(label: Text('EN COURS')),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -1983,11 +2009,18 @@ class _SessionsPageState extends State<SessionsPage> {
             ),
         ],
         const SizedBox(height: 24),
-        OutlinedButton.icon(
-          onPressed: session.hasActiveRun ? null : () => _closeSession(session),
-          icon: const Icon(Icons.stop_circle_outlined),
-          label: const Text('Clôturer la session'),
-        ),
+        if (session.hasActiveRun)
+          FilledButton.icon(
+            onPressed: () => _endActiveRun(session),
+            icon: const Icon(Icons.stop),
+            label: const Text('Terminer ce roulage'),
+          )
+        else
+          OutlinedButton.icon(
+            onPressed: () => _closeSession(session),
+            icon: const Icon(Icons.stop_circle_outlined),
+            label: const Text('Clôturer la session'),
+          ),
         const SizedBox(height: 24),
       ],
     );
@@ -2016,12 +2049,6 @@ class _SessionsPageState extends State<SessionsPage> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
             ],
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: () => _endActiveRun(session),
-              icon: const Icon(Icons.stop),
-              label: const Text('Terminer ce roulage'),
-            ),
           ],
         ),
       ),
