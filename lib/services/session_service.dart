@@ -324,6 +324,15 @@ class SessionService {
             durationMinutes: (runRow['duration_minutes'] as num?)?.toInt(),
             batteries: List<Battery>.unmodifiable(runBatteries),
             readings: List<BatteryRunReading>.unmodifiable(readings),
+            historicalBatteries:
+                ((runRow['historical_batteries'] as List<dynamic>? ?? const []))
+                    .map(
+                      (item) => HistoricalBattery.fromJson(
+                        Map<String, dynamic>.from(item as Map),
+                      ),
+                    )
+                    .where((item) => !item.isEmpty)
+                    .toList(growable: false),
             notes: runRow['notes'] as String? ?? '',
           ),
         );
@@ -388,6 +397,10 @@ class SessionService {
       'ended_at': run.endedAt?.toUtc().toIso8601String(),
       'duration_minutes': run.durationMinutes,
       'notes': _nullableText(run.notes),
+      'historical_batteries': run.historicalBatteries
+          .where((battery) => !battery.isEmpty)
+          .map((battery) => battery.toJson())
+          .toList(growable: false),
       'session_run_batteries': run.batteries
           .map(
             (battery) => <String, dynamic>{

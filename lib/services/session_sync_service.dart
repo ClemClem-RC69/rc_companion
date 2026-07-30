@@ -134,6 +134,8 @@ class SessionSyncService {
             'ended_at': run['ended_at'],
             'duration_minutes': run['duration_minutes'],
             'notes': run['notes'],
+            'historical_batteries':
+                run['historical_batteries'] ?? const <dynamic>[],
           })
           .select('id')
           .single();

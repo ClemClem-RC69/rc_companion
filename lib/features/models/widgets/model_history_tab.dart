@@ -323,8 +323,11 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
   }
 
   String _batteryType(Battery battery) {
-    return '${battery.technology} ${battery.cells} '
-        '${battery.capacity} mAh ${battery.cRate}C';
+    final brand = battery.brand.trim();
+    final characteristics =
+        '${battery.technology} ${battery.cells} ${battery.capacity} mAh ${battery.cRate}C';
+
+    return brand.isEmpty ? characteristics : '$brand • $characteristics';
   }
 
   Widget _summaryCard() {
@@ -474,7 +477,13 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
             value: _durationLabel(run.effectiveDurationMinutes),
             icon: Icons.timer_outlined,
           ),
-          if (run.batteries.isEmpty)
+          _automaticLine(
+            label: 'Nombre de batteries utilisées',
+            value: (run.batteries.length + run.historicalBatteries.length)
+                .toString(),
+            icon: Icons.battery_charging_full,
+          ),
+          if (run.batteries.isEmpty && run.historicalBatteries.isEmpty)
             _automaticLine(
               label: 'Batterie',
               value: 'Non renseignée',
@@ -500,6 +509,21 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
                 icon: Icons.qr_code_2,
               ),
             ],
+          for (
+            var historicalIndex = 0;
+            historicalIndex < run.historicalBatteries.length;
+            historicalIndex++
+          ) ...[
+            if (run.batteries.isNotEmpty || historicalIndex > 0)
+              const Divider(height: 16),
+            _automaticLine(
+              label: run.historicalBatteries.length == 1
+                  ? 'Ancienne batterie'
+                  : 'Ancienne batterie ${historicalIndex + 1}',
+              value: run.historicalBatteries[historicalIndex].displayLabel,
+              icon: Icons.battery_unknown,
+            ),
+          ],
         ],
       ),
     );
@@ -1144,11 +1168,21 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
           ? 'Lieu non renseigné'
           : session.location.trim();
 
-      final batteryIds = <String>[];
+      final batteryDescriptions = <String>[];
+      var physicalBatteryUses = 0;
       for (final run in session.runs) {
+        physicalBatteryUses +=
+            run.batteries.length + run.historicalBatteries.length;
         for (final battery in run.batteries) {
-          if (!batteryIds.contains(battery.id)) {
-            batteryIds.add(battery.id);
+          final description = '${battery.id} — ${_batteryType(battery)}';
+          if (!batteryDescriptions.contains(description)) {
+            batteryDescriptions.add(description);
+          }
+        }
+        for (final battery in run.historicalBatteries) {
+          final description = 'Ancienne batterie — ${battery.displayLabel}';
+          if (!batteryDescriptions.contains(description)) {
+            batteryDescriptions.add(description);
           }
         }
       }
@@ -1156,7 +1190,9 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       final details = <String>[
         'Terrain : $location - ${session.runs.length} roulage(s) '
             '(${_durationLabel(session.totalDurationMinutes)})',
-        if (batteryIds.isNotEmpty) 'Batteries : ${batteryIds.join(' / ')}',
+        'Batteries utilisées : $physicalBatteryUses',
+        if (batteryDescriptions.isNotEmpty)
+          'Caractéristiques : ${batteryDescriptions.join(' / ')}',
         if (session.breakages.trim().isNotEmpty)
           'Casses : ${session.breakages.trim()}',
         if (session.partsReplacedOnSite.trim().isNotEmpty)

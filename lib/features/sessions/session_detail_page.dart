@@ -5,10 +5,7 @@ import '../../models/rc_session.dart';
 import '../../services/session_service.dart';
 
 class SessionDetailPage extends StatefulWidget {
-  const SessionDetailPage({
-    super.key,
-    required this.session,
-  });
+  const SessionDetailPage({super.key, required this.session});
 
   final RcSession session;
 
@@ -57,10 +54,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         '${battery.capacity} mAh • ${battery.cRate}C';
   }
 
-  BatteryRunReading? _readingForBattery(
-    RcRun run,
-    String batteryId,
-  ) {
+  BatteryRunReading? _readingForBattery(RcRun run, String batteryId) {
     for (final reading in run.readings) {
       if (reading.batteryId == batteryId) {
         return reading;
@@ -94,8 +88,9 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
 
     try {
       final updatedRuns = List<RcRun>.from(_session.runs);
-      final updatedReadings =
-          List<BatteryRunReading>.from(updatedRuns[runIndex].readings);
+      final updatedReadings = List<BatteryRunReading>.from(
+        updatedRuns[runIndex].readings,
+      );
 
       final readingIndex = updatedReadings.indexWhere(
         (reading) => reading.batteryId == battery.id,
@@ -178,9 +173,9 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         _session = savedSession;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Session mise à jour.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Session mise à jour.')));
     } catch (error) {
       if (!mounted) {
         return;
@@ -220,9 +215,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
     );
 
     await _saveSession(
-      _session.copyWith(
-        runs: List<RcRun>.unmodifiable(updatedRuns),
-      ),
+      _session.copyWith(runs: List<RcRun>.unmodifiable(updatedRuns)),
     );
   }
 
@@ -249,17 +242,14 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
     );
   }
 
-  Widget _sectionTitle(
-    BuildContext context,
-    String title,
-  ) {
+  Widget _sectionTitle(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.only(top: 24, bottom: 10),
       child: Text(
         title,
-        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -279,10 +269,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
     );
   }
 
-  Widget _measurementBlock(
-    BuildContext context,
-    BatteryRunReading reading,
-  ) {
+  Widget _measurementBlock(BuildContext context, BatteryRunReading reading) {
     final hasCapacity = reading.remainingCapacityPercent != null;
     final hasCells = reading.cellVoltages.isNotEmpty;
 
@@ -385,17 +372,17 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                   child: Text(
                     battery.id,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 TextButton.icon(
                   onPressed: _isSavingMeasurement
                       ? null
                       : () => _editMeasurements(
-                            runIndex: runIndex,
-                            battery: battery,
-                          ),
+                          runIndex: runIndex,
+                          battery: battery,
+                        ),
                   icon: const Icon(Icons.edit_outlined),
                   label: Text(
                     reading == null
@@ -432,14 +419,12 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                   child: Text(
                     'Roulage ${index + 1}',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 TextButton.icon(
-                  onPressed: _isSavingSession
-                      ? null
-                      : () => _editRun(index),
+                  onPressed: _isSavingSession ? null : () => _editRun(index),
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text('Modifier'),
                 ),
@@ -447,22 +432,25 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
             ),
             const SizedBox(height: 8),
             Text('Début : ${_formatDateTime(run.startedAt)}'),
-            Text(
-              'Durée : ${_durationLabel(run.effectiveDurationMinutes)}',
-            ),
+            Text('Durée : ${_durationLabel(run.effectiveDurationMinutes)}'),
             if (run.notes.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text(
-                'Observations : ${run.notes}',
-              ),
+              Text('Observations : ${run.notes}'),
             ],
+            const SizedBox(height: 12),
+            Text(
+              'Nombre de batteries utilisées : ${run.batteries.length + run.historicalBatteries.length}',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
             if (run.batteries.isNotEmpty) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text(
                 'Batteries utilisées',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               for (final battery in run.batteries)
                 _batteryCard(
@@ -470,6 +458,34 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                   runIndex: index,
                   run: run,
                   battery: battery,
+                ),
+            ],
+            if (run.historicalBatteries.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Anciennes batteries',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              for (
+                var historicalIndex = 0;
+                historicalIndex < run.historicalBatteries.length;
+                historicalIndex++
+              )
+                Card(
+                  margin: const EdgeInsets.only(top: 10),
+                  child: ListTile(
+                    leading: const Icon(Icons.battery_unknown),
+                    title: Text(
+                      run.historicalBatteries.length == 1
+                          ? 'Ancienne batterie'
+                          : 'Ancienne batterie ${historicalIndex + 1}',
+                    ),
+                    subtitle: Text(
+                      run.historicalBatteries[historicalIndex].displayLabel,
+                    ),
+                  ),
                 ),
             ],
           ],
@@ -480,7 +496,8 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final hasClosingInformation = _session.drivingNotes.isNotEmpty ||
+    final hasClosingInformation =
+        _session.drivingNotes.isNotEmpty ||
         _session.breakages.isNotEmpty ||
         _session.partsReplacedOnSite.isNotEmpty ||
         _session.maintenanceToDo.isNotEmpty ||
@@ -496,121 +513,104 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         }
       },
       child: Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'Retour',
-          onPressed: () => Navigator.of(context).pop(_session),
-          icon: const Icon(Icons.arrow_back),
-        ),
-        title: const Text('Détail de la session'),
-        actions: [
-          TextButton.icon(
-            onPressed: _isSavingSession
-                ? null
-                : _editTerrainInformation,
-            icon: const Icon(Icons.edit_note_outlined),
-            label: const Text('Modifier la session'),
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'Retour',
+            onPressed: () => Navigator.of(context).pop(_session),
+            icon: const Icon(Icons.arrow_back),
           ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        children: [
-          Text(
-            _session.model.name,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-          const SizedBox(height: 12),
-          _infoCard(
-            label: 'Ouverture',
-            value: _formatDateTime(_session.startedAt),
-            icon: Icons.calendar_month_outlined,
-          ),
-          if (_session.location.isNotEmpty)
-            _infoCard(
-              label: 'Lieu',
-              value: _session.location,
-              icon: Icons.location_on_outlined,
+          title: const Text('Détail de la session'),
+          actions: [
+            TextButton.icon(
+              onPressed: _isSavingSession ? null : _editTerrainInformation,
+              icon: const Icon(Icons.edit_note_outlined),
+              label: const Text('Modifier la session'),
             ),
-          _infoCard(
-            label: 'Roulages',
-            value:
-                '${_session.runs.length} roulage(s) • ${_durationLabel(_session.totalDurationMinutes)}',
-            icon: Icons.timer_outlined,
-          ),
-          if (_session.runs.isNotEmpty) ...[
-            _sectionTitle(context, 'Roulages'),
-            for (var index = _session.runs.length - 1;
-                index >= 0;
-                index--)
-              _runCard(
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          children: [
+            Text(
+              _session.model.name,
+              style: Theme.of(
                 context,
-                run: _session.runs[index],
-                index: index,
+              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            _infoCard(
+              label: 'Ouverture',
+              value: _formatDateTime(_session.startedAt),
+              icon: Icons.calendar_month_outlined,
+            ),
+            if (_session.location.isNotEmpty)
+              _infoCard(
+                label: 'Lieu',
+                value: _session.location,
+                icon: Icons.location_on_outlined,
               ),
+            _infoCard(
+              label: 'Roulages',
+              value:
+                  '${_session.runs.length} roulage(s) • ${_durationLabel(_session.totalDurationMinutes)}',
+              icon: Icons.timer_outlined,
+            ),
+            if (_session.runs.isNotEmpty) ...[
+              _sectionTitle(context, 'Roulages'),
+              for (var index = _session.runs.length - 1; index >= 0; index--)
+                _runCard(context, run: _session.runs[index], index: index),
+            ],
+            if (hasClosingInformation) ...[
+              _sectionTitle(context, 'Bilan de la session'),
+              if (_session.drivingNotes.isNotEmpty)
+                _infoCard(
+                  label: 'Comportement et réglages constatés',
+                  value: _session.drivingNotes,
+                ),
+              if (_session.breakages.isNotEmpty)
+                _infoCard(label: 'Casses', value: _session.breakages),
+              if (_session.partsReplacedOnSite.isNotEmpty)
+                _infoCard(
+                  label: 'Pièces remplacées sur place',
+                  value: _session.partsReplacedOnSite,
+                ),
+              if (_session.maintenanceToDo.isNotEmpty)
+                _infoCard(
+                  label: 'Entretien à effectuer',
+                  value: _session.maintenanceToDo,
+                ),
+              if (_session.partsToOrder.isNotEmpty)
+                _infoCard(
+                  label: 'Pièces à commander',
+                  value: _session.partsToOrder,
+                ),
+              if (_session.changesBeforeNextSession.isNotEmpty)
+                _infoCard(
+                  label: 'Modifications avant la prochaine session',
+                  value: _session.changesBeforeNextSession,
+                ),
+              if (_session.generalNotes.isNotEmpty)
+                _infoCard(
+                  label: 'Notes générales',
+                  value: _session.generalNotes,
+                ),
+            ],
           ],
-          if (hasClosingInformation) ...[
-            _sectionTitle(context, 'Bilan de la session'),
-            if (_session.drivingNotes.isNotEmpty)
-              _infoCard(
-                label: 'Comportement et réglages constatés',
-                value: _session.drivingNotes,
-              ),
-            if (_session.breakages.isNotEmpty)
-              _infoCard(
-                label: 'Casses',
-                value: _session.breakages,
-              ),
-            if (_session.partsReplacedOnSite.isNotEmpty)
-              _infoCard(
-                label: 'Pièces remplacées sur place',
-                value: _session.partsReplacedOnSite,
-              ),
-            if (_session.maintenanceToDo.isNotEmpty)
-              _infoCard(
-                label: 'Entretien à effectuer',
-                value: _session.maintenanceToDo,
-              ),
-            if (_session.partsToOrder.isNotEmpty)
-              _infoCard(
-                label: 'Pièces à commander',
-                value: _session.partsToOrder,
-              ),
-            if (_session.changesBeforeNextSession.isNotEmpty)
-              _infoCard(
-                label: 'Modifications avant la prochaine session',
-                value: _session.changesBeforeNextSession,
-              ),
-            if (_session.generalNotes.isNotEmpty)
-              _infoCard(
-                label: 'Notes générales',
-                value: _session.generalNotes,
-              ),
-          ],
-        ],
+        ),
       ),
-    ),
     );
   }
 }
 
 class _EditRunResult {
-  const _EditRunResult({
-    required this.durationMinutes,
-    required this.notes,
-  });
+  const _EditRunResult({required this.durationMinutes, required this.notes});
 
   final int durationMinutes;
   final String notes;
 }
 
 class _EditRunDialog extends StatefulWidget {
-  const _EditRunDialog({
-    required this.durationMinutes,
-    required this.notes,
-  });
+  const _EditRunDialog({required this.durationMinutes, required this.notes});
 
   final int durationMinutes;
   final String notes;
@@ -693,10 +693,7 @@ class _EditRunDialogState extends State<_EditRunDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Annuler'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Enregistrer'),
-        ),
+        FilledButton(onPressed: _save, child: const Text('Enregistrer')),
       ],
     );
   }
@@ -723,9 +720,7 @@ class _EditTerrainResult {
 }
 
 class _EditTerrainDialog extends StatefulWidget {
-  const _EditTerrainDialog({
-    required this.session,
-  });
+  const _EditTerrainDialog({required this.session});
 
   final RcSession session;
 
@@ -746,20 +741,19 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
   void initState() {
     super.initState();
     final session = widget.session;
-    _drivingNotesController =
-        TextEditingController(text: session.drivingNotes);
-    _breakagesController =
-        TextEditingController(text: session.breakages);
-    _partsReplacedController =
-        TextEditingController(text: session.partsReplacedOnSite);
-    _maintenanceController =
-        TextEditingController(text: session.maintenanceToDo);
-    _partsToOrderController =
-        TextEditingController(text: session.partsToOrder);
-    _changesController =
-        TextEditingController(text: session.changesBeforeNextSession);
-    _generalNotesController =
-        TextEditingController(text: session.generalNotes);
+    _drivingNotesController = TextEditingController(text: session.drivingNotes);
+    _breakagesController = TextEditingController(text: session.breakages);
+    _partsReplacedController = TextEditingController(
+      text: session.partsReplacedOnSite,
+    );
+    _maintenanceController = TextEditingController(
+      text: session.maintenanceToDo,
+    );
+    _partsToOrderController = TextEditingController(text: session.partsToOrder);
+    _changesController = TextEditingController(
+      text: session.changesBeforeNextSession,
+    );
+    _generalNotesController = TextEditingController(text: session.generalNotes);
   }
 
   @override
@@ -795,10 +789,8 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
     final result = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => _TerrainTextEditorPage(
-          title: label,
-          initialText: controller.text,
-        ),
+        builder: (_) =>
+            _TerrainTextEditorPage(title: label, initialText: controller.text),
       ),
     );
 
@@ -814,10 +806,7 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
     });
   }
 
-  Widget _compactField(
-    TextEditingController controller,
-    String label,
-  ) {
+  Widget _compactField(TextEditingController controller, String label) {
     final text = controller.text.trim();
     final hasText = text.isNotEmpty;
     final normalizedText = text.replaceAll(RegExp(r'\s+'), ' ');
@@ -832,9 +821,7 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
           height: 92,
           padding: const EdgeInsets.fromLTRB(12, 10, 10, 8),
           decoration: BoxDecoration(
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outline,
-            ),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
@@ -848,8 +835,8 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -884,9 +871,9 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                     ),
                   ],
@@ -925,14 +912,8 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
                 _partsReplacedController,
                 'Pièces remplacées sur place',
               ),
-              _compactField(
-                _maintenanceController,
-                'Entretien à effectuer',
-              ),
-              _compactField(
-                _partsToOrderController,
-                'Pièces à commander',
-              ),
+              _compactField(_maintenanceController, 'Entretien à effectuer'),
+              _compactField(_partsToOrderController, 'Pièces à commander'),
               _compactField(
                 _changesController,
                 'Modifications prochaine session',
@@ -956,10 +937,7 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Annuler'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Enregistrer'),
-        ),
+        FilledButton(onPressed: _save, child: const Text('Enregistrer')),
       ],
     );
   }
@@ -975,8 +953,7 @@ class _TerrainTextEditorPage extends StatefulWidget {
   final String initialText;
 
   @override
-  State<_TerrainTextEditorPage> createState() =>
-      _TerrainTextEditorPageState();
+  State<_TerrainTextEditorPage> createState() => _TerrainTextEditorPageState();
 }
 
 class _TerrainTextEditorPageState extends State<_TerrainTextEditorPage> {
@@ -1192,8 +1169,7 @@ class _EditBatteryMeasurementDialogState
     Navigator.of(context).pop(
       BatteryRunReading(
         batteryId: widget.battery.id,
-        measuredAt:
-            widget.initialReading?.measuredAt ?? DateTime.now(),
+        measuredAt: widget.initialReading?.measuredAt ?? DateTime.now(),
         remainingCapacityPercent: capacity,
         temperatureCelsius: temperature,
         cellVoltages: List<double>.unmodifiable(voltages),
@@ -1201,10 +1177,7 @@ class _EditBatteryMeasurementDialogState
     );
   }
 
-  InputDecoration _decoration(
-    String label, {
-    String? suffix,
-  }) {
+  InputDecoration _decoration(String label, {String? suffix}) {
     return InputDecoration(
       labelText: label,
       suffixText: suffix,
@@ -1233,8 +1206,8 @@ class _EditBatteryMeasurementDialogState
             final columns = constraints.maxWidth >= 820
                 ? 4
                 : constraints.maxWidth >= 520
-                    ? 3
-                    : 2;
+                ? 3
+                : 2;
             final spacing = 8.0;
             final itemWidth =
                 (constraints.maxWidth - spacing * (columns - 1)) / columns;
@@ -1247,8 +1220,9 @@ class _EditBatteryMeasurementDialogState
                     Expanded(
                       child: TextField(
                         controller: _capacityController,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         decoration: _decoration(
                           'Capacité restante',
                           suffix: '%',
@@ -1259,8 +1233,9 @@ class _EditBatteryMeasurementDialogState
                     Expanded(
                       child: TextField(
                         controller: _temperatureController,
-                        keyboardType:
-                            const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         decoration: _decoration(
                           'Température (facultative)',
                           suffix: '°C',
@@ -1289,15 +1264,18 @@ class _EditBatteryMeasurementDialogState
                   spacing: spacing,
                   runSpacing: spacing,
                   children: [
-                    for (var index = 0;
-                        index < _voltageControllers.length;
-                        index++)
+                    for (
+                      var index = 0;
+                      index < _voltageControllers.length;
+                      index++
+                    )
                       SizedBox(
                         width: itemWidth,
                         child: TextField(
                           controller: _voltageControllers[index],
-                          keyboardType:
-                              const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           onChanged: (_) => setState(() {}),
                           decoration: InputDecoration(
                             labelText: 'Cellule ${index + 1}',
@@ -1336,10 +1314,7 @@ class _EditBatteryMeasurementDialogState
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Annuler'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Enregistrer'),
-        ),
+        FilledButton(onPressed: _save, child: const Text('Enregistrer')),
       ],
     );
   }

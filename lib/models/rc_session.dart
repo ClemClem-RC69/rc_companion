@@ -34,10 +34,7 @@ class BatteryRunReading {
   final double? temperatureCelsius;
 
   double get totalVoltage {
-    return cellVoltages.fold<double>(
-      0,
-      (total, voltage) => total + voltage,
-    );
+    return cellVoltages.fold<double>(0, (total, voltage) => total + voltage);
   }
 
   /// Un relevé de fin de roulage est considéré comme renseigné dès qu'il
@@ -80,6 +77,59 @@ class BatteryRunReading {
   }
 }
 
+class HistoricalBattery {
+  const HistoricalBattery({
+    this.name = '',
+    this.brand = '',
+    this.capacityMah,
+    this.cells,
+    this.cRate,
+  });
+
+  final String name;
+  final String brand;
+  final int? capacityMah;
+  final int? cells;
+  final int? cRate;
+
+  bool get isEmpty =>
+      name.trim().isEmpty &&
+      brand.trim().isEmpty &&
+      capacityMah == null &&
+      cells == null &&
+      cRate == null;
+
+  String get displayLabel {
+    final values = <String>[
+      if (brand.trim().isNotEmpty) brand.trim(),
+      if (capacityMah != null) '$capacityMah mAh',
+      if (cells != null) '${cells}S',
+      if (cRate != null) '${cRate}C',
+    ];
+    return values.isEmpty ? 'Ancienne batterie' : values.join(' — ');
+  }
+
+  factory HistoricalBattery.fromJson(Map<String, dynamic> json) {
+    return HistoricalBattery(
+      name: json['name']?.toString() ?? '',
+      brand: json['brand']?.toString() ?? '',
+      capacityMah: (json['capacity_mah'] as num?)?.toInt(),
+      cells: (json['cells'] as num?)?.toInt(),
+      cRate: (json['c_rate'] as num?)?.toInt(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'name': name.trim(),
+      'brand': brand.trim(),
+      'capacity_mah': capacityMah,
+      'cells': cells,
+      'c_rate': cRate,
+    };
+  }
+}
+
 /// Un roulage correspond à l'utilisation d'un jeu de batteries pendant une
 /// durée donnée au sein d'une session pouvant durer toute la journée.
 class RcRun {
@@ -89,12 +139,16 @@ class RcRun {
     this.endedAt,
     this.durationMinutes,
     this.readings = const [],
+    this.historicalBatteries = const [],
     this.notes = '',
   });
 
   final DateTime startedAt;
   final DateTime? endedAt;
   final List<Battery> batteries;
+
+  /// Batteries anciennes renseignées uniquement à titre historique.
+  final List<HistoricalBattery> historicalBatteries;
 
   /// Durée saisie manuellement ou calculée à partir des heures de début/fin.
   final int? durationMinutes;
@@ -118,7 +172,8 @@ class RcRun {
     return endedAt!.difference(startedAt).inMinutes;
   }
 
-  bool get hasMeasurements => readings.any((reading) => reading.hasMeasurements);
+  bool get hasMeasurements =>
+      readings.any((reading) => reading.hasMeasurements);
 
   bool hasReadingFor(String batteryId) {
     return readings.any((reading) => reading.batteryId == batteryId);
@@ -130,6 +185,7 @@ class RcRun {
     List<Battery>? batteries,
     int? durationMinutes,
     List<BatteryRunReading>? readings,
+    List<HistoricalBattery>? historicalBatteries,
     String? notes,
     bool clearEndedAt = false,
     bool clearDuration = false,
@@ -138,9 +194,11 @@ class RcRun {
       startedAt: startedAt ?? this.startedAt,
       endedAt: clearEndedAt ? null : endedAt ?? this.endedAt,
       batteries: batteries ?? this.batteries,
-      durationMinutes:
-          clearDuration ? null : durationMinutes ?? this.durationMinutes,
+      durationMinutes: clearDuration
+          ? null
+          : durationMinutes ?? this.durationMinutes,
       readings: readings ?? this.readings,
+      historicalBatteries: historicalBatteries ?? this.historicalBatteries,
       notes: notes ?? this.notes,
     );
   }
@@ -170,15 +228,16 @@ class RcSession {
     List<Battery>? batteries,
     int? durationMinutes,
     String? notes,
-  })  : startedAt = startedAt ?? date ?? DateTime.now(),
-        runs = runs ??
-            _legacyRuns(
-              date: startedAt ?? date ?? DateTime.now(),
-              batteries: batteries,
-              durationMinutes: durationMinutes,
-              notes: notes,
-            ),
-        generalNotes = generalNotes.isNotEmpty ? generalNotes : notes ?? '';
+  }) : startedAt = startedAt ?? date ?? DateTime.now(),
+       runs =
+           runs ??
+           _legacyRuns(
+             date: startedAt ?? date ?? DateTime.now(),
+             batteries: batteries,
+             durationMinutes: durationMinutes,
+             notes: notes,
+           ),
+       generalNotes = generalNotes.isNotEmpty ? generalNotes : notes ?? '';
 
   final String? id;
   final RcModel model;
@@ -209,10 +268,7 @@ class RcSession {
   }
 
   int get totalDurationMinutes {
-    return runs.fold(
-      0,
-      (total, run) => total + run.effectiveDurationMinutes,
-    );
+    return runs.fold(0, (total, run) => total + run.effectiveDurationMinutes);
   }
 
   List<Battery> get usedBatteries {
@@ -258,8 +314,7 @@ class RcSession {
       location: location ?? this.location,
       drivingNotes: drivingNotes ?? this.drivingNotes,
       breakages: breakages ?? this.breakages,
-      partsReplacedOnSite:
-          partsReplacedOnSite ?? this.partsReplacedOnSite,
+      partsReplacedOnSite: partsReplacedOnSite ?? this.partsReplacedOnSite,
       maintenanceToDo: maintenanceToDo ?? this.maintenanceToDo,
       partsToOrder: partsToOrder ?? this.partsToOrder,
       changesBeforeNextSession:
@@ -281,9 +336,7 @@ class RcSession {
     return [
       RcRun(
         startedAt: date,
-        endedAt: date.add(
-          Duration(minutes: durationMinutes ?? 0),
-        ),
+        endedAt: date.add(Duration(minutes: durationMinutes ?? 0)),
         durationMinutes: durationMinutes,
         batteries: List<Battery>.unmodifiable(batteries),
         notes: notes ?? '',
