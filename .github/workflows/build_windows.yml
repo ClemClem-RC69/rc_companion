@@ -73,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           $releaseDir = "${{ steps.release.outputs.release_dir }}"
-          $packageDir = Join-Path $env:RUNNER_TEMP "RC Companion Beta"
+          $packageDir = Join-Path $env:RUNNER_TEMP "RC Companion Windows"
 
           if (Test-Path $packageDir) {
             Remove-Item $packageDir -Recurse -Force
@@ -82,20 +82,18 @@ jobs:
 
           Copy-Item "$releaseDir\*" $packageDir -Recurse -Force
 
-          $zipPath = Join-Path $env:GITHUB_WORKSPACE "RC Companion Beta Windows.zip"
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE "RC Companion Windows.zip"
           if (Test-Path $zipPath) {
             Remove-Item $zipPath -Force
           }
           Compress-Archive -Path "$packageDir\*" -DestinationPath $zipPath -CompressionLevel Optimal
-
-          Write-Host "ZIP créé : $zipPath"
 
       - name: Install Inno Setup
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
 
-      - name: Build Windows Setup EXE
+      - name: Build personal Setup EXE
         shell: pwsh
         run: |
           $releaseDir = "${{ steps.release.outputs.release_dir }}"
@@ -105,7 +103,25 @@ jobs:
             throw "ISCC.exe introuvable après installation d'Inno Setup."
           }
 
-          $outputDir = Join-Path $env:GITHUB_WORKSPACE "windows-installer-output"
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE "windows-personal-installer-output"
+          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+
+          & $iscc `
+            "/DMySource=$releaseDir" `
+            "/DMyOutput=$outputDir" `
+            "windows\installer\rc_companion_personal.iss"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Échec de création de l'installateur Windows personnel."
+          }
+
+      - name: Build Beta Setup EXE
+        shell: pwsh
+        run: |
+          $releaseDir = "${{ steps.release.outputs.release_dir }}"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE "windows-beta-installer-output"
           New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
           & $iscc `
@@ -114,23 +130,29 @@ jobs:
             "windows\installer\rc_companion_beta.iss"
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Échec de création de l'installateur Windows."
+            throw "Échec de création de l'installateur Windows bêta."
           }
 
-          Get-ChildItem $outputDir
-
-      - name: Upload portable ZIP
+      - name: Upload personal Setup EXE
         uses: actions/upload-artifact@v4
         with:
-          name: RC-Companion-Beta-Windows-ZIP
-          path: RC Companion Beta Windows.zip
+          name: RC-Companion-Windows-Setup
+          path: windows-personal-installer-output/RC Companion Setup.exe
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload Setup EXE
+      - name: Upload Beta Setup EXE
         uses: actions/upload-artifact@v4
         with:
           name: RC-Companion-Beta-Windows-Setup
-          path: windows-installer-output/RC Companion Beta Setup.exe
+          path: windows-beta-installer-output/RC Companion Beta Setup.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload portable Windows ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: RC-Companion-Windows-ZIP
+          path: RC Companion Windows.zip
           if-no-files-found: error
           retention-days: 30
