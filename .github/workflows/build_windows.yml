@@ -1,0 +1,136 @@
+name: Build RC Companion Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Windows x64 Release
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout RC Companion
+        uses: actions/checkout@v4
+
+      - name: Install Flutter 3.44.4
+        shell: pwsh
+        run: |
+          $flutterDir = Join-Path $env:RUNNER_TEMP "flutter"
+          git clone --depth 1 --branch 3.44.4 https://github.com/flutter/flutter.git $flutterDir
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $flutterDir "bin")
+
+      - name: Verify Windows toolchain
+        shell: pwsh
+        run: |
+          flutter --version
+          flutter config --enable-windows-desktop
+          flutter doctor -v
+
+      - name: Get dependencies
+        shell: pwsh
+        run: |
+          flutter pub get
+
+      - name: Build Windows Release
+        shell: pwsh
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SUPABASE_URL)) {
+            throw "GitHub Secret SUPABASE_URL absent."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:SUPABASE_PUBLISHABLE_KEY)) {
+            throw "GitHub Secret SUPABASE_PUBLISHABLE_KEY absent."
+          }
+
+          flutter build windows --release `
+            --dart-define=SUPABASE_URL="$env:SUPABASE_URL" `
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$env:SUPABASE_PUBLISHABLE_KEY"
+
+      - name: Locate Windows Release bundle
+        id: release
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "build\windows" -Recurse -Filter "rc_companion.exe" |
+            Where-Object { $_.FullName -match "\\runner\\Release\\rc_companion\.exe$" } |
+            Select-Object -First 1
+
+          if (-not $exe) {
+            throw "Impossible de trouver rc_companion.exe dans le build Windows Release."
+          }
+
+          $releaseDir = $exe.Directory.FullName
+          "release_dir=$releaseDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Bundle Windows : $releaseDir"
+          Get-ChildItem $releaseDir
+
+      - name: Create portable Windows ZIP
+        shell: pwsh
+        run: |
+          $releaseDir = "${{ steps.release.outputs.release_dir }}"
+          $packageDir = Join-Path $env:RUNNER_TEMP "RC Companion Beta"
+
+          if (Test-Path $packageDir) {
+            Remove-Item $packageDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $packageDir | Out-Null
+
+          Copy-Item "$releaseDir\*" $packageDir -Recurse -Force
+
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE "RC Companion Beta Windows.zip"
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+          Compress-Archive -Path "$packageDir\*" -DestinationPath $zipPath -CompressionLevel Optimal
+
+          Write-Host "ZIP créé : $zipPath"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+
+      - name: Build Windows Setup EXE
+        shell: pwsh
+        run: |
+          $releaseDir = "${{ steps.release.outputs.release_dir }}"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+
+          if (-not (Test-Path $iscc)) {
+            throw "ISCC.exe introuvable après installation d'Inno Setup."
+          }
+
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE "windows-installer-output"
+          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+
+          & $iscc `
+            "/DMySource=$releaseDir" `
+            "/DMyOutput=$outputDir" `
+            "windows\installer\rc_companion_beta.iss"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Échec de création de l'installateur Windows."
+          }
+
+          Get-ChildItem $outputDir
+
+      - name: Upload portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: RC-Companion-Beta-Windows-ZIP
+          path: RC Companion Beta Windows.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Setup EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: RC-Companion-Beta-Windows-Setup
+          path: windows-installer-output/RC Companion Beta Setup.exe
+          if-no-files-found: error
+          retention-days: 30
