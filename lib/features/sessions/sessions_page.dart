@@ -3052,6 +3052,169 @@ class _EditRunDialogState extends State<_EditRunDialog> {
   }
 }
 
+Future<String?> _openSessionTextEditor(
+  BuildContext context, {
+  required String title,
+  required String initialText,
+}) {
+  return Navigator.of(context).push<String>(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) =>
+          _SessionTextEditorPage(title: title, initialText: initialText),
+    ),
+  );
+}
+
+class _SessionCompactTextField extends StatelessWidget {
+  const _SessionCompactTextField({
+    required this.label,
+    required this.text,
+    required this.onTap,
+  });
+
+  final String label;
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cleanText = text.trim();
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          height: 92,
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.open_in_full, size: 18),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: Text(
+                  cleanText.isEmpty ? 'Toucher pour saisir…' : cleanText,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: cleanText.isEmpty
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionTextEditorPage extends StatefulWidget {
+  const _SessionTextEditorPage({
+    required this.title,
+    required this.initialText,
+  });
+
+  final String title;
+  final String initialText;
+
+  @override
+  State<_SessionTextEditorPage> createState() => _SessionTextEditorPageState();
+}
+
+class _SessionTextEditorPageState extends State<_SessionTextEditorPage> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+    _focusNode = FocusNode();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+        _controller.selection = TextSelection.collapsed(
+          offset: _controller.text.length,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Annuler',
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.close),
+        ),
+        title: Text(widget.title),
+        actions: [
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).pop(_controller.text),
+            icon: const Icon(Icons.check),
+            label: const Text('Valider'),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: TextField(
+            controller: _controller,
+            focusNode: _focusNode,
+            expands: true,
+            minLines: null,
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            textAlignVertical: TextAlignVertical.top,
+            decoration: const InputDecoration(
+              hintText: 'Saisir les informations…',
+              border: OutlineInputBorder(),
+              alignLabelWithHint: true,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CloseSessionDialog extends StatefulWidget {
   const _CloseSessionDialog();
 
@@ -3088,6 +3251,29 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
     );
   }
 
+  Widget _compactField(TextEditingController controller, String label) {
+    return _SessionCompactTextField(
+      label: label,
+      text: controller.text,
+      onTap: () async {
+        final result = await _openSessionTextEditor(
+          context,
+          title: label,
+          initialText: controller.text,
+        );
+        if (result == null || !mounted) {
+          return;
+        }
+        setState(() {
+          controller.text = result;
+          controller.selection = TextSelection.collapsed(
+            offset: controller.text.length,
+          );
+        });
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -3104,18 +3290,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
             Widget field(TextEditingController controller, String label) {
               return SizedBox(
                 width: fieldWidth,
-                child: TextField(
-                  controller: controller,
-                  minLines: 1,
-                  maxLines: 2,
-                  decoration: _decoration(label).copyWith(
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                  ),
-                ),
+                child: _compactField(controller, label),
               );
             }
 
@@ -3551,6 +3726,29 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
     );
   }
 
+  Widget _compactField(TextEditingController controller, String label) {
+    return _SessionCompactTextField(
+      label: label,
+      text: controller.text,
+      onTap: () async {
+        final result = await _openSessionTextEditor(
+          context,
+          title: label,
+          initialText: controller.text,
+        );
+        if (result == null || !mounted) {
+          return;
+        }
+        setState(() {
+          controller.text = result;
+          controller.selection = TextSelection.collapsed(
+            offset: controller.text.length,
+          );
+        });
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -3625,60 +3823,48 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
                 children: [
                   SizedBox(
                     width: 235,
-                    child: TextField(
-                      controller: _drivingNotesController,
-                      maxLines: 2,
-                      decoration: _decoration('Comportement et réglages'),
+                    child: _compactField(
+                      _drivingNotesController,
+                      'Comportement et réglages',
                     ),
                   ),
                   SizedBox(
                     width: 235,
-                    child: TextField(
-                      controller: _breakagesController,
-                      maxLines: 2,
-                      decoration: _decoration('Casses'),
+                    child: _compactField(_breakagesController, 'Casses'),
+                  ),
+                  SizedBox(
+                    width: 235,
+                    child: _compactField(
+                      _partsReplacedController,
+                      'Pièces remplacées sur place',
                     ),
                   ),
                   SizedBox(
                     width: 235,
-                    child: TextField(
-                      controller: _partsReplacedController,
-                      maxLines: 2,
-                      decoration: _decoration('Pièces remplacées sur place'),
+                    child: _compactField(
+                      _maintenanceController,
+                      'Entretien à effectuer',
                     ),
                   ),
                   SizedBox(
                     width: 235,
-                    child: TextField(
-                      controller: _maintenanceController,
-                      maxLines: 2,
-                      decoration: _decoration('Entretien à effectuer'),
+                    child: _compactField(
+                      _partsToOrderController,
+                      'Pièces à commander',
                     ),
                   ),
                   SizedBox(
                     width: 235,
-                    child: TextField(
-                      controller: _partsToOrderController,
-                      maxLines: 2,
-                      decoration: _decoration('Pièces à commander'),
+                    child: _compactField(
+                      _changesController,
+                      'Modifications avant prochaine session',
                     ),
                   ),
                   SizedBox(
                     width: 235,
-                    child: TextField(
-                      controller: _changesController,
-                      maxLines: 2,
-                      decoration: _decoration(
-                        'Modifications avant prochaine session',
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 235,
-                    child: TextField(
-                      controller: _generalNotesController,
-                      maxLines: 2,
-                      decoration: _decoration('Notes générales'),
+                    child: _compactField(
+                      _generalNotesController,
+                      'Notes générales',
                     ),
                   ),
                 ],

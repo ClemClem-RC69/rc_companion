@@ -107,6 +107,22 @@ class ModelDocumentLocalStore {
     required List<Map<String, dynamic>> rows,
   }) async {
     await _database.transaction(() async {
+      final existingRows =
+          await (_database.select(_database.localModelDocuments)..where(
+                (item) =>
+                    item.userId.equals(userId) & item.modelId.equals(modelId),
+              ))
+              .get();
+
+      final existingById = <String, ModelDocument>{
+        for (final existingRow in existingRows)
+          existingRow.documentId: ModelDocument.fromMap(
+            Map<String, dynamic>.from(
+              jsonDecode(existingRow.payloadJson) as Map,
+            ),
+          ),
+      };
+
       final pendingDeleteRows =
           await (_database.select(_database.syncQueueEntries)..where(
                 (item) =>
@@ -136,25 +152,20 @@ class ModelDocumentLocalStore {
       for (final row in rows) {
         final remoteDocument = ModelDocument.fromMap(row);
 
-        if (remoteDocument.id.isEmpty) {
+        if (remoteDocument.id.isEmpty ||
+            pendingDeleteIds.contains(remoteDocument.id) ||
+            pendingIds.contains(remoteDocument.id)) {
           continue;
         }
 
-        if (pendingDeleteIds.contains(remoteDocument.id)) {
-          continue;
-        }
-
-        if (pendingIds.contains(remoteDocument.id)) {
-          continue;
-        }
-
-        final existing = await getDocument(
-          userId: userId,
-          documentId: remoteDocument.id,
-        );
+        final existing = existingById[remoteDocument.id];
+        final sameRemoteFile =
+            existing != null &&
+            existing.storagePath.trim().isNotEmpty &&
+            existing.storagePath.trim() == remoteDocument.storagePath.trim();
 
         final merged = remoteDocument.copyWith(
-          localPath: existing?.localPath,
+          localPath: sameRemoteFile ? existing.localPath : null,
           pendingUpload: false,
         );
 

@@ -311,10 +311,15 @@ class RadioService {
     await RadioLocalStore.replaceRadios(userId: userId, rows: rows);
 
     final radios = await RadioLocalStore.getRadios(userId: userId);
-    for (final radio in radios) {
-      unawaited(_cacheManualIfNeeded(userId: userId, radio: radio));
-    }
-    return radios;
+
+    // Le rafraîchissement n'est terminé que lorsque les notices manquantes ont
+    // été réellement mises en cache. Aucun besoin d'ouvrir chaque notice avant
+    // de partir hors ligne.
+    await Future.wait(
+      radios.map((radio) => _cacheManualIfNeeded(userId: userId, radio: radio)),
+    );
+
+    return RadioLocalStore.getRadios(userId: userId);
   }
 
   Future<void> _cacheManualIfNeeded({

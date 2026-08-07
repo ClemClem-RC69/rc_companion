@@ -98,6 +98,17 @@ class RadioLocalStore {
     required List<Map<String, dynamic>> rows,
   }) async {
     await _database.transaction(() async {
+      final existingRows = await (_database.select(
+        _database.localRadios,
+      )..where((item) => item.userId.equals(userId))).get();
+
+      final existingPayloadById = <String, Map<String, dynamic>>{
+        for (final existingRow in existingRows)
+          existingRow.radioId: Map<String, dynamic>.from(
+            jsonDecode(existingRow.payloadJson) as Map,
+          ),
+      };
+
       final pendingIds = await _database.getPendingEntityIds(
         userId: userId,
         entityType: 'radio',
@@ -119,7 +130,25 @@ class RadioLocalStore {
           continue;
         }
 
-        await upsertRow(userId: userId, row: row);
+        final mergedRow = Map<String, dynamic>.from(row);
+        final existingPayload = existingPayloadById[radioId];
+
+        if (existingPayload != null) {
+          final incomingStorage =
+              mergedRow['manual_storage_path']?.toString().trim() ?? '';
+          final existingStorage =
+              existingPayload['manual_storage_path']?.toString().trim() ?? '';
+          final existingLocalPath =
+              existingPayload['manual_local_path']?.toString().trim() ?? '';
+
+          if (incomingStorage.isNotEmpty &&
+              incomingStorage == existingStorage &&
+              existingLocalPath.isNotEmpty) {
+            mergedRow['manual_local_path'] = existingLocalPath;
+          }
+        }
+
+        await upsertRow(userId: userId, row: mergedRow);
       }
     });
   }

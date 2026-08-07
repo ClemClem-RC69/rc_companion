@@ -922,7 +922,21 @@ class ModelPdfPage extends StatelessWidget {
       appBar: AppBar(
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
-      body: PdfViewer.file(localPath),
+      body: FutureBuilder<Uint8List>(
+        future: ModelDocumentFileStore.readBytes(localPath),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(child: Text('Impossible d’afficher ce PDF.'));
+          }
+
+          final bytes = snapshot.data;
+          if (bytes == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          return PdfViewer.data(bytes, sourceName: title);
+        },
+      ),
     );
   }
 }

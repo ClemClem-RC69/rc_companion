@@ -273,41 +273,52 @@ class ModelDocumentService {
       userId: userId,
       modelId: modelId,
     );
-    unawaited(_cacheRemoteFiles(userId: userId, documents: documents));
-    return documents;
+
+    // Un rafraîchissement explicite n'est terminé que lorsque tous les fichiers
+    // distants manquants ont réellement été copiés en local. Ainsi, le simple
+    // retour du réseau / Realtime prépare l'appareil pour le prochain usage
+    // hors ligne sans devoir ouvrir les documents un par un.
+    await _cacheRemoteFiles(userId: userId, documents: documents);
+
+    return ModelDocumentLocalStore.getDocuments(
+      userId: userId,
+      modelId: modelId,
+    );
   }
 
   static Future<void> _cacheRemoteFiles({
     required String userId,
     required List<ModelDocument> documents,
   }) async {
-    for (final document in documents) {
-      if (await ModelDocumentFileStore.exists(document.localPath)) {
-        continue;
-      }
-      if (document.storagePath.trim().isEmpty || document.pendingUpload) {
-        continue;
-      }
+    await Future.wait(
+      documents.map((document) async {
+        if (await ModelDocumentFileStore.exists(document.localPath)) {
+          return;
+        }
+        if (document.storagePath.trim().isEmpty || document.pendingUpload) {
+          return;
+        }
 
-      try {
-        final bytes = await StorageService.downloadModelDocumentBytes(
-          document.storagePath,
-        );
-        final localPath = await ModelDocumentFileStore.saveBytes(
-          userId: userId,
-          modelId: document.modelId,
-          documentId: document.id,
-          originalFilename: document.documentName,
-          bytes: bytes,
-        );
-        await ModelDocumentLocalStore.upsertDocument(
-          userId: userId,
-          document: document.copyWith(localPath: localPath),
-        );
-      } catch (_) {
-        // Un document non téléchargé reste ouvrable dès que le réseau revient.
-      }
-    }
+        try {
+          final bytes = await StorageService.downloadModelDocumentBytes(
+            document.storagePath,
+          );
+          final localPath = await ModelDocumentFileStore.saveBytes(
+            userId: userId,
+            modelId: document.modelId,
+            documentId: document.id,
+            originalFilename: document.documentName,
+            bytes: bytes,
+          );
+          await ModelDocumentLocalStore.upsertDocument(
+            userId: userId,
+            document: document.copyWith(localPath: localPath),
+          );
+        } catch (_) {
+          // Un document non téléchargé sera retenté au prochain retour réseau.
+        }
+      }),
+    );
   }
 
   static String _newUuid() {

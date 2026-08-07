@@ -1,12 +1,23 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'app/app.dart';
 import 'database/app_database.dart';
+import 'services/background_sync_service.dart';
 import 'services/battery_sync_service.dart';
 import 'services/realtime_sync_service.dart';
 import 'services/supabase_service.dart';
+
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((taskName, inputData) async {
+    DartPluginRegistrant.ensureInitialized();
+    return BackgroundSyncService.executeTask(taskName);
+  });
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +31,12 @@ Future<void> main() async {
 
     // Le Realtime ne doit jamais bloquer l'affichage initial.
     unawaited(RealtimeSyncService.initialize());
+
+    // Enregistre les tâches persistantes Android / iOS après l'affichage.
+    unawaited(() async {
+      await Workmanager().initialize(callbackDispatcher);
+      await BackgroundSyncService.schedule();
+    }());
   } catch (error, stackTrace) {
     debugPrint('Erreur de démarrage RC Companion: $error');
     debugPrintStack(stackTrace: stackTrace);

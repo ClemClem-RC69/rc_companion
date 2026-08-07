@@ -1,7 +1,9 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
+
+import '../services/radio_manual_file_store.dart';
 
 enum RadioManualViewerAction { replace, delete }
 
@@ -109,28 +111,44 @@ class RadioManualViewerPage extends StatelessWidget {
           ),
         ],
       ),
-      body: isPdf
-          ? PdfViewer.file(path)
-          : Container(
-              color: Colors.black,
-              alignment: Alignment.center,
-              child: InteractiveViewer(
-                minScale: 0.5,
-                maxScale: 6,
-                child: Image.file(
-                  File(path),
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Center(
-                      child: Text(
-                        'Impossible d’afficher cette image.',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    );
-                  },
-                ),
+      body: FutureBuilder<Uint8List>(
+        future: RadioManualFileStore.readBytes(path),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(child: Text('Impossible d’ouvrir ce manuel.'));
+          }
+
+          final bytes = snapshot.data;
+          if (bytes == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (isPdf) {
+            return PdfViewer.data(bytes, sourceName: filename);
+          }
+
+          return Container(
+            color: Colors.black,
+            alignment: Alignment.center,
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 6,
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Center(
+                    child: Text(
+                      'Impossible d’afficher cette image.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  );
+                },
               ),
             ),
+          );
+        },
+      ),
     );
   }
 
