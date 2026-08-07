@@ -115,22 +115,22 @@ jobs:
             throw "Échec de création de l'installateur Windows personnel."
           }
 
-      - name: Build Beta Setup EXE
+      - name: Build User Setup EXE
         shell: pwsh
         run: |
           $releaseDir = "${{ steps.release.outputs.release_dir }}"
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 
-          $outputDir = Join-Path $env:GITHUB_WORKSPACE "windows-beta-installer-output"
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE "windows-user-installer-output"
           New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
           & $iscc `
             "/DMySource=$releaseDir" `
             "/DMyOutput=$outputDir" `
-            "windows\installer\rc_companion_beta.iss"
+            "windows\installer\rc_companion_user.iss"
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Échec de création de l'installateur Windows bêta."
+            throw "Échec de création de l'installateur Windows User."
           }
 
       - name: Upload personal Setup EXE
@@ -141,11 +141,11 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload Beta Setup EXE
+      - name: Upload User Setup EXE
         uses: actions/upload-artifact@v4
         with:
-          name: RC-Companion-Beta-Windows-Setup
-          path: windows-beta-installer-output/RC Companion Beta Setup.exe
+          name: RC-Companion-User-Windows-Setup
+          path: windows-user-installer-output/RC Companion User Setup.exe
           if-no-files-found: error
           retention-days: 30
 

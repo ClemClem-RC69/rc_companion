@@ -1,4 +1,4 @@
-; RC Companion - Installateur bêta Windows
+; RC Companion - Installateur User Windows
 ; Généré pour le build GitHub Actions.
 ; MySource et MyOutput sont fournis par le workflow via /D.
 
@@ -11,7 +11,7 @@
 #endif
 
 #define MyAppName "RC Companion"
-#define MyAppVersion "1.0.0 Beta"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "RC Companion"
 #define MyAppExeName "rc_companion.exe"
 
@@ -25,7 +25,7 @@ DefaultDirName={autopf}\RC Companion
 DefaultGroupName=RC Companion
 DisableProgramGroupPage=yes
 OutputDir={#MyOutput}
-OutputBaseFilename=RC Companion Beta Setup
+OutputBaseFilename=RC Companion User Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
