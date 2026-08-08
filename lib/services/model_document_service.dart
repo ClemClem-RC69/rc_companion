@@ -235,11 +235,7 @@ class ModelDocumentService {
     required String modelId,
   }) async {
     try {
-      final documents = await _refreshDocumentsFromCloud(
-        userId: userId,
-        modelId: modelId,
-      );
-      unawaited(_cacheRemoteFiles(userId: userId, documents: documents));
+      await _refreshDocumentsFromCloud(userId: userId, modelId: modelId);
     } catch (_) {
       // Le cache local reste disponible hors ligne.
     }
@@ -269,55 +265,12 @@ class ModelDocumentService {
       rows: rows,
     );
 
-    final documents = await ModelDocumentLocalStore.getDocuments(
-      userId: userId,
-      modelId: modelId,
-    );
-
-    // Un rafraîchissement explicite n'est terminé que lorsque tous les fichiers
-    // distants manquants ont réellement été copiés en local. Ainsi, le simple
-    // retour du réseau / Realtime prépare l'appareil pour le prochain usage
-    // hors ligne sans devoir ouvrir les documents un par un.
-    await _cacheRemoteFiles(userId: userId, documents: documents);
-
+    // Le rafraîchissement synchronise uniquement les métadonnées.
+    // Les fichiers sont téléchargés à la demande lors de leur ouverture,
+    // puis restent disponibles dans le cache local de cet appareil.
     return ModelDocumentLocalStore.getDocuments(
       userId: userId,
       modelId: modelId,
-    );
-  }
-
-  static Future<void> _cacheRemoteFiles({
-    required String userId,
-    required List<ModelDocument> documents,
-  }) async {
-    await Future.wait(
-      documents.map((document) async {
-        if (await ModelDocumentFileStore.exists(document.localPath)) {
-          return;
-        }
-        if (document.storagePath.trim().isEmpty || document.pendingUpload) {
-          return;
-        }
-
-        try {
-          final bytes = await StorageService.downloadModelDocumentBytes(
-            document.storagePath,
-          );
-          final localPath = await ModelDocumentFileStore.saveBytes(
-            userId: userId,
-            modelId: document.modelId,
-            documentId: document.id,
-            originalFilename: document.documentName,
-            bytes: bytes,
-          );
-          await ModelDocumentLocalStore.upsertDocument(
-            userId: userId,
-            document: document.copyWith(localPath: localPath),
-          );
-        } catch (_) {
-          // Un document non téléchargé sera retenté au prochain retour réseau.
-        }
-      }),
     );
   }
 

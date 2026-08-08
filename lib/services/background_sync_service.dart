@@ -157,38 +157,14 @@ class BackgroundSyncService {
   }
 
   static Future<void> _refreshDocumentsAndFiles(String modelId) async {
-    final documents = await ModelDocumentService.refreshDocuments(modelId);
-
-    await Future.wait(
-      documents.map((document) async {
-        try {
-          await ModelDocumentService.openDocument(document);
-        } catch (_) {
-          // Retenté automatiquement au prochain passage.
-        }
-      }),
-    );
+    // Synchronisation des métadonnées uniquement.
+    // Aucun document n'est téléchargé automatiquement.
+    await ModelDocumentService.refreshDocuments(modelId);
   }
 
   static Future<void> _refreshRadiosAndManuals() async {
-    final service = RadioService();
-    final radios = await service.refreshRadios();
-
-    await Future.wait(
-      radios.map((radio) async {
-        final storagePath = radio.manualStoragePath?.trim() ?? '';
-        final manualName = radio.manualName?.trim() ?? '';
-
-        if (storagePath.isEmpty || manualName.isEmpty) {
-          return;
-        }
-
-        try {
-          await service.getManualLocalPath(radio);
-        } catch (_) {
-          // Retenté automatiquement au prochain passage.
-        }
-      }),
-    );
+    // Synchronisation des métadonnées uniquement.
+    // Aucune notice radio n'est téléchargée automatiquement.
+    await RadioService().refreshRadios();
   }
 }

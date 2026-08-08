@@ -310,52 +310,10 @@ class RadioService {
 
     await RadioLocalStore.replaceRadios(userId: userId, rows: rows);
 
-    final radios = await RadioLocalStore.getRadios(userId: userId);
-
-    // Le rafraîchissement n'est terminé que lorsque les notices manquantes ont
-    // été réellement mises en cache. Aucun besoin d'ouvrir chaque notice avant
-    // de partir hors ligne.
-    await Future.wait(
-      radios.map((radio) => _cacheManualIfNeeded(userId: userId, radio: radio)),
-    );
-
+    // Le rafraîchissement synchronise uniquement les métadonnées.
+    // Une notice est téléchargée lors de sa première ouverture sur l'appareil,
+    // puis reste disponible dans le cache local pour le hors ligne.
     return RadioLocalStore.getRadios(userId: userId);
-  }
-
-  Future<void> _cacheManualIfNeeded({
-    required String userId,
-    required RcRadio radio,
-  }) async {
-    if (await RadioManualFileStore.exists(radio.manualLocalPath)) {
-      return;
-    }
-    if (radio.manualPendingUpload) {
-      return;
-    }
-
-    final storagePath = radio.manualStoragePath?.trim() ?? '';
-    final manualName = radio.manualName?.trim() ?? '';
-    if (storagePath.isEmpty || manualName.isEmpty) {
-      return;
-    }
-
-    try {
-      final bytes = await StorageService.downloadModelDocumentBytes(
-        storagePath,
-      );
-      final localPath = await RadioManualFileStore.saveBytes(
-        userId: userId,
-        radioId: radio.id,
-        originalFilename: manualName,
-        bytes: bytes,
-      );
-      await RadioLocalStore.upsertRadio(
-        userId: userId,
-        radio: radio.copyWith(manualLocalPath: localPath),
-      );
-    } catch (_) {
-      // Le manuel restera téléchargeable lorsque le réseau sera disponible.
-    }
   }
 
   User _requireUser() {
