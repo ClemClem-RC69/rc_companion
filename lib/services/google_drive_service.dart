@@ -41,6 +41,8 @@ class GoogleDriveService {
 
   static const String storagePrefix = 'gdrive:';
   static const String _rootFolderName = 'RC Companion';
+  static const String _modelsFolderName = 'Modèles';
+  static const String _radiosFolderName = 'Radios';
 
   static auth.AutoRefreshingAuthClient? _client;
   static String? _rootFolderId;
@@ -220,6 +222,61 @@ class GoogleDriveService {
     debugPrint('[GoogleDrive] Connexion locale supprimée.');
   }
 
+  static Future<String> ensureModelFolder({
+    required String modelId,
+    required String brand,
+    required String name,
+  }) async {
+    final api = await _driveApi();
+    final categoryId = await _ensureRelativeFolder(api, _modelsFolderName);
+    final entityFolderId = await _ensureEntityFolder(
+      api,
+      parentId: categoryId,
+      objectKey: 'model:$modelId',
+      displayName: _entityDisplayName(brand: brand, name: name),
+    );
+    await _findOrCreateFolder(
+      api,
+      folderName: 'Documents',
+      parentId: entityFolderId,
+    );
+    await _findOrCreateFolder(
+      api,
+      folderName: 'Photos',
+      parentId: entityFolderId,
+    );
+    return entityFolderId;
+  }
+
+  static Future<String> ensureRadioFolder({
+    required String radioId,
+    required String brand,
+    required String name,
+  }) async {
+    final api = await _driveApi();
+    final categoryId = await _ensureRelativeFolder(api, _radiosFolderName);
+    final entityFolderId = await _ensureEntityFolder(
+      api,
+      parentId: categoryId,
+      objectKey: 'radio:$radioId',
+      displayName: _entityDisplayName(brand: brand, name: name),
+    );
+    await _findOrCreateFolder(
+      api,
+      folderName: 'Notice',
+      parentId: entityFolderId,
+    );
+    return entityFolderId;
+  }
+
+  static Future<void> deleteModelFolder(String modelId) async {
+    await _deleteEntityFolder('model:$modelId');
+  }
+
+  static Future<void> deleteRadioFolder(String radioId) async {
+    await _deleteEntityFolder('radio:$radioId');
+  }
+
   static Future<String> uploadFileBytes({
     required Uint8List bytes,
     required String filename,
@@ -232,9 +289,13 @@ class GoogleDriveService {
     }
 
     final api = await _driveApi();
-    final parentId = await _ensureRelativeFolder(api, relativeFolder);
-
     final cleanObjectKey = objectKey?.trim();
+    final parentId = await _resolveUploadParent(
+      api,
+      relativeFolder: relativeFolder,
+      objectKey: cleanObjectKey,
+    );
+
     final appProperties = <String, String>{
       'rcCompanion': 'true',
       'storageVersion': '1',
@@ -343,6 +404,144 @@ class GoogleDriveService {
       throw StateError('Google Drive n’est pas connecté à RC Companion.');
     }
     return drive.DriveApi(client);
+  }
+
+  static Future<String> _resolveUploadParent(
+    drive.DriveApi api, {
+    required String relativeFolder,
+    required String? objectKey,
+  }) async {
+    final cleanKey = objectKey?.trim() ?? '';
+
+    if (cleanKey.startsWith('model_document:')) {
+      final modelId = relativeFolder.trim();
+      await _ensureRelativeFolder(api, _modelsFolderName);
+      final entityFolder = await _findEntityFolder(
+        api,
+        objectKey: 'model:$modelId',
+      );
+      if (entityFolder != null) {
+        return _findOrCreateFolder(
+          api,
+          folderName: 'Documents',
+          parentId: entityFolder.id!,
+        );
+      }
+      return _ensureRelativeFolder(api, relativeFolder);
+    }
+
+    if (cleanKey.startsWith('radio_manual:')) {
+      final radioId = cleanKey.substring('radio_manual:'.length).trim();
+      await _ensureRelativeFolder(api, _radiosFolderName);
+      final entityFolder = await _findEntityFolder(
+        api,
+        objectKey: 'radio:$radioId',
+      );
+      if (entityFolder != null) {
+        return _findOrCreateFolder(
+          api,
+          folderName: 'Notice',
+          parentId: entityFolder.id!,
+        );
+      }
+      return _ensureRelativeFolder(api, relativeFolder);
+    }
+
+    return _ensureRelativeFolder(api, relativeFolder);
+  }
+
+  static Future<String> _ensureEntityFolder(
+    drive.DriveApi api, {
+    required String parentId,
+    required String objectKey,
+    required String displayName,
+  }) async {
+    final existing = await _findEntityFolder(api, objectKey: objectKey);
+    final existingId = existing?.id?.trim();
+
+    if (existingId != null && existingId.isNotEmpty) {
+      if ((existing?.name ?? '') != displayName) {
+        await api.files.update(
+          drive.File()..name = displayName,
+          existingId,
+          $fields: 'id,name',
+        );
+        debugPrint(
+          '[GoogleDrive] Dossier renommé : $displayName ($existingId)',
+        );
+      }
+      return existingId;
+    }
+
+    final folder = drive.File()
+      ..name = displayName
+      ..mimeType = 'application/vnd.google-apps.folder'
+      ..parents = <String>[parentId]
+      ..appProperties = <String, String>{
+        'rcCompanion': 'true',
+        'rcCompanionFolderKey': objectKey,
+      };
+
+    final created = await api.files.create(folder, $fields: 'id,name');
+    final id = created.id?.trim();
+    if (id == null || id.isEmpty) {
+      throw StateError(
+        'Google Drive n’a pas renvoyé l’identifiant du dossier créé.',
+      );
+    }
+
+    debugPrint('[GoogleDrive] Dossier créé : $displayName ($id)');
+    return id;
+  }
+
+  static Future<drive.File?> _findEntityFolder(
+    drive.DriveApi api, {
+    required String objectKey,
+  }) async {
+    final escapedKey = objectKey.replaceAll(r'\', r'\\').replaceAll("'", r"\'");
+    final result = await api.files.list(
+      q:
+          "appProperties has { key='rcCompanionFolderKey' "
+          "and value='$escapedKey' } and "
+          "mimeType = 'application/vnd.google-apps.folder' and "
+          "trashed = false",
+      spaces: 'drive',
+      pageSize: 10,
+      $fields: 'files(id,name,parents,appProperties)',
+    );
+    final files = result.files;
+    if (files == null || files.isEmpty) return null;
+    return files.first;
+  }
+
+  static Future<void> _deleteEntityFolder(String objectKey) async {
+    final api = await _driveApi();
+    final folder = await _findEntityFolder(api, objectKey: objectKey);
+    final id = folder?.id?.trim();
+    if (id == null || id.isEmpty) return;
+    await api.files.delete(id);
+    debugPrint('[GoogleDrive] Dossier supprimé : ${folder?.name} ($id)');
+  }
+
+  static String _entityDisplayName({
+    required String brand,
+    required String name,
+  }) {
+    final cleanBrand = _safeFolderPart(brand);
+    final cleanName = _safeFolderPart(name);
+
+    if (cleanBrand.isEmpty && cleanName.isEmpty) return 'Sans nom';
+    if (cleanBrand.isEmpty) return cleanName;
+    if (cleanName.isEmpty) return cleanBrand;
+    return '$cleanBrand - $cleanName';
+  }
+
+  static String _safeFolderPart(String value) {
+    return value
+        .trim()
+        .replaceAll(RegExp(r'[/\\:\n\r\t]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   static Future<String> _ensureRelativeFolder(

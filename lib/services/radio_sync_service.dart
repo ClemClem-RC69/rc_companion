@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../database/app_database.dart';
 import 'radio_local_store.dart';
 import 'radio_manual_file_store.dart';
+import 'google_drive_service.dart';
 import 'storage_service.dart';
 import 'supabase_service.dart';
 
@@ -37,6 +38,12 @@ class RadioSyncService {
           // La suppression de la radio est prioritaire. Un éventuel ancien
           // fichier orphelin ne doit pas bloquer la file de synchronisation.
         }
+      }
+
+      try {
+        await GoogleDriveService.deleteRadioFolder(entry.entityId);
+      } catch (_) {
+        // La suppression de la radio reste prioritaire.
       }
       return;
     }
@@ -125,6 +132,24 @@ class RadioSyncService {
     remoteRow['manual_pending_upload'] = false;
 
     await RadioLocalStore.upsertRow(userId: entry.userId, row: remoteRow);
+
+    try {
+      await GoogleDriveService.ensureRadioFolder(
+        radioId: entry.entityId,
+        brand: _firstText(remoteRow, const ['brand', 'marque']),
+        name: _firstText(remoteRow, const ['name', 'nom']),
+      );
+    } catch (_) {
+      // La synchronisation des données de la radio reste prioritaire.
+    }
+  }
+
+  static String _firstText(Map<String, dynamic> row, List<String> keys) {
+    for (final key in keys) {
+      final value = row[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return '';
   }
 
   static String _contentTypeFor(String filename) {

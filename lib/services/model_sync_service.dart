@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../database/app_database.dart';
 import 'model_local_store.dart';
 import 'model_photo_file_store.dart';
+import 'google_drive_service.dart';
 import 'storage_service.dart';
 import 'supabase_service.dart';
 
@@ -100,6 +101,17 @@ class ModelSyncService {
     remoteRow['photo_local_path'] = localPath;
     remoteRow['photo_pending_upload'] = false;
     await ModelLocalStore.upsertRow(userId: entry.userId, row: remoteRow);
+
+    try {
+      await GoogleDriveService.ensureModelFolder(
+        modelId: entry.entityId,
+        brand: _firstText(remoteRow, const ['brand', 'marque']),
+        name: _firstText(remoteRow, const ['name', 'nom']),
+      );
+    } catch (_) {
+      // La synchronisation des données du modèle reste prioritaire.
+      // Le dossier Drive sera remis à jour lors d'une prochaine synchronisation.
+    }
   }
 
   static Future<void> _deleteRemote({
@@ -124,5 +136,19 @@ class ModelSyncService {
     await ModelPhotoFileStore.deletePhoto(
       payload['photo_local_path']?.toString(),
     );
+
+    try {
+      await GoogleDriveService.deleteModelFolder(entry.entityId);
+    } catch (_) {
+      // La suppression du modèle reste prioritaire.
+    }
+  }
+
+  static String _firstText(Map<String, dynamic> row, List<String> keys) {
+    for (final key in keys) {
+      final value = row[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return '';
   }
 }
