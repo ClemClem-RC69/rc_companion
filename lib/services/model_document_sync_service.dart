@@ -55,10 +55,47 @@ class ModelDocumentSyncService {
 
     var syncedDocument = document;
 
+    // Si seul le nom du document a changé, le fichier local ne doit pas être
+    // réenvoyé. En revanche, le fichier Google Drive doit porter le même nom
+    // que celui affiché dans RC Companion.
+    final existingRemote = await _client
+        .from('model_documents')
+        .select('id, document_name, storage_path')
+        .eq('user_id', entry.userId)
+        .eq('id', entry.entityId)
+        .maybeSingle();
+
+    final remoteStoragePath =
+        existingRemote?['storage_path']?.toString().trim() ?? '';
+    final effectiveStoragePath = document.storagePath.trim().isNotEmpty
+        ? document.storagePath.trim()
+        : remoteStoragePath;
+
     final needsUpload =
         document.pendingUpload ||
-        document.storagePath.trim().isEmpty ||
-        !_hasSupportedExtension(document.storagePath);
+        effectiveStoragePath.isEmpty ||
+        !_hasSupportedExtension(effectiveStoragePath);
+
+    if (!needsUpload &&
+        existingRemote != null &&
+        (existingRemote['document_name']?.toString() ?? '') !=
+            document.documentName) {
+      final extension = _extensionFromValue(effectiveStoragePath);
+      final driveFilename = _filenameWithExtension(
+        document.documentName,
+        extension,
+      );
+
+      await StorageService.renameModelDocument(
+        effectiveStoragePath,
+        driveFilename,
+      );
+
+      syncedDocument = document.copyWith(
+        storagePath: effectiveStoragePath,
+        pendingUpload: false,
+      );
+    }
 
     if (needsUpload) {
       if (!await ModelDocumentFileStore.exists(document.localPath)) {
@@ -101,16 +138,9 @@ class ModelDocumentSyncService {
       }
     }
 
-    final existing = await _client
-        .from('model_documents')
-        .select('id')
-        .eq('user_id', entry.userId)
-        .eq('id', entry.entityId)
-        .maybeSingle();
-
     late final Map<String, dynamic> remoteRow;
 
-    if (existing == null) {
+    if (existingRemote == null) {
       final result = await _client
           .from('model_documents')
           .insert(syncedDocument.toRemoteMap())

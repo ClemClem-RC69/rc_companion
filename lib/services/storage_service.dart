@@ -341,6 +341,26 @@ class StorageService {
     await _supabase.storage.from(_documentBucketName).remove([cleanPath]);
   }
 
+  static Future<void> renameModelDocument(
+    String storagePath,
+    String newFilename,
+  ) async {
+    final cleanPath = storagePath.trim();
+    final cleanFilename = _safeDocumentFilename(newFilename);
+
+    if (cleanPath.isEmpty || cleanFilename.isEmpty) {
+      return;
+    }
+
+    // Le renommage demandé ici concerne le fichier visible dans Google Drive.
+    // Pour les anciens documents encore stockés dans Supabase, le chemin de
+    // stockage reste inchangé ; seul document_name est mis à jour dans les
+    // métadonnées par ModelDocumentSyncService.
+    if (GoogleDriveService.isDriveStoragePath(cleanPath)) {
+      await GoogleDriveService.renameFile(cleanPath, cleanFilename);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // OUTILS INTERNES
   // ---------------------------------------------------------------------------

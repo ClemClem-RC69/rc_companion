@@ -322,12 +322,19 @@ class GoogleDriveService {
 
       final existingId = existingFile?.id?.trim();
       if (existingId != null && existingId.isNotEmpty) {
-        // Pour les photos de modèle, on recrée volontairement le fichier
-        // afin que Google Drive régénère aussi son aperçu.
-        if (cleanObjectKey.startsWith('model_photo:')) {
+        // Pour les fichiers gérés par RC Companion (photo de modèle,
+        // document de modèle et notice radio), on recrée volontairement le
+        // fichier lors d'un remplacement. Google Drive régénère ainsi aussi
+        // son aperçu et aucun ancien aperçu ne reste attaché à l'ancien ID.
+        final recreateOnReplacement =
+            cleanObjectKey.startsWith('model_photo:') ||
+            cleanObjectKey.startsWith('model_document:') ||
+            cleanObjectKey.startsWith('radio_manual:');
+
+        if (recreateOnReplacement) {
           await api.files.delete(existingId);
           debugPrint(
-            '[GoogleDrive] Ancienne photo supprimée avant remplacement : '
+            '[GoogleDrive] Ancien fichier supprimé avant remplacement : '
             '$existingId — clé $cleanObjectKey',
           );
 
@@ -340,18 +347,18 @@ class GoogleDriveService {
           final recreatedId = recreated.id?.trim();
           if (recreatedId == null || recreatedId.isEmpty) {
             throw StateError(
-              'Google Drive n’a pas renvoyé l’identifiant de la photo recréée.',
+              'Google Drive n’a pas renvoyé l’identifiant du fichier recréé.',
             );
           }
 
           debugPrint(
-            '[GoogleDrive] Photo recréée : ${recreated.name} ($recreatedId) '
+            '[GoogleDrive] Fichier recréé : ${recreated.name} ($recreatedId) '
             '— clé $cleanObjectKey',
           );
           return '$storagePrefix$recreatedId';
         }
 
-        // Pour les autres fichiers, on conserve la mise à jour en place.
+        // Pour d'éventuels autres fichiers, on conserve la mise à jour en place.
         final updateMetadata = drive.File()
           ..name = filename
           ..appProperties = appProperties;
@@ -423,6 +430,24 @@ class GoogleDriveService {
     final fileId = fileIdFromStoragePath(storagePath);
     await api.files.delete(fileId);
     debugPrint('[GoogleDrive] Fichier supprimé : $fileId');
+  }
+
+  static Future<void> renameFile(String storagePath, String newFilename) async {
+    final cleanFilename = newFilename.trim();
+    if (cleanFilename.isEmpty) {
+      throw ArgumentError('Le nouveau nom du fichier Google Drive est vide.');
+    }
+
+    final api = await _driveApi();
+    final fileId = fileIdFromStoragePath(storagePath);
+
+    final updated = await api.files.update(
+      drive.File()..name = cleanFilename,
+      fileId,
+      $fields: 'id,name',
+    );
+
+    debugPrint('[GoogleDrive] Fichier renommé : ${updated.name} ($fileId)');
   }
 
   static Future<drive.DriveApi> _driveApi() async {
