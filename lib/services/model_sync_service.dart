@@ -32,31 +32,62 @@ class ModelSyncService {
     final localPath = payload['photo_local_path']?.toString();
     final pendingUpload = payload['photo_pending_upload'] == true;
     final previousPhotoUrl = payload['_previous_photo_url']?.toString();
-    String? finalPhotoUrl = payload['photo_url']?.toString();
+    final requestedPhotoUrl = payload['photo_url']?.toString();
+    final photoWasExplicitlyRemoved =
+        pendingUpload &&
+        previousPhotoUrl != null &&
+        previousPhotoUrl.trim().isNotEmpty &&
+        (requestedPhotoUrl == null || requestedPhotoUrl.trim().isEmpty);
+
+    String? finalPhotoUrl = requestedPhotoUrl;
 
     if (pendingUpload) {
-      if (localPath != null && localPath.trim().isNotEmpty) {
-        final bytes = await ModelPhotoFileStore.readBytes(localPath);
-        if (bytes == null || bytes.isEmpty) {
-          throw StateError('La photo locale du modèle est introuvable.');
-        }
-
-        finalPhotoUrl = await StorageService.uploadModelPhotoBytes(
-          bytes: bytes,
-          originalFilename: localPath,
-          modelId: entry.entityId,
-        );
-      } else {
+      if (photoWasExplicitlyRemoved) {
+        // Une suppression explicite doit gagner sur un éventuel ancien
+        // photo_local_path encore présent dans le payload. Sans ce test,
+        // l'ancienne copie locale serait renvoyée vers Drive et la photo
+        // serait recréée juste après sa suppression dans l'application.
         finalPhotoUrl = null;
-      }
 
-      if (previousPhotoUrl != null &&
-          previousPhotoUrl.trim().isNotEmpty &&
-          previousPhotoUrl != finalPhotoUrl) {
         try {
           await StorageService.deleteModelPhoto(previousPhotoUrl);
         } catch (_) {
           // La nouvelle version du modèle reste prioritaire.
+        }
+      } else {
+        try {
+          await GoogleDriveService.ensureModelFolder(
+            modelId: entry.entityId,
+            brand: _firstText(payload, const ['brand', 'marque']),
+            name: _firstText(payload, const ['name', 'nom']),
+          );
+        } catch (_) {
+          // Le stockage historique reste disponible si Drive n'est pas connecté.
+        }
+
+        if (localPath != null && localPath.trim().isNotEmpty) {
+          final bytes = await ModelPhotoFileStore.readBytes(localPath);
+          if (bytes == null || bytes.isEmpty) {
+            throw StateError('La photo locale du modèle est introuvable.');
+          }
+
+          finalPhotoUrl = await StorageService.uploadModelPhotoBytes(
+            bytes: bytes,
+            originalFilename: localPath,
+            modelId: entry.entityId,
+          );
+        } else {
+          finalPhotoUrl = null;
+        }
+
+        if (previousPhotoUrl != null &&
+            previousPhotoUrl.trim().isNotEmpty &&
+            previousPhotoUrl != finalPhotoUrl) {
+          try {
+            await StorageService.deleteModelPhoto(previousPhotoUrl);
+          } catch (_) {
+            // La nouvelle version du modèle reste prioritaire.
+          }
         }
       }
     }

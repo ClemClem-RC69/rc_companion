@@ -322,8 +322,42 @@ class GoogleDriveService {
 
       final existingId = existingFile?.id?.trim();
       if (existingId != null && existingId.isNotEmpty) {
+        // Pour les photos de modèle, on recrée volontairement le fichier
+        // afin que Google Drive régénère aussi son aperçu.
+        if (cleanObjectKey.startsWith('model_photo:')) {
+          await api.files.delete(existingId);
+          debugPrint(
+            '[GoogleDrive] Ancienne photo supprimée avant remplacement : '
+            '$existingId — clé $cleanObjectKey',
+          );
+
+          final recreated = await api.files.create(
+            metadata,
+            uploadMedia: media,
+            $fields: 'id,name',
+          );
+
+          final recreatedId = recreated.id?.trim();
+          if (recreatedId == null || recreatedId.isEmpty) {
+            throw StateError(
+              'Google Drive n’a pas renvoyé l’identifiant de la photo recréée.',
+            );
+          }
+
+          debugPrint(
+            '[GoogleDrive] Photo recréée : ${recreated.name} ($recreatedId) '
+            '— clé $cleanObjectKey',
+          );
+          return '$storagePrefix$recreatedId';
+        }
+
+        // Pour les autres fichiers, on conserve la mise à jour en place.
+        final updateMetadata = drive.File()
+          ..name = filename
+          ..appProperties = appProperties;
+
         final updated = await api.files.update(
-          metadata,
+          updateMetadata,
           existingId,
           uploadMedia: media,
           $fields: 'id,name',
@@ -424,6 +458,23 @@ class GoogleDriveService {
         return _findOrCreateFolder(
           api,
           folderName: 'Documents',
+          parentId: entityFolder.id!,
+        );
+      }
+      return _ensureRelativeFolder(api, relativeFolder);
+    }
+
+    if (cleanKey.startsWith('model_photo:')) {
+      final modelId = cleanKey.substring('model_photo:'.length).trim();
+      await _ensureRelativeFolder(api, _modelsFolderName);
+      final entityFolder = await _findEntityFolder(
+        api,
+        objectKey: 'model:$modelId',
+      );
+      if (entityFolder != null) {
+        return _findOrCreateFolder(
+          api,
+          folderName: 'Photos',
           parentId: entityFolder.id!,
         );
       }

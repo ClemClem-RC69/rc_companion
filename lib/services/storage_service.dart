@@ -81,6 +81,17 @@ class StorageService {
 
     final extension = _imageFileExtension(originalFilename);
     final contentType = _imageContentType(extension);
+
+    if ((await GoogleDriveService.connectionState()).connected) {
+      return GoogleDriveService.uploadFileBytes(
+        bytes: bytes,
+        filename: 'photo_modele.$extension',
+        contentType: contentType,
+        relativeFolder: modelId,
+        objectKey: 'model_photo:$modelId',
+      );
+    }
+
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final storagePath = '${user.id}/$modelId/model_$timestamp.$extension';
 
@@ -104,6 +115,10 @@ class StorageService {
       return null;
     }
 
+    if (GoogleDriveService.isDriveStoragePath(photoUrl)) {
+      return GoogleDriveService.downloadFileBytes(photoUrl);
+    }
+
     final storagePath = _storagePathFromPublicPhotoUrl(photoUrl);
     if (storagePath == null || storagePath.isEmpty) {
       return null;
@@ -114,6 +129,11 @@ class StorageService {
 
   static Future<void> deleteModelPhoto(String? photoUrl) async {
     if (photoUrl == null || photoUrl.trim().isEmpty) {
+      return;
+    }
+
+    if (GoogleDriveService.isDriveStoragePath(photoUrl)) {
+      await GoogleDriveService.deleteFile(photoUrl);
       return;
     }
 
