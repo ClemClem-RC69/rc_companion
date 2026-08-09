@@ -32,6 +32,7 @@ import '../../services/model_local_store.dart';
 import '../../services/model_setup_service.dart';
 import '../../services/model_radio_setup_service.dart';
 import '../../services/radio_service.dart';
+import '../account/google_drive_settings_section.dart';
 
 class _BatteryChargeMetrics {
   const _BatteryChargeMetrics({
@@ -710,6 +711,10 @@ class _DashboardPageState extends State<DashboardPage>
                             : 'Enregistrer le pseudo',
                       ),
                     ),
+                    const SizedBox(height: 22),
+                    const Divider(),
+                    const SizedBox(height: 14),
+                    const GoogleDriveSettingsSection(),
                     const SizedBox(height: 22),
                     const Divider(),
                     const SizedBox(height: 14),
