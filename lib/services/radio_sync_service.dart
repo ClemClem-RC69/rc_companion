@@ -65,6 +65,7 @@ class RadioSyncService {
         originalFilename: manualName,
         contentType: _contentTypeFor(manualName),
         modelId: 'radios/${entry.entityId}',
+        driveObjectKey: 'radio_manual:${entry.entityId}',
       );
     }
 

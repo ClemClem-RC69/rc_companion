@@ -20,24 +20,35 @@ class ModelDocumentSyncService {
     final document = ModelDocument.fromMap(payload);
 
     if (entry.operation == 'delete') {
-      if (document.storagePath.trim().isNotEmpty) {
-        await _client
-            .from('model_documents')
-            .delete()
-            .eq('user_id', entry.userId)
-            .eq('id', entry.entityId);
+      var storagePath = document.storagePath.trim();
 
-        try {
-          await StorageService.deleteModelDocument(document.storagePath);
-        } catch (_) {
-          // La suppression de la métadonnée reste prioritaire.
-        }
-      } else {
-        await _client
+      // Sécurité supplémentaire : si le payload de suppression provient d'un
+      // objet UI ancien et ne contient pas encore le storagePath final, on le
+      // récupère depuis la métadonnée distante avant de la supprimer.
+      if (storagePath.isEmpty) {
+        final remote = await _client
             .from('model_documents')
-            .delete()
+            .select('storage_path')
             .eq('user_id', entry.userId)
-            .eq('id', entry.entityId);
+            .eq('id', entry.entityId)
+            .maybeSingle();
+
+        storagePath = remote?['storage_path']?.toString().trim() ?? '';
+      }
+
+      await _client
+          .from('model_documents')
+          .delete()
+          .eq('user_id', entry.userId)
+          .eq('id', entry.entityId);
+
+      if (storagePath.isNotEmpty) {
+        try {
+          await StorageService.deleteModelDocument(storagePath);
+        } catch (_) {
+          // La suppression de la métadonnée reste prioritaire. Une erreur
+          // distante sera traitée séparément sans restaurer le document local.
+        }
       }
       return;
     }
@@ -72,6 +83,7 @@ class ModelDocumentSyncService {
         originalFilename: uploadFilename,
         contentType: _contentTypeFromExtension(extension),
         modelId: document.modelId,
+        driveObjectKey: 'model_document:${document.id}',
       );
 
       syncedDocument = document.copyWith(

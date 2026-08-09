@@ -174,19 +174,28 @@ class ModelDocumentService {
       throw StateError('Aucun utilisateur connecté.');
     }
 
+    // L'objet détenu par l'interface peut être antérieur à la dernière
+    // synchronisation. On relit donc Drift afin de conserver notamment le
+    // storagePath Google Drive reçu après l'upload.
+    final latestDocument = await ModelDocumentLocalStore.getDocument(
+      userId: user.id,
+      documentId: document.id,
+    );
+    final documentToDelete = latestDocument ?? document;
+
     await ModelDocumentLocalStore.markDeleted(
       userId: user.id,
-      document: document,
+      document: documentToDelete,
     );
     await _database.replacePendingSyncOperation(
       userId: user.id,
       entityType: 'model_document',
-      entityId: document.id,
+      entityId: documentToDelete.id,
       operation: 'delete',
-      payloadJson: jsonEncode(document.toMap()),
+      payloadJson: jsonEncode(documentToDelete.toMap()),
     );
 
-    await ModelDocumentFileStore.delete(document.localPath);
+    await ModelDocumentFileStore.delete(documentToDelete.localPath);
     unawaited(BatterySyncService.syncNow());
   }
 

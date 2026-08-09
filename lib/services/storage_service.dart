@@ -5,6 +5,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'google_drive_service.dart';
+
 class PickedModelDocument {
   const PickedModelDocument({
     required this.name,
@@ -125,7 +127,14 @@ class StorageService {
   }
 
   // ---------------------------------------------------------------------------
-  // DOCUMENTS DES MODÈLES : PDF ET IMAGES
+  // DOCUMENTS DES MODÈLES ET NOTICES RADIO : PDF ET IMAGES
+  //
+  // ETAPE 3 :
+  // - si Google Drive Desktop est connecté, les NOUVEAUX fichiers y sont
+  //   envoyés et storage_path contient "gdrive:<fileId>";
+  // - les anciens storage_path Supabase restent lisibles et supprimables ;
+  // - si Drive n'est pas connecté, le comportement Supabase historique est
+  //   conservé pendant cette phase de transition.
   // ---------------------------------------------------------------------------
 
   static Future<PickedModelDocument?> pickModelDocument() async {
@@ -204,6 +213,7 @@ class StorageService {
     required String originalFilename,
     required String contentType,
     required String modelId,
+    String? driveObjectKey,
   }) async {
     final user = _supabase.auth.currentUser;
 
@@ -227,8 +237,20 @@ class StorageService {
       );
     }
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
     final safeFilename = _safeDocumentFilename(originalFilename);
+
+    final driveState = await GoogleDriveService.connectionState();
+    if (driveState.connected) {
+      return GoogleDriveService.uploadFileBytes(
+        bytes: bytes,
+        filename: safeFilename,
+        contentType: contentType,
+        relativeFolder: modelId,
+        objectKey: driveObjectKey,
+      );
+    }
+
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
     final storagePath = '${user.id}/$modelId/${timestamp}_$safeFilename';
 
     await _supabase.storage
@@ -255,6 +277,10 @@ class StorageService {
       throw Exception('Chemin du document invalide.');
     }
 
+    if (GoogleDriveService.isDriveStoragePath(cleanPath)) {
+      return GoogleDriveService.downloadFileBytes(cleanPath);
+    }
+
     return _supabase.storage.from(_documentBucketName).download(cleanPath);
   }
 
@@ -268,6 +294,13 @@ class StorageService {
       throw Exception('Chemin du document invalide.');
     }
 
+    if (GoogleDriveService.isDriveStoragePath(cleanPath)) {
+      throw UnsupportedError(
+        'Les documents Google Drive sont ouverts depuis le cache local '
+        'de RC Companion et n’utilisent pas d’URL Supabase signée.',
+      );
+    }
+
     return _supabase.storage
         .from(_documentBucketName)
         .createSignedUrl(cleanPath, expiresInSeconds);
@@ -277,6 +310,11 @@ class StorageService {
     final cleanPath = storagePath.trim();
 
     if (cleanPath.isEmpty) {
+      return;
+    }
+
+    if (GoogleDriveService.isDriveStoragePath(cleanPath)) {
+      await GoogleDriveService.deleteFile(cleanPath);
       return;
     }
 

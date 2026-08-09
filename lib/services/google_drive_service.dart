@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -38,7 +39,11 @@ class GoogleDriveService {
   static const String _refreshTokenKey =
       'rc_companion_google_drive_refresh_token';
 
+  static const String storagePrefix = 'gdrive:';
+  static const String _rootFolderName = 'RC Companion';
+
   static auth.AutoRefreshingAuthClient? _client;
+  static String? _rootFolderId;
 
   static bool get isDesktopSupported {
     if (kIsWeb) return false;
@@ -49,6 +54,23 @@ class GoogleDriveService {
   static bool get isDesktopConfigured =>
       _desktopClientId.trim().isNotEmpty &&
       _desktopClientSecret.trim().isNotEmpty;
+
+  static bool isDriveStoragePath(String value) {
+    return value.trim().startsWith(storagePrefix);
+  }
+
+  static String fileIdFromStoragePath(String value) {
+    final clean = value.trim();
+    if (!isDriveStoragePath(clean)) {
+      throw ArgumentError('Ce chemin ne correspond pas à Google Drive.');
+    }
+
+    final fileId = clean.substring(storagePrefix.length).trim();
+    if (fileId.isEmpty) {
+      throw ArgumentError('Identifiant Google Drive invalide.');
+    }
+    return fileId;
+  }
 
   static Future<GoogleDriveConnectionState> connectionState() async {
     if (!isDesktopSupported) {
@@ -105,6 +127,7 @@ class GoogleDriveService {
     } catch (_) {
       _client?.close();
       _client = null;
+      _rootFolderId = null;
       return const GoogleDriveConnectionState(
         supported: true,
         configured: true,
@@ -131,6 +154,7 @@ class GoogleDriveService {
 
     _client?.close();
     _client = null;
+    _rootFolderId = null;
 
     final clientId = auth.ClientId(
       _desktopClientId.trim(),
@@ -183,6 +207,7 @@ class GoogleDriveService {
       debugPrint('[GoogleDrive] Échec après retour OAuth : $error');
       client.close();
       if (identical(_client, client)) _client = null;
+      _rootFolderId = null;
       rethrow;
     }
   }
@@ -191,7 +216,243 @@ class GoogleDriveService {
     await _secureStorage.delete(key: _refreshTokenKey);
     _client?.close();
     _client = null;
+    _rootFolderId = null;
     debugPrint('[GoogleDrive] Connexion locale supprimée.');
+  }
+
+  static Future<String> uploadFileBytes({
+    required Uint8List bytes,
+    required String filename,
+    required String contentType,
+    required String relativeFolder,
+    String? objectKey,
+  }) async {
+    if (bytes.isEmpty) {
+      throw Exception('Le fichier à envoyer sur Google Drive est vide.');
+    }
+
+    final api = await _driveApi();
+    final parentId = await _ensureRelativeFolder(api, relativeFolder);
+
+    final cleanObjectKey = objectKey?.trim();
+    final appProperties = <String, String>{
+      'rcCompanion': 'true',
+      'storageVersion': '1',
+      if (cleanObjectKey != null && cleanObjectKey.isNotEmpty)
+        'rcCompanionObjectKey': cleanObjectKey,
+    };
+
+    final metadata = drive.File()
+      ..name = filename
+      ..parents = <String>[parentId]
+      ..appProperties = appProperties;
+
+    final media = drive.Media(
+      Stream<List<int>>.value(bytes),
+      bytes.length,
+      contentType: contentType,
+    );
+
+    if (cleanObjectKey != null && cleanObjectKey.isNotEmpty) {
+      final existingFile = await _findFileByObjectKey(
+        api,
+        objectKey: cleanObjectKey,
+      );
+
+      final existingId = existingFile?.id?.trim();
+      if (existingId != null && existingId.isNotEmpty) {
+        final updated = await api.files.update(
+          metadata,
+          existingId,
+          uploadMedia: media,
+          $fields: 'id,name',
+        );
+
+        debugPrint(
+          '[GoogleDrive] Fichier réutilisé/mis à jour : '
+          '${updated.name} ($existingId) — clé $cleanObjectKey',
+        );
+        return '$storagePrefix$existingId';
+      }
+    }
+
+    final created = await api.files.create(
+      metadata,
+      uploadMedia: media,
+      $fields: 'id,name',
+    );
+
+    final fileId = created.id?.trim();
+    if (fileId == null || fileId.isEmpty) {
+      throw StateError(
+        'Google Drive n’a pas renvoyé l’identifiant du fichier envoyé.',
+      );
+    }
+
+    debugPrint(
+      '[GoogleDrive] Fichier créé : ${created.name} ($fileId)'
+      '${cleanObjectKey == null || cleanObjectKey.isEmpty ? '' : ' — clé $cleanObjectKey'}',
+    );
+    return '$storagePrefix$fileId';
+  }
+
+  static Future<Uint8List> downloadFileBytes(String storagePath) async {
+    final api = await _driveApi();
+    final fileId = fileIdFromStoragePath(storagePath);
+
+    final response = await api.files.get(
+      fileId,
+      downloadOptions: drive.DownloadOptions.fullMedia,
+    );
+
+    if (response is! drive.Media) {
+      throw StateError(
+        'Réponse Google Drive inattendue lors du téléchargement.',
+      );
+    }
+
+    final builder = BytesBuilder(copy: false);
+    await for (final chunk in response.stream) {
+      builder.add(chunk);
+    }
+
+    final bytes = builder.takeBytes();
+    debugPrint(
+      '[GoogleDrive] Fichier téléchargé : $fileId (${bytes.length} octets)',
+    );
+    return bytes;
+  }
+
+  static Future<void> deleteFile(String storagePath) async {
+    final api = await _driveApi();
+    final fileId = fileIdFromStoragePath(storagePath);
+    await api.files.delete(fileId);
+    debugPrint('[GoogleDrive] Fichier supprimé : $fileId');
+  }
+
+  static Future<drive.DriveApi> _driveApi() async {
+    final state = await connectionState();
+    if (!state.connected) {
+      throw StateError(
+        state.message ?? 'Google Drive n’est pas connecté à RC Companion.',
+      );
+    }
+
+    final client = _client;
+    if (client == null) {
+      throw StateError('Google Drive n’est pas connecté à RC Companion.');
+    }
+    return drive.DriveApi(client);
+  }
+
+  static Future<String> _ensureRelativeFolder(
+    drive.DriveApi api,
+    String relativeFolder,
+  ) async {
+    var parentId = await _ensureRootFolder(api);
+
+    final parts = relativeFolder
+        .split('/')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+
+    for (final part in parts) {
+      parentId = await _findOrCreateFolder(
+        api,
+        folderName: part,
+        parentId: parentId,
+      );
+    }
+
+    return parentId;
+  }
+
+  static Future<String> _ensureRootFolder(drive.DriveApi api) async {
+    final cached = _rootFolderId;
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
+
+    final rootId = await _findOrCreateFolder(
+      api,
+      folderName: _rootFolderName,
+      parentId: 'root',
+    );
+    _rootFolderId = rootId;
+    return rootId;
+  }
+
+  static Future<String> _findOrCreateFolder(
+    drive.DriveApi api, {
+    required String folderName,
+    required String parentId,
+  }) async {
+    final escapedName = folderName.replaceAll("'", r"\'");
+    final result = await api.files.list(
+      q:
+          "name = '$escapedName' and "
+          "mimeType = 'application/vnd.google-apps.folder' and "
+          "'$parentId' in parents and trashed = false",
+      spaces: 'drive',
+      pageSize: 10,
+      $fields: 'files(id,name)',
+    );
+
+    final existing = result.files;
+    if (existing != null && existing.isNotEmpty) {
+      final id = existing.first.id?.trim();
+      if (id != null && id.isNotEmpty) {
+        return id;
+      }
+    }
+
+    final folder = drive.File()
+      ..name = folderName
+      ..mimeType = 'application/vnd.google-apps.folder'
+      ..parents = <String>[parentId]
+      ..appProperties = <String, String>{'rcCompanion': 'true'};
+
+    final created = await api.files.create(folder, $fields: 'id,name');
+    final id = created.id?.trim();
+    if (id == null || id.isEmpty) {
+      throw StateError(
+        'Google Drive n’a pas renvoyé l’identifiant du dossier créé.',
+      );
+    }
+
+    debugPrint('[GoogleDrive] Dossier créé : $folderName ($id)');
+    return id;
+  }
+
+  static Future<drive.File?> _findFileByObjectKey(
+    drive.DriveApi api, {
+    required String objectKey,
+  }) async {
+    final escapedKey = objectKey.replaceAll(r'\', r'\\').replaceAll("'", r"\'");
+
+    final result = await api.files.list(
+      q:
+          "appProperties has { key='rcCompanionObjectKey' "
+          "and value='$escapedKey' } and trashed = false",
+      spaces: 'drive',
+      pageSize: 10,
+      $fields: 'files(id,name,parents,appProperties)',
+    );
+
+    final files = result.files;
+    if (files == null || files.isEmpty) {
+      return null;
+    }
+
+    if (files.length > 1) {
+      debugPrint(
+        '[GoogleDrive] Attention : ${files.length} fichiers portent la même '
+        'clé RC Companion $objectKey. Le premier sera réutilisé.',
+      );
+    }
+
+    return files.first;
   }
 
   static Future<void> _ensureRestoredClient(String refreshToken) async {
