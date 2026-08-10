@@ -4,7 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis_auth/auth_io.dart' as auth;
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 class GoogleDriveConnectionState {
@@ -44,7 +46,10 @@ class GoogleDriveService {
   static const String _modelsFolderName = 'Modèles';
   static const String _radiosFolderName = 'Radios';
 
-  static auth.AutoRefreshingAuthClient? _client;
+  static auth.AutoRefreshingAuthClient? _desktopClient;
+  static GoogleSignInAccount? _mobileAccount;
+  static _GoogleAuthorizationClient? _mobileClient;
+  static bool _mobileSignInInitialized = false;
   static String? _rootFolderId;
 
   static bool get isDesktopSupported {
@@ -74,15 +79,24 @@ class GoogleDriveService {
     return fileId;
   }
 
+  static bool get isIosSupported {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
   static Future<GoogleDriveConnectionState> connectionState() async {
+    if (isIosSupported) {
+      return _mobileConnectionState();
+    }
+
     if (!isDesktopSupported) {
       return const GoogleDriveConnectionState(
         supported: false,
         configured: false,
         connected: false,
         message:
-            'La connexion Google Drive mobile sera activée dans une étape '
-            'dédiée pour Android, iPhone et iPad.',
+            'Google Drive est actuellement pris en charge sur macOS, Windows, '
+            'iPhone et iPad. Android sera activé dans une étape dédiée.',
       );
     }
 
@@ -97,8 +111,8 @@ class GoogleDriveService {
       );
     }
 
-    if (_client != null) {
-      debugPrint('[GoogleDrive] Client OAuth actif en mémoire : connecté.');
+    if (_desktopClient != null) {
+      debugPrint('[GoogleDrive] Client OAuth Desktop actif en mémoire.');
       return const GoogleDriveConnectionState(
         supported: true,
         configured: true,
@@ -108,7 +122,7 @@ class GoogleDriveService {
 
     final refreshToken = await _secureStorage.read(key: _refreshTokenKey);
     if (refreshToken == null || refreshToken.trim().isEmpty) {
-      debugPrint('[GoogleDrive] Aucun refresh token enregistré localement.');
+      debugPrint('[GoogleDrive] Aucun refresh token Desktop enregistré.');
       return const GoogleDriveConnectionState(
         supported: true,
         configured: true,
@@ -116,7 +130,7 @@ class GoogleDriveService {
       );
     }
 
-    debugPrint('[GoogleDrive] Refresh token trouvé, restauration OAuth...');
+    debugPrint('[GoogleDrive] Refresh token Desktop trouvé, restauration...');
 
     try {
       await _ensureRestoredClient(refreshToken.trim());
@@ -127,8 +141,8 @@ class GoogleDriveService {
         connected: true,
       );
     } catch (_) {
-      _client?.close();
-      _client = null;
+      _desktopClient?.close();
+      _desktopClient = null;
       _rootFolderId = null;
       return const GoogleDriveConnectionState(
         supported: true,
@@ -140,10 +154,15 @@ class GoogleDriveService {
   }
 
   static Future<void> connectDesktop() async {
+    if (isIosSupported) {
+      await _connectMobile();
+      return;
+    }
+
     if (!isDesktopSupported) {
       throw Exception(
-        'Cette étape de connexion Google Drive concerne uniquement macOS '
-        'et Windows.',
+        'La connexion Google Drive n’est pas encore disponible sur cette '
+        'plateforme.',
       );
     }
 
@@ -154,8 +173,8 @@ class GoogleDriveService {
       );
     }
 
-    _client?.close();
-    _client = null;
+    _desktopClient?.close();
+    _desktopClient = null;
     _rootFolderId = null;
 
     final clientId = auth.ClientId(
@@ -183,12 +202,12 @@ class GoogleDriveService {
           '</body></html>',
     );
 
-    _client = client;
-    debugPrint('[GoogleDrive] Retour OAuth reçu : client authentifié actif.');
+    _desktopClient = client;
+    debugPrint('[GoogleDrive] Retour OAuth reçu : client Desktop actif.');
 
     try {
       await _verifyDriveAccess();
-      debugPrint('[GoogleDrive] Accès Google Drive vérifié.');
+      debugPrint('[GoogleDrive] Accès Google Drive Desktop vérifié.');
 
       final refreshToken = client.credentials.refreshToken?.trim();
 
@@ -203,23 +222,117 @@ class GoogleDriveService {
       await _secureStorage.write(key: _refreshTokenKey, value: refreshToken);
 
       debugPrint(
-        '[GoogleDrive] Refresh token enregistré dans le stockage sécurisé.',
+        '[GoogleDrive] Refresh token Desktop enregistré dans le stockage sécurisé.',
       );
     } catch (error) {
-      debugPrint('[GoogleDrive] Échec après retour OAuth : $error');
+      debugPrint('[GoogleDrive] Échec après retour OAuth Desktop : $error');
       client.close();
-      if (identical(_client, client)) _client = null;
+      if (identical(_desktopClient, client)) _desktopClient = null;
       _rootFolderId = null;
       rethrow;
     }
   }
 
   static Future<void> disconnect() async {
+    if (isIosSupported) {
+      await _ensureMobileSignInInitialized();
+      await GoogleSignIn.instance.disconnect();
+      _mobileAccount = null;
+      _mobileClient?.close();
+      _mobileClient = null;
+      _rootFolderId = null;
+      debugPrint('[GoogleDrive] Connexion Google iOS supprimée.');
+      return;
+    }
+
     await _secureStorage.delete(key: _refreshTokenKey);
-    _client?.close();
-    _client = null;
+    _desktopClient?.close();
+    _desktopClient = null;
     _rootFolderId = null;
-    debugPrint('[GoogleDrive] Connexion locale supprimée.');
+    debugPrint('[GoogleDrive] Connexion locale Desktop supprimée.');
+  }
+
+  static Future<GoogleDriveConnectionState> _mobileConnectionState() async {
+    try {
+      await _ensureMobileSignInInitialized();
+
+      var account = _mobileAccount;
+      if (account == null) {
+        final lightweight = GoogleSignIn.instance
+            .attemptLightweightAuthentication();
+        if (lightweight != null) {
+          account = await lightweight;
+          _mobileAccount = account;
+        }
+      }
+
+      if (account == null) {
+        return const GoogleDriveConnectionState(
+          supported: true,
+          configured: true,
+          connected: false,
+        );
+      }
+
+      final authorization = await account.authorizationClient
+          .authorizationForScopes(_scopes);
+      if (authorization == null) {
+        return const GoogleDriveConnectionState(
+          supported: true,
+          configured: true,
+          connected: false,
+          message:
+              'Google est connecté, mais RC Companion doit encore être '
+              'autorisé à utiliser Google Drive.',
+        );
+      }
+
+      return const GoogleDriveConnectionState(
+        supported: true,
+        configured: true,
+        connected: true,
+      );
+    } catch (error) {
+      debugPrint('[GoogleDrive] Restauration Google iOS impossible : $error');
+      _mobileAccount = null;
+      return const GoogleDriveConnectionState(
+        supported: true,
+        configured: true,
+        connected: false,
+        message: 'La connexion Google Drive doit être renouvelée.',
+      );
+    }
+  }
+
+  static Future<void> _connectMobile() async {
+    await _ensureMobileSignInInitialized();
+    _rootFolderId = null;
+
+    debugPrint('[GoogleDrive] Démarrage de la connexion Google iOS...');
+
+    final account = await GoogleSignIn.instance.authenticate(
+      scopeHint: _scopes,
+    );
+    _mobileAccount = account;
+
+    var authorization = await account.authorizationClient
+        .authorizationForScopes(_scopes);
+    authorization ??= await account.authorizationClient.authorizeScopes(
+      _scopes,
+    );
+
+    _mobileClient ??= _GoogleAuthorizationClient(authorization.accessToken);
+    _mobileClient!.accessToken = authorization.accessToken;
+    final api = drive.DriveApi(_mobileClient!);
+    await api.files.list(pageSize: 1, $fields: 'files(id)');
+    debugPrint('[GoogleDrive] Accès Google Drive iOS vérifié.');
+  }
+
+  static Future<void> _ensureMobileSignInInitialized() async {
+    if (_mobileSignInInitialized) return;
+    await GoogleSignIn.instance.initialize();
+    _mobileSignInInitialized = true;
+    debugPrint('[GoogleDrive] Google Sign-In iOS initialisé.');
   }
 
   static Future<String> ensureModelFolder({
@@ -458,7 +571,25 @@ class GoogleDriveService {
       );
     }
 
-    final client = _client;
+    if (isIosSupported) {
+      final account = _mobileAccount;
+      if (account == null) {
+        throw StateError('Google Drive n’est pas connecté à RC Companion.');
+      }
+
+      final authorization = await account.authorizationClient
+          .authorizationForScopes(_scopes);
+      if (authorization == null) {
+        throw StateError(
+          'L’autorisation Google Drive doit être renouvelée dans RC Companion.',
+        );
+      }
+      _mobileClient ??= _GoogleAuthorizationClient(authorization.accessToken);
+      _mobileClient!.accessToken = authorization.accessToken;
+      return drive.DriveApi(_mobileClient!);
+    }
+
+    final client = _desktopClient;
     if (client == null) {
       throw StateError('Google Drive n’est pas connecté à RC Companion.');
     }
@@ -731,22 +862,28 @@ class GoogleDriveService {
   }
 
   static Future<void> _ensureRestoredClient(String refreshToken) async {
-    if (_client != null) return;
+    if (_desktopClient != null) return;
 
     final clientId = auth.ClientId(
       _desktopClientId.trim(),
       _desktopClientSecret.trim(),
     );
 
-    _client = await auth.clientViaRefreshToken(clientId, refreshToken, _scopes);
+    _desktopClient = await auth.clientViaRefreshToken(
+      clientId,
+      refreshToken,
+      _scopes,
+    );
 
-    debugPrint('[GoogleDrive] Client OAuth restauré via refresh token.');
+    debugPrint(
+      '[GoogleDrive] Client OAuth Desktop restauré via refresh token.',
+    );
   }
 
   static Future<void> _verifyDriveAccess() async {
-    final client = _client;
+    final client = _desktopClient;
     if (client == null) {
-      throw Exception('Google Drive n’est pas connecté.');
+      throw Exception('Google Drive Desktop n’est pas connecté.');
     }
 
     final api = drive.DriveApi(client);
@@ -764,5 +901,24 @@ class GoogleDriveService {
         'Impossible d’ouvrir la page d’autorisation Google dans le navigateur.',
       );
     }
+  }
+}
+
+class _GoogleAuthorizationClient extends http.BaseClient {
+  _GoogleAuthorizationClient(this.accessToken);
+
+  String accessToken;
+  final http.Client _inner = http.Client();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    request.headers['Authorization'] = 'Bearer $accessToken';
+    return _inner.send(request);
+  }
+
+  @override
+  void close() {
+    _inner.close();
+    super.close();
   }
 }

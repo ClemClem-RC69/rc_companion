@@ -146,7 +146,7 @@ class ModelService {
     if (path == null) {
       return false;
     }
-    return path.trim().startsWith('drive://');
+    return path.trim().startsWith('gdrive:');
   }
 
   static String _filenameFromUrl(String url) {

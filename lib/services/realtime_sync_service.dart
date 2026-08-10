@@ -209,19 +209,23 @@ class RealtimeSyncService {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'model_documents',
-          callback: (_) => _scheduleDocumentsRefresh(),
+          callback: (payload) =>
+              _scheduleDocumentsRefresh(modelId: _modelIdFromPayload(payload)),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'model_setups',
-          callback: (_) => _scheduleSetupsRefresh(),
+          callback: (payload) =>
+              _scheduleSetupsRefresh(modelId: _modelIdFromPayload(payload)),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'model_radio_setups',
-          callback: (_) => _scheduleRadioSetupsRefresh(),
+          callback: (payload) => _scheduleRadioSetupsRefresh(
+            modelId: _modelIdFromPayload(payload),
+          ),
         );
 
     _channel = channel;
@@ -347,7 +351,10 @@ class RealtimeSyncService {
     );
   }
 
-  static void _scheduleDocumentsRefresh({bool immediate = false}) {
+  static void _scheduleDocumentsRefresh({
+    bool immediate = false,
+    String? modelId,
+  }) {
     _documentsDebounce?.cancel();
     _documentsDebounce = Timer(
       immediate ? Duration.zero : const Duration(milliseconds: 160),
@@ -357,11 +364,17 @@ class RealtimeSyncService {
 
         try {
           await _flushPendingWrites();
+          final targetedModelId = modelId?.trim();
+          if (targetedModelId != null && targetedModelId.isNotEmpty) {
+            await ModelDocumentService.refreshDocuments(targetedModelId);
+            return;
+          }
+
           final models = await ModelLocalStore.getModels(userId: user.id);
           for (final model in models) {
-            final modelId = model.id?.trim();
-            if (modelId != null && modelId.isNotEmpty) {
-              await ModelDocumentService.refreshDocuments(modelId);
+            final currentModelId = model.id?.trim();
+            if (currentModelId != null && currentModelId.isNotEmpty) {
+              await ModelDocumentService.refreshDocuments(currentModelId);
             }
           }
         } catch (_) {}
@@ -369,7 +382,10 @@ class RealtimeSyncService {
     );
   }
 
-  static void _scheduleSetupsRefresh({bool immediate = false}) {
+  static void _scheduleSetupsRefresh({
+    bool immediate = false,
+    String? modelId,
+  }) {
     _setupsDebounce?.cancel();
     _setupsDebounce = Timer(
       immediate ? Duration.zero : const Duration(milliseconds: 140),
@@ -379,11 +395,17 @@ class RealtimeSyncService {
 
         try {
           await _flushPendingWrites();
+          final targetedModelId = modelId?.trim();
+          if (targetedModelId != null && targetedModelId.isNotEmpty) {
+            await ModelSetupService.refreshSetup(targetedModelId);
+            return;
+          }
+
           final models = await ModelLocalStore.getModels(userId: user.id);
           for (final model in models) {
-            final modelId = model.id?.trim();
-            if (modelId != null && modelId.isNotEmpty) {
-              await ModelSetupService.refreshSetup(modelId);
+            final currentModelId = model.id?.trim();
+            if (currentModelId != null && currentModelId.isNotEmpty) {
+              await ModelSetupService.refreshSetup(currentModelId);
             }
           }
         } catch (_) {}
@@ -391,7 +413,10 @@ class RealtimeSyncService {
     );
   }
 
-  static void _scheduleRadioSetupsRefresh({bool immediate = false}) {
+  static void _scheduleRadioSetupsRefresh({
+    bool immediate = false,
+    String? modelId,
+  }) {
     _radioSetupsDebounce?.cancel();
     _radioSetupsDebounce = Timer(
       immediate ? Duration.zero : const Duration(milliseconds: 140),
@@ -401,17 +426,37 @@ class RealtimeSyncService {
 
         try {
           await _flushPendingWrites();
-          final models = await ModelLocalStore.getModels(userId: user.id);
           final service = ModelRadioSetupService();
+          final targetedModelId = modelId?.trim();
+          if (targetedModelId != null && targetedModelId.isNotEmpty) {
+            await service.refreshSetup(modelId: targetedModelId);
+            return;
+          }
+
+          final models = await ModelLocalStore.getModels(userId: user.id);
           for (final model in models) {
-            final modelId = model.id?.trim();
-            if (modelId != null && modelId.isNotEmpty) {
-              await service.refreshSetup(modelId: modelId);
+            final currentModelId = model.id?.trim();
+            if (currentModelId != null && currentModelId.isNotEmpty) {
+              await service.refreshSetup(modelId: currentModelId);
             }
           }
         } catch (_) {}
       },
     );
+  }
+
+  static String? _modelIdFromPayload(PostgresChangePayload payload) {
+    final newModelId = payload.newRecord['model_id']?.toString().trim();
+    if (newModelId != null && newModelId.isNotEmpty) {
+      return newModelId;
+    }
+
+    final oldModelId = payload.oldRecord['model_id']?.toString().trim();
+    if (oldModelId != null && oldModelId.isNotEmpty) {
+      return oldModelId;
+    }
+
+    return null;
   }
 
   static Future<void> _refreshSessionsFromCloud() async {

@@ -331,7 +331,7 @@ class ModelDocumentService {
   }
 
   static bool _isGoogleDrivePath(String path) {
-    return path.trim().startsWith('drive://');
+    return path.trim().startsWith('gdrive:');
   }
 
   static String _newUuid() {

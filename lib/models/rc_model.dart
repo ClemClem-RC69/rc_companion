@@ -36,7 +36,7 @@ class RcModel {
   final int batteryCount;
   final String maxCells;
 
-  /// URL de la photo stockée dans Supabase Storage.
+  /// Chemin de la photo stockée sur Google Drive.
   final String? photoUrl;
 
   /// Chemin persistant de la copie locale utilisée hors ligne.

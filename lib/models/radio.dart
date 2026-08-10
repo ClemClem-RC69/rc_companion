@@ -30,7 +30,7 @@ class RcRadio {
   /// Nom du manuel (PDF/JPG/JPEG/PNG/WEBP), synchronisé avec Supabase.
   final String? manualName;
 
-  /// Chemin dans le bucket Supabase `model-documents`, synchronisé.
+  /// Chemin du manuel stocké sur Google Drive, synchronisé.
   final String? manualStoragePath;
 
   /// Copie locale du manuel pour consultation hors ligne.

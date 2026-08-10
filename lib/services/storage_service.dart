@@ -33,9 +33,6 @@ class StorageService {
   static final SupabaseClient _supabase = Supabase.instance.client;
   static final ImagePicker _imagePicker = ImagePicker();
 
-  static const String _photoBucketName = 'model-photos';
-  static const String _documentBucketName = 'model-documents';
-
   static const int _maximumPdfSize = 200 * 1024 * 1024;
   static const int _maximumImageSize = 50 * 1024 * 1024;
 
@@ -106,16 +103,11 @@ class StorageService {
       return null;
     }
 
-    if (GoogleDriveService.isDriveStoragePath(photoUrl)) {
-      return GoogleDriveService.downloadFileBytes(photoUrl);
-    }
-
-    final storagePath = _storagePathFromPublicPhotoUrl(photoUrl);
-    if (storagePath == null || storagePath.isEmpty) {
+    if (!GoogleDriveService.isDriveStoragePath(photoUrl)) {
       return null;
     }
 
-    return _supabase.storage.from(_photoBucketName).download(storagePath);
+    return GoogleDriveService.downloadFileBytes(photoUrl);
   }
 
   static Future<void> deleteModelPhoto(String? photoUrl) async {
@@ -123,30 +115,21 @@ class StorageService {
       return;
     }
 
-    if (GoogleDriveService.isDriveStoragePath(photoUrl)) {
-      await GoogleDriveService.deleteFile(photoUrl);
+    if (!GoogleDriveService.isDriveStoragePath(photoUrl)) {
       return;
     }
 
-    final storagePath = _storagePathFromPublicPhotoUrl(photoUrl);
-
-    if (storagePath == null || storagePath.isEmpty) {
-      return;
-    }
-
-    await _supabase.storage.from(_photoBucketName).remove([storagePath]);
+    await GoogleDriveService.deleteFile(photoUrl);
   }
 
   // ---------------------------------------------------------------------------
   // DOCUMENTS DES MODÈLES ET NOTICES RADIO : PDF ET IMAGES
   //
   // ARCHITECTURE FINALE :
-  // - tous les NOUVEAUX fichiers sont envoyés uniquement sur Google Drive ;
+  // - tous les fichiers lourds sont stockés uniquement sur Google Drive ;
   // - si Drive ou le réseau n'est pas disponible, l'opération de
   //   synchronisation reste en attente et le fichier reste local ;
-  // - les anciens fichiers Supabase restent lisibles et supprimables afin
-  //   d'assurer la compatibilité avec les données historiques ;
-  // - aucun nouveau fichier lourd n'est envoyé vers Supabase Storage.
+  // - Google Drive est l'unique stockage distant des fichiers lourds.
   // ---------------------------------------------------------------------------
 
   static Future<PickedModelDocument?> pickModelDocument() async {
@@ -279,11 +262,11 @@ class StorageService {
       throw Exception('Chemin du document invalide.');
     }
 
-    if (GoogleDriveService.isDriveStoragePath(cleanPath)) {
-      return GoogleDriveService.downloadFileBytes(cleanPath);
+    if (!GoogleDriveService.isDriveStoragePath(cleanPath)) {
+      throw UnsupportedError('Ce document n’est pas stocké sur Google Drive.');
     }
 
-    return _supabase.storage.from(_documentBucketName).download(cleanPath);
+    return GoogleDriveService.downloadFileBytes(cleanPath);
   }
 
   static Future<String> createModelDocumentSignedUrl(
@@ -296,16 +279,10 @@ class StorageService {
       throw Exception('Chemin du document invalide.');
     }
 
-    if (GoogleDriveService.isDriveStoragePath(cleanPath)) {
-      throw UnsupportedError(
-        'Les documents Google Drive sont ouverts depuis le cache local '
-        'de RC Companion et n’utilisent pas d’URL Supabase signée.',
-      );
-    }
-
-    return _supabase.storage
-        .from(_documentBucketName)
-        .createSignedUrl(cleanPath, expiresInSeconds);
+    throw UnsupportedError(
+      'RC Companion ouvre les documents Google Drive depuis le cache local. '
+      'Les documents Google Drive sont ouverts depuis le cache local.',
+    );
   }
 
   static Future<void> deleteModelDocument(String storagePath) async {
@@ -315,12 +292,11 @@ class StorageService {
       return;
     }
 
-    if (GoogleDriveService.isDriveStoragePath(cleanPath)) {
-      await GoogleDriveService.deleteFile(cleanPath);
+    if (!GoogleDriveService.isDriveStoragePath(cleanPath)) {
       return;
     }
 
-    await _supabase.storage.from(_documentBucketName).remove([cleanPath]);
+    await GoogleDriveService.deleteFile(cleanPath);
   }
 
   static Future<void> renameModelDocument(
@@ -335,9 +311,6 @@ class StorageService {
     }
 
     // Le renommage demandé ici concerne le fichier visible dans Google Drive.
-    // Pour les anciens documents encore stockés dans Supabase, le chemin de
-    // stockage reste inchangé ; seul document_name est mis à jour dans les
-    // métadonnées par ModelDocumentSyncService.
     if (GoogleDriveService.isDriveStoragePath(cleanPath)) {
       await GoogleDriveService.renameFile(cleanPath, cleanFilename);
     }
@@ -488,23 +461,5 @@ class StorageService {
       default:
         return 'image/jpeg';
     }
-  }
-
-  static String? _storagePathFromPublicPhotoUrl(String photoUrl) {
-    final marker = '/storage/v1/object/public/$_photoBucketName/';
-
-    final markerIndex = photoUrl.indexOf(marker);
-
-    if (markerIndex == -1) {
-      return null;
-    }
-
-    final path = photoUrl.substring(markerIndex + marker.length);
-
-    if (path.isEmpty) {
-      return null;
-    }
-
-    return Uri.decodeFull(path);
   }
 }
