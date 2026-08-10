@@ -282,7 +282,9 @@ class ModelDocumentService {
     );
 
     for (final document in documents) {
-      if (document.storagePath.trim().isEmpty) {
+      if (!_isGoogleDrivePath(document.storagePath)) {
+        // Les anciens chemins Supabase restent ouvrables manuellement via
+        // openDocument(), mais ne sont jamais préchargés automatiquement.
         continue;
       }
 
@@ -326,6 +328,10 @@ class ModelDocumentService {
       userId: userId,
       modelId: modelId,
     );
+  }
+
+  static bool _isGoogleDrivePath(String path) {
+    return path.trim().startsWith('drive://');
   }
 
   static String _newUuid() {

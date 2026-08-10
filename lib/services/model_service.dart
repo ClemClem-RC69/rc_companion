@@ -112,10 +112,10 @@ class ModelService {
             existingBytes.isNotEmpty &&
             existing?.photoUrl == photoUrl) {
           localPath = existing!.photoLocalPath;
-        } else if (photoUrl != null && photoUrl.trim().isNotEmpty) {
+        } else if (_isGoogleDrivePath(photoUrl)) {
           try {
             final bytes = await StorageService.downloadModelPhotoBytes(
-              photoUrl,
+              photoUrl!,
             );
             if (bytes != null && bytes.isNotEmpty) {
               localPath = await ModelPhotoFileStore.savePhoto(
@@ -140,6 +140,13 @@ class ModelService {
     }
 
     await ModelLocalStore.replaceModels(userId: user.id, rows: rows);
+  }
+
+  static bool _isGoogleDrivePath(String? path) {
+    if (path == null) {
+      return false;
+    }
+    return path.trim().startsWith('drive://');
   }
 
   static String _filenameFromUrl(String url) {
