@@ -82,32 +82,23 @@ class StorageService {
     final extension = _imageFileExtension(originalFilename);
     final contentType = _imageContentType(extension);
 
-    if ((await GoogleDriveService.connectionState()).connected) {
-      return GoogleDriveService.uploadFileBytes(
-        bytes: bytes,
-        filename: 'photo_modele.$extension',
-        contentType: contentType,
-        relativeFolder: modelId,
-        objectKey: 'model_photo:$modelId',
+    final driveState = await GoogleDriveService.connectionState();
+    if (!driveState.connected) {
+      throw StateError(
+        driveState.message ??
+            'Google Drive n’est pas connecté. '
+                'La photo reste stockée localement et sera synchronisée '
+                'automatiquement lorsque Google Drive sera disponible.',
       );
     }
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final storagePath = '${user.id}/$modelId/model_$timestamp.$extension';
-
-    await _supabase.storage
-        .from(_photoBucketName)
-        .uploadBinary(
-          storagePath,
-          bytes,
-          fileOptions: FileOptions(
-            cacheControl: '3600',
-            upsert: false,
-            contentType: contentType,
-          ),
-        );
-
-    return _supabase.storage.from(_photoBucketName).getPublicUrl(storagePath);
+    return GoogleDriveService.uploadFileBytes(
+      bytes: bytes,
+      filename: 'photo_modele.$extension',
+      contentType: contentType,
+      relativeFolder: modelId,
+      objectKey: 'model_photo:$modelId',
+    );
   }
 
   static Future<Uint8List?> downloadModelPhotoBytes(String? photoUrl) async {
@@ -149,12 +140,13 @@ class StorageService {
   // ---------------------------------------------------------------------------
   // DOCUMENTS DES MODÈLES ET NOTICES RADIO : PDF ET IMAGES
   //
-  // ETAPE 3 :
-  // - si Google Drive Desktop est connecté, les NOUVEAUX fichiers y sont
-  //   envoyés et storage_path contient "gdrive:<fileId>";
-  // - les anciens storage_path Supabase restent lisibles et supprimables ;
-  // - si Drive n'est pas connecté, le comportement Supabase historique est
-  //   conservé pendant cette phase de transition.
+  // ARCHITECTURE FINALE :
+  // - tous les NOUVEAUX fichiers sont envoyés uniquement sur Google Drive ;
+  // - si Drive ou le réseau n'est pas disponible, l'opération de
+  //   synchronisation reste en attente et le fichier reste local ;
+  // - les anciens fichiers Supabase restent lisibles et supprimables afin
+  //   d'assurer la compatibilité avec les données historiques ;
+  // - aucun nouveau fichier lourd n'est envoyé vers Supabase Storage.
   // ---------------------------------------------------------------------------
 
   static Future<PickedModelDocument?> pickModelDocument() async {
@@ -260,32 +252,22 @@ class StorageService {
     final safeFilename = _safeDocumentFilename(originalFilename);
 
     final driveState = await GoogleDriveService.connectionState();
-    if (driveState.connected) {
-      return GoogleDriveService.uploadFileBytes(
-        bytes: bytes,
-        filename: safeFilename,
-        contentType: contentType,
-        relativeFolder: modelId,
-        objectKey: driveObjectKey,
+    if (!driveState.connected) {
+      throw StateError(
+        driveState.message ??
+            'Google Drive n’est pas connecté. '
+                'Le document reste stocké localement et sera synchronisé '
+                'automatiquement lorsque Google Drive sera disponible.',
       );
     }
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final storagePath = '${user.id}/$modelId/${timestamp}_$safeFilename';
-
-    await _supabase.storage
-        .from(_documentBucketName)
-        .uploadBinary(
-          storagePath,
-          bytes,
-          fileOptions: FileOptions(
-            cacheControl: '3600',
-            upsert: false,
-            contentType: contentType,
-          ),
-        );
-
-    return storagePath;
+    return GoogleDriveService.uploadFileBytes(
+      bytes: bytes,
+      filename: safeFilename,
+      contentType: contentType,
+      relativeFolder: modelId,
+      objectKey: driveObjectKey,
+    );
   }
 
   static Future<Uint8List> downloadModelDocumentBytes(

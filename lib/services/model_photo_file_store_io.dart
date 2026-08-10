@@ -14,7 +14,8 @@ Future<String?> savePhoto({
   final directory = Directory('${support.path}/model_photos/$userId/$modelId');
   await directory.create(recursive: true);
   final extension = _extension(originalFilename);
-  final file = File('${directory.path}/current.$extension');
+  final timestamp = DateTime.now().microsecondsSinceEpoch;
+  final file = File('${directory.path}/photo_$timestamp.$extension');
   await file.writeAsBytes(bytes, flush: true);
   return file.path;
 }

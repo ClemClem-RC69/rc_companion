@@ -66,6 +66,14 @@ class RadioSyncService {
         throw StateError('Le fichier local du manuel radio est introuvable.');
       }
 
+      // Le dossier lisible de la radio doit exister AVANT l'upload.
+      // Sinon Google Drive crée un dossier de secours portant l'UUID.
+      await GoogleDriveService.ensureRadioFolder(
+        radioId: entry.entityId,
+        brand: _firstText(payload, const ['brand', 'marque']),
+        name: _firstText(payload, const ['model', 'name', 'nom']),
+      );
+
       final bytes = await RadioManualFileStore.readBytes(localPath);
       newStoragePath = await StorageService.uploadModelDocumentBytes(
         bytes: bytes,
@@ -137,7 +145,7 @@ class RadioSyncService {
       await GoogleDriveService.ensureRadioFolder(
         radioId: entry.entityId,
         brand: _firstText(remoteRow, const ['brand', 'marque']),
-        name: _firstText(remoteRow, const ['name', 'nom']),
+        name: _firstText(remoteRow, const ['model', 'name', 'nom']),
       );
     } catch (_) {
       // La synchronisation des données de la radio reste prioritaire.

@@ -274,9 +274,54 @@ class ModelDocumentService {
       rows: rows,
     );
 
-    // Le rafraîchissement synchronise uniquement les métadonnées.
-    // Les fichiers sont téléchargés à la demande lors de leur ouverture,
-    // puis restent disponibles dans le cache local de cet appareil.
+    // Précharge automatiquement les fichiers distants afin qu'ils soient
+    // disponibles hors ligne sur cet appareil sans ouverture préalable.
+    final documents = await ModelDocumentLocalStore.getDocuments(
+      userId: userId,
+      modelId: modelId,
+    );
+
+    for (final document in documents) {
+      if (document.storagePath.trim().isEmpty) {
+        continue;
+      }
+
+      if (await ModelDocumentFileStore.exists(document.localPath)) {
+        continue;
+      }
+
+      try {
+        final bytes = await StorageService.downloadModelDocumentBytes(
+          document.storagePath,
+        );
+
+        if (bytes.isEmpty) {
+          continue;
+        }
+
+        final localPath = await ModelDocumentFileStore.saveBytes(
+          userId: userId,
+          modelId: document.modelId,
+          documentId: document.id,
+          originalFilename: document.documentName,
+          bytes: bytes,
+        );
+
+        final cached = document.copyWith(
+          localPath: localPath,
+          pendingUpload: false,
+        );
+
+        await ModelDocumentLocalStore.upsertDocument(
+          userId: userId,
+          document: cached,
+        );
+      } catch (_) {
+        // Un échec de téléchargement ne doit jamais empêcher la
+        // synchronisation des métadonnées ni supprimer un cache existant.
+      }
+    }
+
     return ModelDocumentLocalStore.getDocuments(
       userId: userId,
       modelId: modelId,
