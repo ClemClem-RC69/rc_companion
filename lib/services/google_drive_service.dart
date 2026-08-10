@@ -335,6 +335,59 @@ class GoogleDriveService {
     debugPrint('[GoogleDrive] Google Sign-In iOS initialisé.');
   }
 
+  static Future<void> resetRcCompanionFiles() async {
+    final api = await _driveApi();
+
+    final result = await api.files.list(
+      q: "appProperties has { key='rcCompanion' and value='true' } and trashed = false",
+      spaces: 'drive',
+      pageSize: 1000,
+      $fields: 'files(id,name,mimeType,parents,appProperties)',
+    );
+
+    final files = result.files ?? const <drive.File>[];
+
+    for (final file in files) {
+      final id = file.id?.trim();
+      if (id == null || id.isEmpty) {
+        continue;
+      }
+
+      try {
+        await api.files.delete(id);
+        debugPrint(
+          '[GoogleDrive] RESET : élément RC Companion supprimé '
+          '${file.name} ($id)',
+        );
+      } catch (_) {
+        // Un élément enfant peut déjà avoir disparu avec son dossier parent.
+      }
+    }
+
+    final escapedName = _rootFolderName.replaceAll("'", r"\'");
+    final roots = await api.files.list(
+      q:
+          "name = '$escapedName' and "
+          "mimeType = 'application/vnd.google-apps.folder' and "
+          "'root' in parents and trashed = false",
+      spaces: 'drive',
+      pageSize: 10,
+      $fields: 'files(id,name)',
+    );
+
+    for (final folder in roots.files ?? const <drive.File>[]) {
+      final id = folder.id?.trim();
+      if (id == null || id.isEmpty) {
+        continue;
+      }
+
+      await api.files.delete(id);
+      debugPrint('[GoogleDrive] RESET : dossier racine supprimé ($id)');
+    }
+
+    _rootFolderId = null;
+  }
+
   static Future<String> ensureModelFolder({
     required String modelId,
     required String brand,

@@ -2,6 +2,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../database/app_database.dart';
+import 'google_drive_service.dart';
 import 'supabase_service.dart';
 
 class AccountService {
@@ -134,6 +135,18 @@ class AccountService {
         },
       ),
     );
+
+    // Les fichiers lourds de RC Companion sont stockés uniquement
+    // sur Google Drive. Le RESET doit les supprimer avant les métadonnées
+    // Supabase afin de garantir un effacement complet.
+    final driveState = await GoogleDriveService.connectionState();
+    if (!driveState.connected) {
+      throw const AuthException(
+        'Google Drive doit être connecté pour effectuer un RESET complet.',
+      );
+    }
+
+    await GoogleDriveService.resetRcCompanionFiles();
 
     // Sessions : les tables enfants ne portent pas toutes user_id.
     final sessions = await _client
