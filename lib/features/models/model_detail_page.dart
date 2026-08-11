@@ -137,14 +137,32 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       return;
     }
 
-    setState(() {
-      isAddingDocument = true;
-    });
-
     try {
-      var document = await ModelDocumentService.addDocument(
+      final picked = await ModelDocumentService.pickDocument();
+      if (picked == null || !mounted) {
+        return;
+      }
+
+      final customName = await _showDocumentNameDialog(
+        initialName: picked.name,
+        title: 'Nom du document',
+        helperText:
+            'Tu peux conserver le nom d’origine ou saisir un nom plus clair.',
+      );
+
+      if (customName == null || customName.trim().isEmpty || !mounted) {
+        return;
+      }
+
+      setState(() {
+        isAddingDocument = true;
+      });
+
+      await ModelDocumentService.addDocument(
         modelId: widget.modelId,
         documentType: documentType,
+        picked: picked,
+        documentName: customName,
       );
 
       if (!mounted) {
@@ -152,58 +170,8 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       }
 
       setState(() {
-        documents = <ModelDocument>[...documents, document];
         isAddingDocument = false;
       });
-
-      final customName = await _showRenameDialog(
-        document,
-        title: 'Nom du document',
-        helperText:
-            'Tu peux conserver le nom d’origine ou saisir un nom plus clair.',
-      );
-
-      if (customName != null &&
-          customName.trim().isNotEmpty &&
-          customName.trim() != document.documentName) {
-        try {
-          document = await ModelDocumentService.renameDocument(
-            document: document,
-            newName: customName,
-          );
-
-          if (!mounted) {
-            return;
-          }
-
-          final index = documents.indexWhere((item) => item.id == document.id);
-
-          if (index != -1) {
-            setState(() {
-              documents[index] = document;
-            });
-          }
-        } catch (error) {
-          if (!mounted) {
-            return;
-          }
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Le document a été ajouté, mais son nom '
-                'n’a pas pu être modifié : $error',
-              ),
-            ),
-          );
-
-          return;
-        }
-      }
-
-      if (!mounted) {
-        return;
-      }
 
       ScaffoldMessenger.of(
         context,
@@ -216,12 +184,6 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       setState(() {
         isAddingDocument = false;
       });
-
-      final message = error.toString();
-
-      if (message.contains('Aucun document sélectionné')) {
-        return;
-      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Impossible d’ajouter le document : $error')),
@@ -244,12 +206,12 @@ class _ModelDetailPageState extends State<ModelDetailPage>
     );
   }
 
-  Future<String?> _showRenameDialog(
-    ModelDocument document, {
+  Future<String?> _showDocumentNameDialog({
+    required String initialName,
     String title = 'Renommer le document',
     String? helperText,
   }) async {
-    final controller = TextEditingController(text: document.documentName);
+    final controller = TextEditingController(text: initialName);
 
     final result = await showDialog<String>(
       context: context,
@@ -297,7 +259,20 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       },
     );
 
+    controller.dispose();
     return result;
+  }
+
+  Future<String?> _showRenameDialog(
+    ModelDocument document, {
+    String title = 'Renommer le document',
+    String? helperText,
+  }) {
+    return _showDocumentNameDialog(
+      initialName: document.documentName,
+      title: title,
+      helperText: helperText,
+    );
   }
 
   Future<void> renameDocument(ModelDocument document) async {

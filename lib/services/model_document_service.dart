@@ -67,18 +67,24 @@ class ModelDocumentService {
     return _refreshDocumentsFromCloud(userId: user.id, modelId: modelId);
   }
 
+  static Future<PickedModelDocument?> pickDocument() {
+    return StorageService.pickModelDocument();
+  }
+
   static Future<ModelDocument> addDocument({
     required String modelId,
     required String documentType,
+    required PickedModelDocument picked,
+    required String documentName,
   }) async {
-    final picked = await StorageService.pickModelDocument();
-    if (picked == null) {
-      throw Exception('Aucun document sélectionné.');
-    }
-
     final user = _client.auth.currentUser;
     if (user == null) {
       throw StateError('Aucun utilisateur connecté.');
+    }
+
+    final cleanName = documentName.trim();
+    if (cleanName.isEmpty) {
+      throw Exception('Le nom du document ne peut pas être vide.');
     }
 
     final documentId = _newUuid();
@@ -112,7 +118,7 @@ class ModelDocumentService {
       id: documentId,
       userId: user.id,
       modelId: modelId,
-      documentName: picked.name,
+      documentName: cleanName,
       documentType: documentType,
       storagePath: '',
       createdAt: DateTime.now(),
