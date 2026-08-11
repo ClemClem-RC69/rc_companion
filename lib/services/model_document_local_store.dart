@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
 import '../models/model_document.dart';
+import 'model_document_file_store.dart';
 
 class ModelDocumentLocalStore {
   ModelDocumentLocalStore._();
@@ -106,6 +107,8 @@ class ModelDocumentLocalStore {
     required String modelId,
     required List<Map<String, dynamic>> rows,
   }) async {
+    final obsoleteLocalPaths = <String>{};
+
     await _database.transaction(() async {
       final existingRows =
           await (_database.select(_database.localModelDocuments)..where(
@@ -141,6 +144,44 @@ class ModelDocumentLocalStore {
         entityType: 'model_document',
       );
 
+      final incomingById = <String, ModelDocument>{};
+      for (final row in rows) {
+        final remoteDocument = ModelDocument.fromMap(row);
+        if (remoteDocument.id.isNotEmpty) {
+          incomingById[remoteDocument.id] = remoteDocument;
+        }
+      }
+
+      for (final entry in existingById.entries) {
+        final documentId = entry.key;
+        final existing = entry.value;
+
+        if (pendingIds.contains(documentId) ||
+            pendingDeleteIds.contains(documentId)) {
+          continue;
+        }
+
+        final oldLocalPath = existing.localPath?.trim() ?? '';
+        if (oldLocalPath.isEmpty) {
+          continue;
+        }
+
+        final incoming = incomingById[documentId];
+        if (incoming == null) {
+          obsoleteLocalPaths.add(oldLocalPath);
+          continue;
+        }
+
+        final oldStoragePath = existing.storagePath.trim();
+        final newStoragePath = incoming.storagePath.trim();
+
+        if (oldStoragePath.isNotEmpty &&
+            newStoragePath.isNotEmpty &&
+            oldStoragePath != newStoragePath) {
+          obsoleteLocalPaths.add(oldLocalPath);
+        }
+      }
+
       await (_database.delete(_database.localModelDocuments)..where(
             (item) =>
                 item.userId.equals(userId) &
@@ -172,6 +213,16 @@ class ModelDocumentLocalStore {
         await upsertDocument(userId: userId, document: merged);
       }
     });
+
+    for (final path in obsoleteLocalPaths) {
+      try {
+        await ModelDocumentFileStore.delete(path);
+      } catch (_) {
+        // Un support local absent, retiré ou momentanément inaccessible ne
+        // doit jamais faire échouer la synchronisation ni provoquer une
+        // action distante.
+      }
+    }
   }
 
   static Future<void> upsertDocument({

@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
 import '../models/rc_model.dart';
+import 'model_photo_file_store.dart';
 
 class ModelLocalStore {
   ModelLocalStore._();
@@ -89,11 +90,71 @@ class ModelLocalStore {
     required String userId,
     required List<Map<String, dynamic>> rows,
   }) async {
+    final obsoleteLocalPaths = <String>{};
+
     await _database.transaction(() async {
+      final existingRows = await (_database.select(
+        _database.localModels,
+      )..where((item) => item.userId.equals(userId))).get();
+
+      final existingById = <String, RcModel>{
+        for (final existingRow in existingRows)
+          existingRow.modelId: _modelFromJson(
+            jsonDecode(existingRow.payloadJson),
+          ),
+      };
+
       final pendingModelIds = await _database.getPendingEntityIds(
         userId: userId,
         entityType: 'model',
       );
+
+      final incomingById = <String, Map<String, dynamic>>{};
+      for (final row in rows) {
+        final modelId = row['id']?.toString().trim();
+        if (modelId == null || modelId.isEmpty) {
+          continue;
+        }
+        incomingById[modelId] = row;
+      }
+
+      for (final entry in existingById.entries) {
+        final modelId = entry.key;
+        if (pendingModelIds.contains(modelId)) {
+          continue;
+        }
+
+        final existing = entry.value;
+        final oldLocalPath = existing.photoLocalPath?.trim() ?? '';
+        if (oldLocalPath.isEmpty) {
+          continue;
+        }
+
+        final incoming = incomingById[modelId];
+        if (incoming == null) {
+          obsoleteLocalPaths.add(oldLocalPath);
+          continue;
+        }
+
+        final incomingPhotoUrl = incoming['photo_url']?.toString().trim() ?? '';
+        final incomingLocalPath =
+            incoming['photo_local_path']?.toString().trim() ?? '';
+
+        final remotePhotoChanged =
+            (existing.photoUrl?.trim() ?? '') != incomingPhotoUrl;
+        final localPathChanged =
+            incomingLocalPath.isNotEmpty && incomingLocalPath != oldLocalPath;
+
+        if (remotePhotoChanged && localPathChanged) {
+          obsoleteLocalPaths.add(oldLocalPath);
+        }
+
+        if (remotePhotoChanged &&
+            incomingPhotoUrl.isEmpty &&
+            incomingLocalPath.isEmpty) {
+          obsoleteLocalPaths.add(oldLocalPath);
+        }
+      }
 
       await (_database.delete(_database.localModels)..where(
             (item) =>
@@ -113,6 +174,16 @@ class ModelLocalStore {
         await upsertRow(userId: userId, row: row);
       }
     });
+
+    for (final path in obsoleteLocalPaths) {
+      try {
+        await ModelPhotoFileStore.deletePhoto(path);
+      } catch (_) {
+        // Un support local absent, retiré ou momentanément inaccessible ne
+        // doit jamais faire échouer la synchronisation ni provoquer une
+        // action distante.
+      }
+    }
   }
 
   static Future<void> upsertModel({

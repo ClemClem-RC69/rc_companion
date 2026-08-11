@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
 import '../models/radio.dart';
+import 'radio_manual_file_store.dart';
 
 class RadioLocalStore {
   RadioLocalStore._();
@@ -97,6 +98,8 @@ class RadioLocalStore {
     required String userId,
     required List<Map<String, dynamic>> rows,
   }) async {
+    final obsoleteLocalPaths = <String>{};
+
     await _database.transaction(() async {
       final existingRows = await (_database.select(
         _database.localRadios,
@@ -113,6 +116,44 @@ class RadioLocalStore {
         userId: userId,
         entityType: 'radio',
       );
+
+      final incomingById = <String, Map<String, dynamic>>{};
+      for (final row in rows) {
+        final radioId = row['id']?.toString().trim();
+        if (radioId == null || radioId.isEmpty) {
+          continue;
+        }
+        incomingById[radioId] = row;
+      }
+
+      for (final entry in existingPayloadById.entries) {
+        final radioId = entry.key;
+        if (pendingIds.contains(radioId)) {
+          continue;
+        }
+
+        final existingPayload = entry.value;
+        final oldLocalPath =
+            existingPayload['manual_local_path']?.toString().trim() ?? '';
+        if (oldLocalPath.isEmpty) {
+          continue;
+        }
+
+        final incoming = incomingById[radioId];
+        if (incoming == null) {
+          obsoleteLocalPaths.add(oldLocalPath);
+          continue;
+        }
+
+        final oldStoragePath =
+            existingPayload['manual_storage_path']?.toString().trim() ?? '';
+        final newStoragePath =
+            incoming['manual_storage_path']?.toString().trim() ?? '';
+
+        if (oldStoragePath != newStoragePath) {
+          obsoleteLocalPaths.add(oldLocalPath);
+        }
+      }
 
       await (_database.delete(_database.localRadios)..where(
             (item) =>
@@ -151,6 +192,16 @@ class RadioLocalStore {
         await upsertRow(userId: userId, row: mergedRow);
       }
     });
+
+    for (final path in obsoleteLocalPaths) {
+      try {
+        await RadioManualFileStore.delete(path);
+      } catch (_) {
+        // Un support local absent, retiré ou momentanément inaccessible ne
+        // doit jamais faire échouer la synchronisation ni provoquer une
+        // action distante.
+      }
+    }
   }
 
   static Future<void> upsertRadio({
