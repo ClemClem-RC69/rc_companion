@@ -32,6 +32,9 @@ class GoogleDriveService {
   static const String _desktopClientSecret = String.fromEnvironment(
     'GOOGLE_DRIVE_DESKTOP_CLIENT_SECRET',
   );
+  static const String _androidServerClientId = String.fromEnvironment(
+    'GOOGLE_DRIVE_ANDROID_SERVER_CLIENT_ID',
+  );
 
   static const List<String> _scopes = <String>[
     'https://www.googleapis.com/auth/drive.file',
@@ -84,8 +87,28 @@ class GoogleDriveService {
     return defaultTargetPlatform == TargetPlatform.iOS;
   }
 
+  static bool get isAndroidSupported {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android;
+  }
+
+  static bool get isMobileSupported => isIosSupported || isAndroidSupported;
+
+  static bool get isAndroidConfigured =>
+      _androidServerClientId.trim().isNotEmpty;
+
   static Future<GoogleDriveConnectionState> connectionState() async {
-    if (isIosSupported) {
+    if (isMobileSupported) {
+      if (isAndroidSupported && !isAndroidConfigured) {
+        return const GoogleDriveConnectionState(
+          supported: true,
+          configured: false,
+          connected: false,
+          message:
+              'Le client OAuth Web requis par Google Drive Android n’est pas '
+              'fourni à cette exécution de RC Companion.',
+        );
+      }
       return _mobileConnectionState();
     }
 
@@ -95,8 +118,8 @@ class GoogleDriveService {
         configured: false,
         connected: false,
         message:
-            'Google Drive est actuellement pris en charge sur macOS, Windows, '
-            'iPhone et iPad. Android sera activé dans une étape dédiée.',
+            'Google Drive est pris en charge sur macOS, Windows, Android, '
+            'iPhone et iPad.',
       );
     }
 
@@ -154,7 +177,7 @@ class GoogleDriveService {
   }
 
   static Future<void> connectDesktop() async {
-    if (isIosSupported) {
+    if (isMobileSupported) {
       await _connectMobile();
       return;
     }
@@ -234,14 +257,14 @@ class GoogleDriveService {
   }
 
   static Future<void> disconnect() async {
-    if (isIosSupported) {
+    if (isMobileSupported) {
       await _ensureMobileSignInInitialized();
       await GoogleSignIn.instance.disconnect();
       _mobileAccount = null;
       _mobileClient?.close();
       _mobileClient = null;
       _rootFolderId = null;
-      debugPrint('[GoogleDrive] Connexion Google iOS supprimée.');
+      debugPrint('[GoogleDrive] Connexion Google mobile supprimée.');
       return;
     }
 
@@ -293,7 +316,9 @@ class GoogleDriveService {
         connected: true,
       );
     } catch (error) {
-      debugPrint('[GoogleDrive] Restauration Google iOS impossible : $error');
+      debugPrint(
+        '[GoogleDrive] Restauration Google mobile impossible : $error',
+      );
       _mobileAccount = null;
       return const GoogleDriveConnectionState(
         supported: true,
@@ -305,10 +330,16 @@ class GoogleDriveService {
   }
 
   static Future<void> _connectMobile() async {
+    if (isAndroidSupported && !isAndroidConfigured) {
+      throw StateError(
+        'Le client OAuth Web requis par Google Drive Android est absent.',
+      );
+    }
+
     await _ensureMobileSignInInitialized();
     _rootFolderId = null;
 
-    debugPrint('[GoogleDrive] Démarrage de la connexion Google iOS...');
+    debugPrint('[GoogleDrive] Démarrage de la connexion Google mobile...');
 
     final account = await GoogleSignIn.instance.authenticate(
       scopeHint: _scopes,
@@ -325,14 +356,18 @@ class GoogleDriveService {
     _mobileClient!.accessToken = authorization.accessToken;
     final api = drive.DriveApi(_mobileClient!);
     await api.files.list(pageSize: 1, $fields: 'files(id)');
-    debugPrint('[GoogleDrive] Accès Google Drive iOS vérifié.');
+    debugPrint('[GoogleDrive] Accès Google Drive mobile vérifié.');
   }
 
   static Future<void> _ensureMobileSignInInitialized() async {
     if (_mobileSignInInitialized) return;
-    await GoogleSignIn.instance.initialize();
+
+    await GoogleSignIn.instance.initialize(
+      serverClientId: isAndroidSupported ? _androidServerClientId.trim() : null,
+    );
+
     _mobileSignInInitialized = true;
-    debugPrint('[GoogleDrive] Google Sign-In iOS initialisé.');
+    debugPrint('[GoogleDrive] Google Sign-In mobile initialisé.');
   }
 
   static Future<void> resetRcCompanionFiles() async {
@@ -624,7 +659,7 @@ class GoogleDriveService {
       );
     }
 
-    if (isIosSupported) {
+    if (isMobileSupported) {
       final account = _mobileAccount;
       if (account == null) {
         throw StateError('Google Drive n’est pas connecté à RC Companion.');
