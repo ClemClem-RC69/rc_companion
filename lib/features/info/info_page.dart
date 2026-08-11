@@ -7,9 +7,9 @@ class InfoPage extends StatelessWidget {
   static const String batteryHealthVersion = 'V1.2';
   static const String batteryCompatibilityVersion = 'V1.0';
   static const String batteryChargeStateVersion = 'V1.1';
-  static const String offlineArchitectureVersion = 'V1.0';
+  static const String offlineArchitectureVersion = 'V1.1';
   static const String authenticationVersion = 'V1.0';
-  static const String lastUpdate = 'Juillet 2026';
+  static const String lastUpdate = 'Août 2026';
 
   @override
   Widget build(BuildContext context) {
@@ -162,6 +162,148 @@ class InfoPage extends StatelessWidget {
               _InfoBullet(
                 'Certaines fonctions dépendant directement d’un service en '
                 'ligne peuvent rester indisponibles sans réseau.',
+              ),
+              SizedBox(height: 12),
+              _VersionLine(
+                label: 'Version de l’architecture hors ligne',
+                value: offlineArchitectureVersion,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _sectionCard(
+            context,
+            icon: Icons.sd_storage_rounded,
+            title: 'Stockage hors ligne des fichiers',
+            children: const [
+              Text(
+                'Les documents, notices radio et photos utilisés par '
+                'RC Companion peuvent être conservés localement afin de '
+                'rester accessibles sans connexion Internet.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Choix du stockage',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Sur Android, le stockage hors ligne peut utiliser la mémoire '
+                'interne de l’appareil ou une carte SD lorsqu’elle est '
+                'disponible.',
+              ),
+              _InfoBullet(
+                'Le choix s’effectue dans Mon compte → Stockage hors ligne. '
+                'Un seul emplacement est utilisé à la fois.',
+              ),
+              _InfoBullet(
+                'La capacité disponible dépend de l’appareil ou de la carte '
+                'SD sélectionnée.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Mise à jour automatique',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Lorsqu’un fichier est ajouté depuis un autre appareil, '
+                'RC Companion récupère automatiquement sa copie hors ligne '
+                'sur l’emplacement sélectionné.',
+              ),
+              _InfoBullet(
+                'Lorsqu’un fichier est remplacé, la nouvelle version est '
+                'récupérée et l’ancienne copie locale devenue inutile est '
+                'nettoyée.',
+              ),
+              _InfoBullet(
+                'Lorsqu’un fichier est supprimé depuis un autre appareil, '
+                'la copie correspondante est également supprimée du stockage '
+                'hors ligne après synchronisation.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Carte SD retirée ou remplacée',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Le retrait, la panne ou le remplacement d’une carte SD ne '
+                'doit jamais être interprété comme une demande de suppression '
+                'des fichiers distants.',
+              ),
+              _InfoBullet(
+                'Lorsqu’une nouvelle carte SD vierge est sélectionnée, le '
+                'stockage hors ligne peut être reconstruit à partir des '
+                'fichiers encore disponibles dans le stockage synchronisé.',
+              ),
+              _InfoBullet(
+                'Le bouton Mettre à jour le stockage hors ligne permet de '
+                'reconstruire ou réparer le contenu local lorsque cela est '
+                'nécessaire. Il n’est pas requis lors du fonctionnement '
+                'normal de la synchronisation automatique.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Google Drive — sauvegarde et synchronisation des fichiers',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'L’utilisation de Google Drive nécessite un compte Google. '
+                'L’utilisateur doit connecter un compte existant ou en créer '
+                'un s’il n’en possède pas.',
+              ),
+              _InfoBullet(
+                'Google Drive est utilisé par RC Companion pour conserver et '
+                'synchroniser les fichiers associés à l’application, notamment '
+                'les documents des modèles, les notices et manuels radio ainsi '
+                'que les photos prises en charge.',
+              ),
+              _InfoBullet(
+                'Les données structurées de RC Companion, telles que les '
+                'modèles, batteries, sessions, maintenances et relevés, ne '
+                'sont pas stockées sur Google Drive. Elles sont conservées '
+                'localement dans Drift et synchronisées via Supabase.',
+              ),
+              _InfoBullet(
+                'L’espace disponible sur Google Drive dépend du quota du '
+                'compte Google utilisé. Si davantage de stockage est '
+                'nécessaire, l’utilisateur peut choisir de souscrire une '
+                'offre de stockage supplémentaire proposée par Google.',
+              ),
+              _InfoBullet(
+                'Tout abonnement ou achat de stockage Google relève du choix '
+                'et de la responsabilité de l’utilisateur. RC Companion '
+                'n’impose, ne fournit et ne facture aucun abonnement Google.',
+              ),
+              _InfoBullet(
+                'Le stockage hors ligne de l’appareil ou de la carte SD '
+                'constitue une copie locale permettant notamment l’accès aux '
+                'fichiers sans réseau. Google Drive permet de conserver une '
+                'copie synchronisée et de reconstituer le stockage local '
+                'lorsque cela est nécessaire.',
+              ),
+              _InfoBullet(
+                'La disparition d’une copie locale provoquée par le retrait, '
+                'la panne ou le remplacement du support de stockage ne doit '
+                'jamais entraîner la suppression du fichier conservé sur '
+                'Google Drive.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Précautions',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Une carte SD doit rester insérée pour que les fichiers qui '
+                'y sont stockés puissent être ouverts hors ligne.',
+              ),
+              _InfoBullet(
+                'Après un changement de support, laisser RC Companion '
+                'reconstituer le stockage avant de compter sur les fichiers '
+                'pour une utilisation entièrement hors connexion.',
               ),
               SizedBox(height: 12),
               _VersionLine(
@@ -582,6 +724,12 @@ class InfoPage extends StatelessWidget {
                 'Juillet 2026 : ajout de l’authentification, du mode hors '
                 'ligne, de la synchronisation, de l’architecture et des '
                 'formats de fichiers pris en charge.',
+              ),
+              _InfoBullet(
+                'Août 2026 : ajout du stockage hors ligne des fichiers, du '
+                'choix mémoire interne/carte SD sur Android, de Google Drive '
+                'pour la sauvegarde et la synchronisation des fichiers, de la '
+                'reconstruction du stockage et de sa mise à jour automatique.',
               ),
             ],
           ),
