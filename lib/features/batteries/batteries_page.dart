@@ -2054,7 +2054,7 @@ class _ReferenceMeasurementDialogState
     final initial = widget.initialMeasurement;
 
     _chargeController = TextEditingController(
-      text: initial?.chargePercent.toString() ?? '100',
+      text: initial?.chargePercent.toString() ?? '',
     );
 
     _voltageControllers = List.generate(
