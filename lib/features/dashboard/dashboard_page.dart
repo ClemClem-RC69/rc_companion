@@ -33,6 +33,7 @@ import '../../services/model_setup_service.dart';
 import '../../services/model_radio_setup_service.dart';
 import '../../services/radio_service.dart';
 import '../account/google_drive_settings_section.dart';
+import '../account/offline_storage_page.dart';
 
 class _BatteryChargeMetrics {
   const _BatteryChargeMetrics({
@@ -715,6 +716,17 @@ class _DashboardPageState extends State<DashboardPage>
                     const Divider(),
                     const SizedBox(height: 14),
                     const GoogleDriveSettingsSection(),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: savingPseudo
+                          ? null
+                          : () {
+                              Navigator.pop(dialogContext);
+                              _open(const OfflineStoragePage());
+                            },
+                      icon: const Icon(Icons.sd_storage_rounded),
+                      label: const Text('Stockage hors ligne'),
+                    ),
                     const SizedBox(height: 22),
                     const Divider(),
                     const SizedBox(height: 14),

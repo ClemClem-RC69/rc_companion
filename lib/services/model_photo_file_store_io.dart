@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'offline_storage_service.dart';
+
 Future<String?> savePhoto({
   required String userId,
   required String modelId,
@@ -10,9 +12,14 @@ Future<String?> savePhoto({
   required String originalFilename,
 }) async {
   if (bytes.isEmpty) return null;
-  final support = await getApplicationSupportDirectory();
-  final directory = Directory('${support.path}/model_photos/$userId/$modelId');
+
+  final root = await _rootDirectory();
+  final directory = Directory(
+    '${root.path}/Photos/'
+    '${_safeSegment(userId)}/${_safeSegment(modelId)}',
+  );
   await directory.create(recursive: true);
+
   final extension = _extension(originalFilename);
   final timestamp = DateTime.now().microsecondsSinceEpoch;
   final file = File('${directory.path}/photo_$timestamp.$extension');
@@ -33,6 +40,17 @@ Future<void> deletePhoto(String? path) async {
   if (await file.exists()) await file.delete();
 }
 
+Future<Directory> _rootDirectory() async {
+  if (Platform.isAndroid) {
+    final selectedPath = await OfflineStorageService.getSelectedDirectoryPath();
+    final directory = Directory(selectedPath);
+    await directory.create(recursive: true);
+    return directory;
+  }
+
+  return getApplicationSupportDirectory();
+}
+
 String _extension(String filename) {
   final clean = filename.toLowerCase().trim();
   final dot = clean.lastIndexOf('.');
@@ -47,4 +65,9 @@ String _extension(String filename) {
     default:
       return 'jpg';
   }
+}
+
+String _safeSegment(String value) {
+  final safe = value.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
+  return safe.isEmpty ? 'item' : safe;
 }

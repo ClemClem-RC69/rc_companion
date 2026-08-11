@@ -310,10 +310,55 @@ class RadioService {
 
     await RadioLocalStore.replaceRadios(userId: userId, rows: rows);
 
-    // Le rafraîchissement synchronise uniquement les métadonnées.
-    // Une notice est téléchargée lors de sa première ouverture sur l'appareil,
-    // puis reste disponible dans le cache local pour le hors ligne.
+    // Précharge automatiquement les notices Google Drive afin qu'elles soient
+    // disponibles hors ligne sur cet appareil sans ouverture préalable.
+    final radios = await RadioLocalStore.getRadios(userId: userId);
+
+    for (final radio in radios) {
+      final storagePath = radio.manualStoragePath?.trim() ?? '';
+      final manualName = radio.manualName?.trim() ?? '';
+
+      if (!_isGoogleDrivePath(storagePath) || manualName.isEmpty) {
+        continue;
+      }
+
+      if (await RadioManualFileStore.exists(radio.manualLocalPath)) {
+        continue;
+      }
+
+      try {
+        final bytes = await StorageService.downloadModelDocumentBytes(
+          storagePath,
+        );
+
+        if (bytes.isEmpty) {
+          continue;
+        }
+
+        final localPath = await RadioManualFileStore.saveBytes(
+          userId: userId,
+          radioId: radio.id,
+          originalFilename: manualName,
+          bytes: bytes,
+        );
+
+        final cached = radio.copyWith(
+          manualLocalPath: localPath,
+          manualPendingUpload: false,
+        );
+
+        await RadioLocalStore.upsertRadio(userId: userId, radio: cached);
+      } catch (_) {
+        // Un échec de téléchargement ne doit jamais empêcher la
+        // synchronisation des métadonnées ni supprimer un cache existant.
+      }
+    }
+
     return RadioLocalStore.getRadios(userId: userId);
+  }
+
+  static bool _isGoogleDrivePath(String path) {
+    return path.trim().startsWith('gdrive:');
   }
 
   User _requireUser() {

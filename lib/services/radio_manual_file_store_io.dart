@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'offline_storage_service.dart';
+
 Future<String> saveFile({
   required String userId,
   required String radioId,
@@ -79,9 +81,9 @@ Future<File> _destinationFile({
   required String radioId,
   required String originalFilename,
 }) async {
-  final supportDirectory = await getApplicationSupportDirectory();
+  final root = await _rootDirectory();
   final directory = Directory(
-    '${supportDirectory.path}/radio_manuals/'
+    '${root.path}/Notices/'
     '${_safeSegment(userId)}/${_safeSegment(radioId)}',
   );
   await directory.create(recursive: true);
@@ -89,6 +91,17 @@ Future<File> _destinationFile({
   final extension = _extension(originalFilename);
   final suffix = extension.isEmpty ? '' : '.$extension';
   return File('${directory.path}/manual$suffix');
+}
+
+Future<Directory> _rootDirectory() async {
+  if (Platform.isAndroid) {
+    final selectedPath = await OfflineStorageService.getSelectedDirectoryPath();
+    final directory = Directory(selectedPath);
+    await directory.create(recursive: true);
+    return directory;
+  }
+
+  return getApplicationSupportDirectory();
 }
 
 String _extension(String filename) {
