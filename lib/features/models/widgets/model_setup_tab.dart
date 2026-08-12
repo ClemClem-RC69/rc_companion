@@ -192,6 +192,11 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
           label: 'Buse jet — trim',
           hint: 'Ex. neutre / +1 cran',
         ),
+        _SetupField(
+          keyName: 'boat_jet_nozzle_travel',
+          label: 'Débattement de buse',
+          hint: 'Ex. 25° gauche / droite',
+        ),
       ],
     ),
     _SetupSection(
@@ -223,6 +228,11 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
           label: 'Position batterie',
           hint: 'Ex. 20 mm vers l’avant',
         ),
+        _SetupField(
+          keyName: 'boat_steering_trim',
+          label: 'Trim de direction',
+          hint: 'Ex. neutre / +2',
+        ),
       ],
     ),
     _SetupSection(
@@ -234,6 +244,11 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
           keyName: 'esc',
           label: 'ESC',
           hint: 'Ex. Spektrum Firma 100A',
+        ),
+        _SetupField(
+          keyName: 'boat_steering_servo',
+          label: 'Servo de direction',
+          hint: 'Référence / couple',
         ),
       ],
     ),

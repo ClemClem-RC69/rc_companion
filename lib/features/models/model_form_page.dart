@@ -96,6 +96,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
     'Catamaran',
     'Monocoque',
     'Hydroplane',
+    'Jetboat',
     'Airboat',
     'Remorqueur',
     'Voilier',
