@@ -40,6 +40,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          GOOGLE_DRIVE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_DESKTOP_CLIENT_ID }}
+          GOOGLE_DRIVE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_DESKTOP_CLIENT_SECRET }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:SUPABASE_URL)) {
             throw "GitHub Secret SUPABASE_URL absent."
@@ -47,10 +49,18 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:SUPABASE_PUBLISHABLE_KEY)) {
             throw "GitHub Secret SUPABASE_PUBLISHABLE_KEY absent."
           }
+          if ([string]::IsNullOrWhiteSpace($env:GOOGLE_DRIVE_DESKTOP_CLIENT_ID)) {
+            throw "GitHub Secret GOOGLE_DRIVE_DESKTOP_CLIENT_ID absent."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:GOOGLE_DRIVE_DESKTOP_CLIENT_SECRET)) {
+            throw "GitHub Secret GOOGLE_DRIVE_DESKTOP_CLIENT_SECRET absent."
+          }
 
           flutter build windows --release `
             --dart-define=SUPABASE_URL="$env:SUPABASE_URL" `
-            --dart-define=SUPABASE_PUBLISHABLE_KEY="$env:SUPABASE_PUBLISHABLE_KEY"
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$env:SUPABASE_PUBLISHABLE_KEY" `
+            --dart-define=GOOGLE_DRIVE_DESKTOP_CLIENT_ID="$env:GOOGLE_DRIVE_DESKTOP_CLIENT_ID" `
+            --dart-define=GOOGLE_DRIVE_DESKTOP_CLIENT_SECRET="$env:GOOGLE_DRIVE_DESKTOP_CLIENT_SECRET"
 
       - name: Locate Windows Release bundle
         id: release
