@@ -15,6 +15,7 @@ import 'radio_service.dart';
 import 'model_service.dart';
 import 'session_local_store.dart';
 import 'supabase_service.dart';
+import 'user_access_service.dart';
 
 /// Pont temps réel global RC Companion.
 ///
@@ -43,7 +44,6 @@ class RealtimeSyncService {
   static bool _started = false;
   static bool _restartRunning = false;
   static bool _restartRequested = false;
-  static String? _subscribedUserId;
 
   static Future<void> initialize() async {
     if (_started) return;
@@ -144,7 +144,25 @@ class RealtimeSyncService {
 
   static Future<void> _startForUser(String userId) async {
     await _stopChannel();
-    _subscribedUserId = userId;
+
+    try {
+      final access = await UserAccessService.checkCurrentDevice();
+      if (!access.allowed) {
+        debugPrint(
+          'RealtimeSyncService: appareil non autorisé '
+          '(raison: ${access.reason}).',
+        );
+        return;
+      }
+    } catch (error) {
+      // Pas de canal Realtime ni de PULL/PUSH si le serveur n'est pas
+      // joignable. Les données Drift locales restent disponibles.
+      debugPrint(
+        'RealtimeSyncService: contrôle appareil indisponible, '
+        'reprise différée: $error',
+      );
+      return;
+    }
 
     final channel = SupabaseService.client
         .channel('rc-companion-realtime-$userId')
@@ -252,8 +270,6 @@ class RealtimeSyncService {
 
     final channel = _channel;
     _channel = null;
-    _subscribedUserId = null;
-
     if (channel != null) {
       try {
         await SupabaseService.client.removeChannel(channel);

@@ -15,6 +15,7 @@ import 'model_service.dart';
 import 'radio_service.dart';
 import 'session_local_store.dart';
 import 'supabase_service.dart';
+import 'user_access_service.dart';
 
 class BackgroundSyncService {
   BackgroundSyncService._();
@@ -79,6 +80,26 @@ class BackgroundSyncService {
       final user = SupabaseService.client.auth.currentUser;
       if (user == null) {
         return true;
+      }
+
+      try {
+        final access = await UserAccessService.checkCurrentDevice();
+        if (!access.allowed) {
+          debugPrint(
+            'BackgroundSyncService: appareil non autorisé '
+            '(raison: ${access.reason}).',
+          );
+          return true;
+        }
+      } catch (error) {
+        // Une tâche de fond ne doit jamais contourner le contrôle d'appareil.
+        // Si Supabase n'est pas joignable, on conserve simplement les données
+        // locales et la SyncQueue pour une prochaine exécution.
+        debugPrint(
+          'BackgroundSyncService: contrôle appareil indisponible, '
+          'synchronisation différée: $error',
+        );
+        return false;
       }
 
       await AppDatabase.instance.releasePendingSyncOperations(userId: user.id);

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 
 import '../database/app_database.dart';
 import 'battery_local_store.dart';
@@ -13,6 +14,7 @@ import 'model_sync_service.dart';
 import 'radio_sync_service.dart';
 import 'session_sync_service.dart';
 import 'supabase_service.dart';
+import 'user_access_service.dart';
 
 class BatterySyncService {
   BatterySyncService._();
@@ -64,6 +66,29 @@ class BatterySyncService {
 
     final user = SupabaseService.client.auth.currentUser;
     if (user == null) {
+      return;
+    }
+
+    // Protection centrale de la SyncQueue.
+    //
+    // Un appareil remplacé ou non autorisé ne doit plus envoyer ses données
+    // locales vers Supabase. En cas de simple panne réseau, l'appel RPC échoue :
+    // on laisse alors la queue intacte pour préserver le fonctionnement
+    // local-first et une reprise ultérieure.
+    try {
+      final access = await UserAccessService.checkCurrentDevice();
+      if (!access.allowed) {
+        debugPrint(
+          'BatterySyncService: synchronisation bloquée '
+          '(raison: ${access.reason}).',
+        );
+        return;
+      }
+    } catch (error) {
+      debugPrint(
+        'BatterySyncService: contrôle appareil indisponible, '
+        'synchronisation différée: $error',
+      );
       return;
     }
 
