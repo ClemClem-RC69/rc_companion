@@ -700,25 +700,29 @@ class _DeviceAccessBlockedPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: onReactivate,
-                          icon: const Icon(Icons.swap_horiz_rounded),
-                          label: const Text('Utiliser cet appareil à la place'),
+                      if (reason == 'device_replaced') ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: onReactivate,
+                            icon: const Icon(Icons.swap_horiz_rounded),
+                            label: const Text(
+                              'Utiliser cet appareil à la place',
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        'Cette action peut remplacer un autre appareil actif '
-                        'de la même plateforme lorsque la limite est atteinte.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: RCColors.textSecondary,
-                          fontSize: 12,
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Cette action peut remplacer un autre appareil actif '
+                          'de la même plateforme lorsque la limite est atteinte.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: RCColors.textSecondary,
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 18),
+                        const SizedBox(height: 18),
+                      ],
                       TextButton(
                         onPressed: onSignOut,
                         child: const Text('Se déconnecter'),
