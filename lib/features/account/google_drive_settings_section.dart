@@ -72,6 +72,21 @@ class _GoogleDriveSettingsSectionState
     }
   }
 
+  String _connectedAccountText(GoogleDriveConnectionState? state) {
+    final email = state?.accountEmail?.trim();
+    final name = state?.accountName?.trim();
+
+    if (email != null && email.isNotEmpty) {
+      if (name != null && name.isNotEmpty) {
+        return 'Google Drive connecté : $name — $email';
+      }
+      return 'Google Drive connecté : $email';
+    }
+
+    return 'Google Drive est connecté pour le compte RC Companion '
+        'actuellement utilisé.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = _state;
@@ -109,8 +124,7 @@ class _GoogleDriveSettingsSectionState
           const SizedBox(height: 8),
           Text(
             connected
-                ? 'Google Drive est connecté. Le branchement des documents '
-                      'sera effectué dans l’étape suivante.'
+                ? _connectedAccountText(state)
                 : state?.message ??
                       'Google Drive personnel est facultatif et servira à '
                           'sauvegarder et synchroniser les fichiers volumineux '

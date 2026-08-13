@@ -7,6 +7,7 @@ import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis_auth/auth_io.dart' as auth;
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class GoogleDriveConnectionState {
@@ -15,12 +16,16 @@ class GoogleDriveConnectionState {
     required this.configured,
     required this.connected,
     this.message,
+    this.accountEmail,
+    this.accountName,
   });
 
   final bool supported;
   final bool configured;
   final bool connected;
   final String? message;
+  final String? accountEmail;
+  final String? accountName;
 }
 
 class GoogleDriveService {
@@ -41,8 +46,12 @@ class GoogleDriveService {
   ];
 
   static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
-  static const String _refreshTokenKey =
+  static const String _legacyRefreshTokenKey =
       'rc_companion_google_drive_refresh_token';
+  static const String _refreshTokenKeyPrefix =
+      'rc_companion_google_drive_refresh_token_';
+  static const String _mobileGoogleAccountKeyPrefix =
+      'rc_companion_google_drive_mobile_account_';
 
   static const String storagePrefix = 'gdrive:';
   static const String _rootFolderName = 'RC Companion';
@@ -54,6 +63,7 @@ class GoogleDriveService {
   static _GoogleAuthorizationClient? _mobileClient;
   static bool _mobileSignInInitialized = false;
   static String? _rootFolderId;
+  static String? _driveOwnerUserId;
 
   static bool get isDesktopSupported {
     if (kIsWeb) return false;
@@ -98,6 +108,9 @@ class GoogleDriveService {
       _androidServerClientId.trim().isNotEmpty;
 
   static Future<GoogleDriveConnectionState> connectionState() async {
+    final rcUserId = _requireRcUserId();
+    await _ensureDriveOwner(rcUserId);
+
     if (isMobileSupported) {
       if (isAndroidSupported && !isAndroidConfigured) {
         return const GoogleDriveConnectionState(
@@ -136,14 +149,19 @@ class GoogleDriveService {
 
     if (_desktopClient != null) {
       debugPrint('[GoogleDrive] Client OAuth Desktop actif en mémoire.');
-      return const GoogleDriveConnectionState(
+      final identity = await _desktopGoogleIdentity();
+      return GoogleDriveConnectionState(
         supported: true,
         configured: true,
         connected: true,
+        accountEmail: identity.email,
+        accountName: identity.name,
       );
     }
 
-    final refreshToken = await _secureStorage.read(key: _refreshTokenKey);
+    final refreshToken = await _secureStorage.read(
+      key: _refreshTokenKeyForUser(rcUserId),
+    );
     if (refreshToken == null || refreshToken.trim().isEmpty) {
       debugPrint('[GoogleDrive] Aucun refresh token Desktop enregistré.');
       return const GoogleDriveConnectionState(
@@ -158,10 +176,13 @@ class GoogleDriveService {
     try {
       await _ensureRestoredClient(refreshToken.trim());
       await _verifyDriveAccess();
-      return const GoogleDriveConnectionState(
+      final identity = await _desktopGoogleIdentity();
+      return GoogleDriveConnectionState(
         supported: true,
         configured: true,
         connected: true,
+        accountEmail: identity.email,
+        accountName: identity.name,
       );
     } catch (_) {
       _desktopClient?.close();
@@ -177,6 +198,9 @@ class GoogleDriveService {
   }
 
   static Future<void> connectDesktop() async {
+    final rcUserId = _requireRcUserId();
+    await _ensureDriveOwner(rcUserId);
+
     if (isMobileSupported) {
       await _connectMobile();
       return;
@@ -242,7 +266,10 @@ class GoogleDriveService {
         return;
       }
 
-      await _secureStorage.write(key: _refreshTokenKey, value: refreshToken);
+      await _secureStorage.write(
+        key: _refreshTokenKeyForUser(rcUserId),
+        value: refreshToken,
+      );
 
       debugPrint(
         '[GoogleDrive] Refresh token Desktop enregistré dans le stockage sécurisé.',
@@ -257,21 +284,28 @@ class GoogleDriveService {
   }
 
   static Future<void> disconnect() async {
+    final rcUserId = _requireRcUserId();
+
     if (isMobileSupported) {
       await _ensureMobileSignInInitialized();
       await GoogleSignIn.instance.disconnect();
+      await _secureStorage.delete(
+        key: _mobileGoogleAccountKeyForUser(rcUserId),
+      );
       _mobileAccount = null;
       _mobileClient?.close();
       _mobileClient = null;
       _rootFolderId = null;
+      _driveOwnerUserId = null;
       debugPrint('[GoogleDrive] Connexion Google mobile supprimée.');
       return;
     }
 
-    await _secureStorage.delete(key: _refreshTokenKey);
+    await _secureStorage.delete(key: _refreshTokenKeyForUser(rcUserId));
     _desktopClient?.close();
     _desktopClient = null;
     _rootFolderId = null;
+    _driveOwnerUserId = null;
     debugPrint('[GoogleDrive] Connexion locale Desktop supprimée.');
   }
 
@@ -281,20 +315,51 @@ class GoogleDriveService {
 
       var account = _mobileAccount;
       if (account == null) {
-        final lightweight = GoogleSignIn.instance
-            .attemptLightweightAuthentication();
-        if (lightweight != null) {
-          account = await lightweight;
-          _mobileAccount = account;
-        }
-      }
-
-      if (account == null) {
-        return const GoogleDriveConnectionState(
-          supported: true,
-          configured: true,
-          connected: false,
+        final expectedGoogleAccount = await _secureStorage.read(
+          key: _mobileGoogleAccountKeyForUser(_requireRcUserId()),
         );
+
+        if (expectedGoogleAccount == null ||
+            expectedGoogleAccount.trim().isEmpty) {
+          return const GoogleDriveConnectionState(
+            supported: true,
+            configured: true,
+            connected: false,
+            message:
+                'Google Drive n’est pas encore associé à ce compte '
+                'RC Companion.',
+          );
+        }
+
+        final restoredAccount = await GoogleSignIn.instance
+            .attemptLightweightAuthentication();
+
+        if (restoredAccount == null) {
+          return const GoogleDriveConnectionState(
+            supported: true,
+            configured: true,
+            connected: false,
+            message:
+                'Le compte Google Drive associé n’a pas pu être reconnecté '
+                'automatiquement. Reconnecte Google Drive.',
+          );
+        }
+
+        if (restoredAccount.email.trim().toLowerCase() !=
+            expectedGoogleAccount.trim().toLowerCase()) {
+          await GoogleSignIn.instance.signOut();
+          return const GoogleDriveConnectionState(
+            supported: true,
+            configured: true,
+            connected: false,
+            message:
+                'Le compte Google disponible sur cet appareil ne correspond '
+                'pas au Google Drive associé à ce compte RC Companion.',
+          );
+        }
+
+        _mobileAccount = restoredAccount;
+        account = restoredAccount;
       }
 
       final authorization = await account.authorizationClient
@@ -310,14 +375,16 @@ class GoogleDriveService {
         );
       }
 
-      return const GoogleDriveConnectionState(
+      return GoogleDriveConnectionState(
         supported: true,
         configured: true,
         connected: true,
+        accountEmail: account.email.trim(),
+        accountName: account.displayName?.trim(),
       );
     } catch (error) {
       debugPrint(
-        '[GoogleDrive] Restauration Google mobile impossible : $error',
+        '[GoogleDrive] Vérification Google mobile impossible : $error',
       );
       _mobileAccount = null;
       return const GoogleDriveConnectionState(
@@ -330,6 +397,8 @@ class GoogleDriveService {
   }
 
   static Future<void> _connectMobile() async {
+    final rcUserId = _requireRcUserId();
+
     if (isAndroidSupported && !isAndroidConfigured) {
       throw StateError(
         'Le client OAuth Web requis par Google Drive Android est absent.',
@@ -345,6 +414,12 @@ class GoogleDriveService {
       scopeHint: _scopes,
     );
     _mobileAccount = account;
+    _driveOwnerUserId = rcUserId;
+
+    await _secureStorage.write(
+      key: _mobileGoogleAccountKeyForUser(rcUserId),
+      value: account.email.trim().toLowerCase(),
+    );
 
     var authorization = await account.authorizationClient
         .authorizationForScopes(_scopes);
@@ -368,6 +443,51 @@ class GoogleDriveService {
 
     _mobileSignInInitialized = true;
     debugPrint('[GoogleDrive] Google Sign-In mobile initialisé.');
+  }
+
+  static String _requireRcUserId() {
+    final userId = Supabase.instance.client.auth.currentUser?.id.trim();
+    if (userId == null || userId.isEmpty) {
+      throw StateError(
+        'Aucun compte RC Companion n’est connecté. '
+        'Google Drive ne peut pas être utilisé.',
+      );
+    }
+    return userId;
+  }
+
+  static String _refreshTokenKeyForUser(String userId) {
+    return '$_refreshTokenKeyPrefix$userId';
+  }
+
+  static String _mobileGoogleAccountKeyForUser(String userId) {
+    return '$_mobileGoogleAccountKeyPrefix$userId';
+  }
+
+  static Future<void> _ensureDriveOwner(String rcUserId) async {
+    final currentOwner = _driveOwnerUserId;
+
+    if (currentOwner == rcUserId) {
+      return;
+    }
+
+    // Un changement de compte RC Companion ne doit jamais réutiliser
+    // silencieusement la session Google Drive du compte précédent.
+    _desktopClient?.close();
+    _desktopClient = null;
+    _mobileClient?.close();
+    _mobileClient = null;
+    _mobileAccount = null;
+    _rootFolderId = null;
+    _driveOwnerUserId = rcUserId;
+
+    // L'ancienne clé Desktop globale n'est plus utilisée. On la supprime
+    // localement pour éviter qu'un ancien compte RC puisse en hériter.
+    await _secureStorage.delete(key: _legacyRefreshTokenKey);
+
+    debugPrint(
+      '[GoogleDrive] Contexte Drive associé au compte RC Companion $rcUserId.',
+    );
   }
 
   static Future<void> resetRcCompanionFiles() async {
@@ -968,6 +1088,32 @@ class GoogleDriveService {
     );
   }
 
+  static Future<_GoogleDriveIdentity> _desktopGoogleIdentity() async {
+    final client = _desktopClient;
+    if (client == null) {
+      return const _GoogleDriveIdentity();
+    }
+
+    try {
+      final api = drive.DriveApi(client);
+      final about = await api.about.get(
+        $fields: 'user(displayName,emailAddress)',
+      );
+      final user = about.user;
+
+      return _GoogleDriveIdentity(
+        email: user?.emailAddress?.trim(),
+        name: user?.displayName?.trim(),
+      );
+    } catch (error) {
+      debugPrint(
+        '[GoogleDrive] Lecture de l’identité du compte Google impossible : '
+        '$error',
+      );
+      return const _GoogleDriveIdentity();
+    }
+  }
+
   static Future<void> _verifyDriveAccess() async {
     final client = _desktopClient;
     if (client == null) {
@@ -990,6 +1136,13 @@ class GoogleDriveService {
       );
     }
   }
+}
+
+class _GoogleDriveIdentity {
+  const _GoogleDriveIdentity({this.email, this.name});
+
+  final String? email;
+  final String? name;
 }
 
 class _GoogleAuthorizationClient extends http.BaseClient {
