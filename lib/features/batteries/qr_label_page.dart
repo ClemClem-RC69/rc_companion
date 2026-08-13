@@ -95,7 +95,7 @@ class _QrLabelPageState extends State<QrLabelPage> {
                 ),
                 pw.SizedBox(height: 2),
                 pw.Text(
-                  '${item.cells} • ${item.capacity} mAh • ${item.cRate}C',
+                  '${item.cells} - ${item.capacity} mAh - ${item.cRate}C',
                   style: const pw.TextStyle(fontSize: 6.5),
                 ),
                 if (item.isPaired) ...[

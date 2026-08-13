@@ -327,7 +327,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     final characteristics =
         '${battery.technology} ${battery.cells} ${battery.capacity} mAh ${battery.cRate}C';
 
-    return brand.isEmpty ? characteristics : '$brand • $characteristics';
+    return brand.isEmpty ? characteristics : '$brand - $characteristics';
   }
 
   Widget _summaryCard() {
@@ -780,6 +780,14 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     return _acquisitionCard(item.date);
   }
 
+  String _pdfSafeText(String value) {
+    return value
+        .replaceAll('•', ' - ')
+        .replaceAll('—', ' - ')
+        .replaceAll('–', ' - ')
+        .replaceAll('\u00A0', ' ');
+  }
+
   Future<Uint8List> _buildPdf(PdfPageFormat format) async {
     pw.ImageProvider? modelImage;
 
@@ -896,7 +904,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  _currentModel.name,
+                  _pdfSafeText(_currentModel.name),
                   style: pw.TextStyle(
                     fontSize: 25,
                     fontWeight: pw.FontWeight.bold,
@@ -904,7 +912,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
                 ),
                 pw.SizedBox(height: 6),
                 pw.Text(
-                  subtitleValues.join(' - '),
+                  _pdfSafeText(subtitleValues.join(' - ')),
                   style: const pw.TextStyle(fontSize: 11),
                 ),
                 pw.SizedBox(height: 7),
@@ -1041,10 +1049,13 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
                   fontWeight: pw.FontWeight.bold,
                 ),
               ),
-              pw.Text(item.value, style: const pw.TextStyle(fontSize: 9)),
+              pw.Text(
+                _pdfSafeText(item.value),
+                style: const pw.TextStyle(fontSize: 9),
+              ),
               pw.SizedBox(width: 3),
               pw.Text(
-                ' | ',
+                ' - ',
                 style: const pw.TextStyle(
                   fontSize: 9,
                   color: PdfColors.grey700,
@@ -1279,7 +1290,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 6),
       child: pw.Text(
-        value,
+        _pdfSafeText(value),
         style: pw.TextStyle(
           fontSize: header ? 8.2 : 7.7,
           fontWeight: header ? pw.FontWeight.bold : pw.FontWeight.normal,
