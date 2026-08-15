@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../app/app.dart';
 import '../../services/supabase_service.dart';
@@ -139,12 +142,14 @@ class _AdminPageState extends State<AdminPage> {
         final admin = row['is_admin'] == true;
         return Card(
           child: ListTile(
-            onTap: () {
-              Navigator.of(context).push(
+            onTap: () async {
+              await Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => _AdminUserDetailPage(user: row),
                 ),
               );
+              if (!context.mounted) return;
+              await _loadUsers();
             },
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 18,
@@ -199,11 +204,64 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _devices = const [];
+  RealtimeChannel? _devicesChannel;
+  Timer? _devicesReloadDebounce;
 
   @override
   void initState() {
     super.initState();
     _loadDevices();
+    _startDevicesRealtime();
+  }
+
+  void _startDevicesRealtime() {
+    final authUserId = widget.user['auth_user_id']?.toString().trim();
+    if (authUserId == null || authUserId.isEmpty) return;
+
+    final channel = SupabaseService.client.channel(
+      'admin-user-devices-$authUserId-${DateTime.now().microsecondsSinceEpoch}',
+    );
+
+    _devicesChannel = channel;
+
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'user_devices',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'user_id',
+        value: authUserId,
+      ),
+      callback: (payload) {
+        if (!mounted) return;
+        _devicesReloadDebounce?.cancel();
+        _devicesReloadDebounce = Timer(const Duration(milliseconds: 250), () {
+          if (mounted) {
+            unawaited(_loadDevices());
+          }
+        });
+      },
+    );
+
+    channel.subscribe((status, error) {
+      if (error != null) {
+        debugPrint(
+          'Erreur Realtime de surveillance des appareils Admin : $error',
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _devicesReloadDebounce?.cancel();
+    final channel = _devicesChannel;
+    _devicesChannel = null;
+    if (channel != null) {
+      unawaited(SupabaseService.client.removeChannel(channel));
+    }
+    super.dispose();
   }
 
   String _value(String key) {
@@ -327,6 +385,239 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
     );
   }
 
+  int _quotaValue(String key) {
+    final raw = widget.user[key];
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? '') ?? 0;
+  }
+
+  bool get _isProtectedAdminAccount =>
+      _value('email').toLowerCase() == 'rccompanion.app@gmail.com';
+
+  Future<void> _editUser() async {
+    if (_isProtectedAdminAccount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Le compte RC Companion Admin est protégé et ne peut pas être modifié ici.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    var enabled = widget.user['enabled'] != false;
+    final androidController = TextEditingController(
+      text: _quotaValue('max_android').toString(),
+    );
+    final windowsController = TextEditingController(
+      text: _quotaValue('max_windows').toString(),
+    );
+    final macosController = TextEditingController(
+      text: _quotaValue('max_macos').toString(),
+    );
+    final iosController = TextEditingController(
+      text: _quotaValue('max_ios').toString(),
+    );
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Widget quotaField({
+              required String label,
+              required TextEditingController controller,
+            }) {
+              return TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(labelText: label),
+              );
+            }
+
+            return AlertDialog(
+              title: const Text('Modifier l’utilisateur'),
+              content: SizedBox(
+                width: 520,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _value('pseudo') == '—'
+                              ? _value('email')
+                              : _value('pseudo'),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _value('email'),
+                          style: const TextStyle(color: RCColors.textSecondary),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Compte autorisé',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: Text(
+                          enabled
+                              ? 'Le compte peut utiliser RC Companion.'
+                              : 'Le compte est suspendu.',
+                        ),
+                        value: enabled,
+                        onChanged: (value) {
+                          setDialogState(() => enabled = value);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Nombre d’appareils simultanés autorisés',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: quotaField(
+                              label: 'Android',
+                              controller: androidController,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: quotaField(
+                              label: 'Windows',
+                              controller: windowsController,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: quotaField(
+                              label: 'macOS',
+                              controller: macosController,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: quotaField(
+                              label: 'iOS',
+                              controller: iosController,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final android = int.tryParse(androidController.text.trim());
+                    final windows = int.tryParse(windowsController.text.trim());
+                    final macos = int.tryParse(macosController.text.trim());
+                    final ios = int.tryParse(iosController.text.trim());
+
+                    if (android == null ||
+                        windows == null ||
+                        macos == null ||
+                        ios == null ||
+                        android < 0 ||
+                        windows < 0 ||
+                        macos < 0 ||
+                        ios < 0) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Chaque quota doit être un nombre entier positif ou nul.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+
+                    Navigator.of(dialogContext).pop(<String, dynamic>{
+                      'enabled': enabled,
+                      'max_android': android,
+                      'max_windows': windows,
+                      'max_macos': macos,
+                      'max_ios': ios,
+                    });
+                  },
+                  child: const Text('Enregistrer'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    androidController.dispose();
+    windowsController.dispose();
+    macosController.dispose();
+    iosController.dispose();
+
+    if (result == null || !mounted) return;
+
+    try {
+      await SupabaseService.client.rpc(
+        'rc_admin_update_user',
+        params: <String, dynamic>{
+          'p_email': _value('email'),
+          'p_enabled': result['enabled'],
+          'p_max_android': result['max_android'],
+          'p_max_windows': result['max_windows'],
+          'p_max_macos': result['max_macos'],
+          'p_max_ios': result['max_ios'],
+        },
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        widget.user['enabled'] = result['enabled'];
+        widget.user['max_android'] = result['max_android'];
+        widget.user['max_windows'] = result['max_windows'];
+        widget.user['max_macos'] = result['max_macos'];
+        widget.user['max_ios'] = result['max_ios'];
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Utilisateur mis à jour.')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Modification impossible : $error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pseudo = _value('pseudo');
@@ -338,6 +629,12 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
       appBar: AppBar(
         title: Text(pseudo == '—' ? email : pseudo),
         actions: [
+          if (!_isProtectedAdminAccount)
+            TextButton.icon(
+              onPressed: _editUser,
+              icon: const Icon(Icons.edit_rounded),
+              label: const Text('Modifier'),
+            ),
           IconButton(
             tooltip: 'Actualiser les appareils',
             onPressed: _loading ? null : _loadDevices,
@@ -394,6 +691,16 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
                 ),
               ),
             ),
+            if (_isProtectedAdminAccount) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Compte administrateur protégé : ses autorisations ne sont pas modifiables depuis cette fiche.',
+                style: TextStyle(
+                  color: RCColors.textSecondary,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             const Text(
               'Autorisations par plateforme',
@@ -432,6 +739,116 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
         ),
       ),
     );
+  }
+
+  Future<bool> _confirmDeviceAction({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    bool destructive = false,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: destructive
+                  ? FilledButton.styleFrom(backgroundColor: RCColors.accent)
+                  : null,
+              child: Text(confirmLabel),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result == true;
+  }
+
+  Future<void> _manageDevice(Map<String, dynamic> device, String action) async {
+    final rowId = device['id']?.toString().trim();
+    if (rowId == null || rowId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Identifiant appareil introuvable.')),
+      );
+      return;
+    }
+
+    final name = device['device_name']?.toString().trim();
+    final platform = _platformLabel(device['platform']?.toString());
+    final displayName = name == null || name.isEmpty ? platform : name;
+
+    var confirmed = false;
+
+    if (action == 'activate') {
+      confirmed = await _confirmDeviceAction(
+        title: 'Activer cet appareil ?',
+        message:
+            '$displayName sera autorisé à utiliser RC Companion et occupera '
+            'une place dans le quota $platform du compte.',
+        confirmLabel: 'Activer',
+      );
+    } else if (action == 'deactivate') {
+      confirmed = await _confirmDeviceAction(
+        title: 'Désactiver cet appareil ?',
+        message:
+            '$displayName restera enregistré dans l’administration, mais il '
+            'ne pourra plus utiliser RC Companion et libérera sa place dans '
+            'le quota $platform.',
+        confirmLabel: 'Désactiver',
+      );
+    } else if (action == 'delete') {
+      confirmed = await _confirmDeviceAction(
+        title: 'Supprimer définitivement cet appareil ?',
+        message:
+            '$displayName sera retiré définitivement de la liste des appareils '
+            'enregistrés. S’il se reconnecte plus tard, il sera considéré '
+            'comme un nouvel appareil.',
+        confirmLabel: 'Supprimer',
+        destructive: true,
+      );
+    }
+
+    if (!confirmed || !mounted) return;
+
+    try {
+      await SupabaseService.client.rpc(
+        'rc_admin_manage_device',
+        params: <String, dynamic>{'p_device_row_id': rowId, 'p_action': action},
+      );
+
+      if (!mounted) return;
+
+      await _loadDevices();
+
+      if (!mounted) return;
+
+      final message = switch (action) {
+        'activate' => 'Appareil activé.',
+        'deactivate' => 'Appareil désactivé.',
+        'delete' => 'Appareil supprimé.',
+        _ => 'Appareil mis à jour.',
+      };
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Action impossible : ${error.toString()}')),
+      );
+    }
   }
 
   Widget _buildDevices() {
@@ -507,7 +924,56 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
                 '${_platformLabel(platform)}  •  '
                 'Dernière activité : ${_formatDate(device['last_seen_at'])}',
               ),
-              trailing: Chip(label: Text(active ? 'ACTIF' : 'INACTIF')),
+              trailing: Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Chip(label: Text(active ? 'ACTIVÉ' : 'DÉSACTIVÉ')),
+                  PopupMenuButton<String>(
+                    tooltip: 'Gérer cet appareil',
+                    onSelected: (action) => _manageDevice(device, action),
+                    itemBuilder: (context) => [
+                      if (active)
+                        const PopupMenuItem<String>(
+                          value: 'deactivate',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.pause_circle_outline_rounded),
+                            title: Text('Désactiver'),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        )
+                      else
+                        const PopupMenuItem<String>(
+                          value: 'activate',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.play_circle_outline_rounded),
+                            title: Text('Activer'),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem<String>(
+                        value: 'delete',
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(
+                            Icons.delete_forever_rounded,
+                            color: RCColors.accent,
+                          ),
+                          title: Text(
+                            'Supprimer',
+                            style: TextStyle(color: RCColors.accent),
+                          ),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
+                    icon: const Icon(Icons.more_vert_rounded),
+                  ),
+                ],
+              ),
             ),
           ),
         );

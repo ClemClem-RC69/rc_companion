@@ -380,6 +380,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         return;
       }
 
+      if (await _handleRemovedDeviceIfNeeded(result)) {
+        return;
+      }
+
       setState(() {
         gateState = _AccessGateState.blocked;
         accessResult = result;
@@ -401,6 +405,36 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
             'accessibles et seront vérifiées au prochain retour réseau.';
       });
     }
+  }
+
+  Future<bool> _handleRemovedDeviceIfNeeded(DeviceAccessResult result) async {
+    if (!result.wasRemovedByAdmin) {
+      return false;
+    }
+
+    await _stopDeviceAccessRealtime();
+
+    try {
+      await SupabaseService.client.auth.signOut();
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Erreur lors de la déconnexion d’un appareil supprimé : $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    if (!mounted) {
+      return true;
+    }
+
+    setState(() {
+      session = null;
+      gateState = _AccessGateState.signedOut;
+      accessResult = null;
+      accessError = null;
+    });
+
+    return true;
   }
 
   Future<void> _reactivateCurrentDevice() async {
@@ -429,7 +463,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   }
 
   void _startDeviceAccessRealtime() {
-    final userId = SupabaseService.client.auth.currentUser?.id;
+    final user = SupabaseService.client.auth.currentUser;
+    final userId = user?.id;
+    final normalizedEmail = user?.email?.trim().toLowerCase();
+
     if (userId == null || userId.isEmpty) {
       return;
     }
@@ -442,28 +479,45 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
     _deviceAccessChannel = channel;
 
-    channel
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'user_devices',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: userId,
-          ),
-          callback: (payload) {
-            if (!mounted) return;
-            _scheduleAccessRecheck();
-          },
-        )
-        .subscribe((status, error) {
-          if (error != null) {
-            debugPrint(
-              'Erreur Realtime de surveillance des appareils : $error',
-            );
-          }
-        });
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'user_devices',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'user_id',
+        value: userId,
+      ),
+      callback: (payload) {
+        if (!mounted) return;
+        _scheduleAccessRecheck();
+      },
+    );
+
+    if (normalizedEmail != null && normalizedEmail.isNotEmpty) {
+      channel.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'authorized_users',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'email_normalized',
+          value: normalizedEmail,
+        ),
+        callback: (payload) {
+          if (!mounted) return;
+          _scheduleAccessRecheck();
+        },
+      );
+    }
+
+    channel.subscribe((status, error) {
+      if (error != null) {
+        debugPrint(
+          'Erreur Realtime de surveillance des accès utilisateur : $error',
+        );
+      }
+    });
   }
 
   Future<void> _stopDeviceAccessRealtime() async {
@@ -526,6 +580,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
             accessError = null;
           });
         }
+        return;
+      }
+
+      if (await _handleRemovedDeviceIfNeeded(result)) {
         return;
       }
 
@@ -653,6 +711,11 @@ class _DeviceAccessBlockedPage extends StatelessWidget {
       message =
           'Un autre appareil ${_platformLabel(platform)} utilise actuellement '
           'la connexion autorisée pour ce compte.';
+    } else if (reason == 'device_disabled_by_admin') {
+      title = 'Appareil désactivé';
+      message =
+          'Cet appareil a été désactivé par l’administrateur RC Companion. '
+          'Il ne compte plus dans les appareils autorisés de cette plateforme.';
     } else if (reason == 'platform_not_allowed') {
       title = 'Plateforme non autorisée';
       message =
@@ -662,16 +725,22 @@ class _DeviceAccessBlockedPage extends StatelessWidget {
       title = 'Compte non autorisé';
       message =
           'Ce compte n’est plus autorisé à utiliser RC Companion. '
-          'Contactez l’administrateur.';
+          'Contactez l’administrateur.\n\n'
+          'Si l’administrateur vient de réactiver votre compte, fermez '
+          'complètement RC Companion puis relancez l’application.';
     }
 
-    if (maxActive != null && maxActive > 0) {
+    if (maxActive != null &&
+        maxActive > 0 &&
+        reason != 'device_disabled_by_admin') {
       message =
           '$message\n\nNombre de connexions simultanées autorisées sur cette '
           'plateforme : $maxActive.';
     }
 
-    if (serverMessage != null && serverMessage.isNotEmpty) {
+    if (serverMessage != null &&
+        serverMessage.isNotEmpty &&
+        reason != 'device_disabled_by_admin') {
       message = '$message\n\n$serverMessage';
     }
 
@@ -748,7 +817,7 @@ class _DeviceAccessBlockedPage extends StatelessWidget {
                       ],
                       TextButton(
                         onPressed: onSignOut,
-                        child: const Text('Se déconnecter'),
+                        child: const Text('Page d’identification'),
                       ),
                     ],
                   ),

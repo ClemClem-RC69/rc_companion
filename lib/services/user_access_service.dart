@@ -35,6 +35,14 @@ class DeviceAccessResult {
     if (value is int) return value;
     return int.tryParse(value?.toString() ?? '') ?? 0;
   }
+
+  bool get wasRemovedByAdmin => reason == 'device_removed';
+
+  bool get wasDisabledByAdmin => reason == 'device_disabled_by_admin';
+
+  bool get wasReplacedByQuota => reason == 'device_replaced';
+
+  bool get userIsNotAuthorized => reason == 'user_not_authorized';
 }
 
 class UserAccessService {
