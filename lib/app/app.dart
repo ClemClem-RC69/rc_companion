@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/auth/auth_page.dart';
+import '../features/admin/admin_page.dart';
 import '../features/dashboard/dashboard_page.dart';
 import '../services/battery_sync_service.dart';
 import '../services/supabase_service.dart';
@@ -182,7 +183,7 @@ class AuthGate extends StatefulWidget {
   State<AuthGate> createState() => _AuthGateState();
 }
 
-enum _AccessGateState { signedOut, checking, allowed, blocked }
+enum _AccessGateState { signedOut, checking, allowed, admin, blocked }
 
 class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   late final StreamSubscription<AuthState> authSubscription;
@@ -284,6 +285,22 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     await _checkExistingAccess(currentSession);
   }
 
+  Future<bool> _routeToAdminIfNeeded(Session activeSession) async {
+    final isAdmin = await UserAccessService.isCurrentUserAdmin();
+    if (!isAdmin || !mounted) return false;
+
+    await _stopDeviceAccessRealtime();
+    if (!mounted) return true;
+
+    setState(() {
+      session = activeSession;
+      gateState = _AccessGateState.admin;
+      accessResult = null;
+      accessError = null;
+    });
+    return true;
+  }
+
   Future<void> _activateAfterVoluntarySignIn(Session activeSession) async {
     if (!mounted) return;
 
@@ -295,6 +312,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     });
 
     try {
+      if (await _routeToAdminIfNeeded(activeSession)) return;
       final result = await UserAccessService.activateCurrentDevice();
 
       if (!mounted) return;
@@ -346,6 +364,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     });
 
     try {
+      if (await _routeToAdminIfNeeded(activeSession)) return;
       final result = await UserAccessService.checkCurrentDevice();
 
       if (!mounted) return;
@@ -492,6 +511,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
     _accessCheckRunning = true;
     try {
+      if (await _routeToAdminIfNeeded(currentSession)) return;
       final result = await UserAccessService.checkCurrentDevice();
 
       if (!mounted) return;
@@ -549,6 +569,9 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
       case _AccessGateState.allowed:
         return DashboardPage(key: ValueKey(session?.user.id ?? 'dashboard'));
+
+      case _AccessGateState.admin:
+        return const AdminPage();
 
       case _AccessGateState.blocked:
         return _DeviceAccessBlockedPage(

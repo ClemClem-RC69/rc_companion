@@ -147,6 +147,11 @@ class UserAccessService {
     return _asMap(response);
   }
 
+  static Future<bool> isCurrentUserAdmin() async {
+    final access = await myAccess();
+    return access['is_admin'] == true;
+  }
+
   static DeviceAccessResult _parseAccessResult(dynamic response) {
     final payload = _asMap(response);
 
