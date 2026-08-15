@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'supabase_service.dart';
@@ -72,9 +73,75 @@ class UserAccessService {
     );
   }
 
-  static String get deviceName {
-    final hostname = Platform.localHostname.trim();
+  static Future<String> deviceName() async {
+    final deviceInfo = DeviceInfoPlugin();
 
+    try {
+      if (Platform.isAndroid) {
+        final info = await deviceInfo.androidInfo;
+        final manufacturer = _cleanDevicePart(info.manufacturer);
+        final model = _cleanDevicePart(info.model);
+
+        if (manufacturer.isNotEmpty && model.isNotEmpty) {
+          if (model.toLowerCase().startsWith(manufacturer.toLowerCase())) {
+            return model;
+          }
+          return '${_capitalizeManufacturer(manufacturer)} $model';
+        }
+
+        if (model.isNotEmpty) {
+          return model;
+        }
+
+        final name = _cleanDevicePart(info.name);
+        if (name.isNotEmpty) {
+          return name;
+        }
+      }
+
+      if (Platform.isIOS) {
+        final info = await deviceInfo.iosInfo;
+        final modelName = _cleanDevicePart(info.modelName);
+        if (modelName.isNotEmpty) {
+          return modelName;
+        }
+
+        final model = _cleanDevicePart(info.model);
+        if (model.isNotEmpty) {
+          return model;
+        }
+      }
+
+      if (Platform.isMacOS) {
+        final info = await deviceInfo.macOsInfo;
+        final modelName = _cleanDevicePart(info.modelName);
+        final computerName = _cleanDevicePart(info.computerName);
+
+        if (modelName.isNotEmpty && computerName.isNotEmpty) {
+          return '$modelName — $computerName';
+        }
+
+        if (modelName.isNotEmpty) {
+          return modelName;
+        }
+
+        if (computerName.isNotEmpty) {
+          return computerName;
+        }
+      }
+
+      if (Platform.isWindows) {
+        final info = await deviceInfo.windowsInfo;
+        final computerName = _cleanDevicePart(info.computerName);
+        if (computerName.isNotEmpty) {
+          return computerName;
+        }
+      }
+    } catch (_) {
+      // En cas d'échec du plugin, RC Companion conserve un nom de secours.
+    }
+
+    final hostname = Platform.localHostname.trim();
     if (hostname.isNotEmpty && hostname.toLowerCase() != 'localhost') {
       return hostname;
     }
@@ -93,19 +160,42 @@ class UserAccessService {
     return 'Appareil RC Companion';
   }
 
+  static String _cleanDevicePart(String value) {
+    final cleaned = value.trim();
+    if (cleaned.isEmpty ||
+        cleaned.toLowerCase() == 'unknown' ||
+        cleaned.toLowerCase() == 'generic') {
+      return '';
+    }
+    return cleaned;
+  }
+
+  static String _capitalizeManufacturer(String value) {
+    if (value.isEmpty) {
+      return value;
+    }
+
+    if (value.toLowerCase() == value) {
+      return '${value[0].toUpperCase()}${value.substring(1)}';
+    }
+
+    return value;
+  }
+
   /// À appeler uniquement après une connexion volontaire de l’utilisateur.
   ///
   /// Cette fonction peut prendre la place d’un autre appareil actif
   /// de la même plateforme lorsque le quota est atteint.
   static Future<DeviceAccessResult> activateCurrentDevice() async {
     final id = await installationId();
+    final resolvedDeviceName = await deviceName();
 
     final response = await SupabaseService.client.rpc(
       'rc_activate_device',
       params: <String, dynamic>{
         'p_platform': platform,
         'p_device_id': id,
-        'p_device_name': deviceName,
+        'p_device_name': resolvedDeviceName,
       },
     );
 
