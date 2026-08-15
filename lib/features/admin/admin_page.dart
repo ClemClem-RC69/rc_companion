@@ -205,61 +205,48 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
   String? _error;
   List<Map<String, dynamic>> _devices = const [];
   RealtimeChannel? _devicesChannel;
-  Timer? _devicesReloadDebounce;
+  Timer? _devicesWatchdog;
 
   @override
   void initState() {
     super.initState();
     _loadDevices();
-    _startDevicesRealtime();
+    _subscribeToDeviceChanges();
+    _devicesWatchdog = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      _loadDevices(showLoading: false);
+    });
   }
 
-  void _startDevicesRealtime() {
+  void _subscribeToDeviceChanges() {
     final authUserId = widget.user['auth_user_id']?.toString().trim();
     if (authUserId == null || authUserId.isEmpty) return;
 
-    final channel = SupabaseService.client.channel(
-      'admin-user-devices-$authUserId-${DateTime.now().microsecondsSinceEpoch}',
-    );
-
-    _devicesChannel = channel;
-
-    channel.onPostgresChanges(
-      event: PostgresChangeEvent.all,
-      schema: 'public',
-      table: 'user_devices',
-      filter: PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'user_id',
-        value: authUserId,
-      ),
-      callback: (payload) {
-        if (!mounted) return;
-        _devicesReloadDebounce?.cancel();
-        _devicesReloadDebounce = Timer(const Duration(milliseconds: 250), () {
-          if (mounted) {
-            unawaited(_loadDevices());
-          }
-        });
-      },
-    );
-
-    channel.subscribe((status, error) {
-      if (error != null) {
-        debugPrint(
-          'Erreur Realtime de surveillance des appareils Admin : $error',
-        );
-      }
-    });
+    _devicesChannel = SupabaseService.client
+        .channel('admin-user-devices-$authUserId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'user_devices',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: authUserId,
+          ),
+          callback: (_) {
+            if (!mounted) return;
+            _loadDevices(showLoading: false);
+          },
+        )
+        .subscribe();
   }
 
   @override
   void dispose() {
-    _devicesReloadDebounce?.cancel();
+    _devicesWatchdog?.cancel();
     final channel = _devicesChannel;
-    _devicesChannel = null;
     if (channel != null) {
-      unawaited(SupabaseService.client.removeChannel(channel));
+      SupabaseService.client.removeChannel(channel);
     }
     super.dispose();
   }
@@ -271,7 +258,7 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
         : value.toString();
   }
 
-  Future<void> _loadDevices() async {
+  Future<void> _loadDevices({bool showLoading = true}) async {
     final authUserId = widget.user['auth_user_id']?.toString().trim();
 
     if (authUserId == null || authUserId.isEmpty) {
@@ -283,10 +270,12 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
       return;
     }
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (showLoading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     try {
       final response = await SupabaseService.client.rpc(

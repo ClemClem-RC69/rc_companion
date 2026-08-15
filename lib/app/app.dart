@@ -190,6 +190,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   StreamSubscription<List<ConnectivityResult>>? connectivitySubscription;
   RealtimeChannel? _deviceAccessChannel;
   Timer? _accessRecheckDebounce;
+  Timer? _accessWatchdog;
 
   Session? session;
   _AccessGateState gateState = _AccessGateState.signedOut;
@@ -239,6 +240,11 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     if (session != null) {
       _startDeviceAccessRealtime();
     }
+
+    _accessWatchdog = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || session == null) return;
+      unawaited(_recheckCurrentDevice());
+    });
   }
 
   Future<void> _handleAuthStateChange(AuthState data) async {
@@ -610,6 +616,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _accessRecheckDebounce?.cancel();
+    _accessWatchdog?.cancel();
     connectivitySubscription?.cancel();
     authSubscription.cancel();
     unawaited(_stopDeviceAccessRealtime());
@@ -712,27 +719,28 @@ class _DeviceAccessBlockedPage extends StatelessWidget {
           'Un autre appareil ${_platformLabel(platform)} utilise actuellement '
           'la connexion autorisée pour ce compte.';
     } else if (reason == 'device_disabled_by_admin') {
-      title = 'Appareil désactivé';
+      title = 'Appareil bloqué';
       message =
-          'Cet appareil a été désactivé par l’administrateur RC Companion. '
-          'Il ne compte plus dans les appareils autorisés de cette plateforme.';
+          'Cet appareil a été bloqué par l’administrateur RC Companion. '
+          'Il ne peut plus synchroniser ses données tant qu’il n’a pas été '
+          'réactivé.';
     } else if (reason == 'platform_not_allowed') {
       title = 'Plateforme non autorisée';
       message =
           'Ce compte ne possède actuellement aucune autorisation pour '
           '${_platformLabel(platform)}.';
     } else if (reason == 'user_not_authorized') {
-      title = 'Compte non autorisé';
+      title = 'Compte bloqué';
       message =
-          'Ce compte n’est plus autorisé à utiliser RC Companion. '
-          'Contactez l’administrateur.\n\n'
-          'Si l’administrateur vient de réactiver votre compte, fermez '
-          'complètement RC Companion puis relancez l’application.';
+          'Ce compte a été bloqué par l’administrateur RC Companion. '
+          'Il ne peut plus synchroniser ses données tant qu’il n’a pas été '
+          'réactivé.';
     }
 
     if (maxActive != null &&
         maxActive > 0 &&
-        reason != 'device_disabled_by_admin') {
+        reason != 'device_disabled_by_admin' &&
+        reason != 'user_not_authorized') {
       message =
           '$message\n\nNombre de connexions simultanées autorisées sur cette '
           'plateforme : $maxActive.';
@@ -740,7 +748,8 @@ class _DeviceAccessBlockedPage extends StatelessWidget {
 
     if (serverMessage != null &&
         serverMessage.isNotEmpty &&
-        reason != 'device_disabled_by_admin') {
+        reason != 'device_disabled_by_admin' &&
+        reason != 'user_not_authorized') {
       message = '$message\n\n$serverMessage';
     }
 
@@ -782,9 +791,11 @@ class _DeviceAccessBlockedPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        'Les données déjà enregistrées hors ligne sur cet '
-                        'appareil restent conservées localement. Elles ne sont '
-                        'pas supprimées.',
+                        'Les données déjà enregistrées sur cet appareil restent '
+                        'conservées localement et ne sont pas supprimées. Les '
+                        'nouvelles données saisies hors ligne restent également '
+                        'conservées sur cet appareil et seront synchronisées '
+                        'après la réactivation.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
@@ -815,10 +826,31 @@ class _DeviceAccessBlockedPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 18),
                       ],
-                      TextButton(
-                        onPressed: onSignOut,
-                        child: const Text('Page d’identification'),
-                      ),
+                      if (reason == 'device_disabled_by_admin' ||
+                          reason == 'user_not_authorized')
+                        const Column(
+                          children: [
+                            Text(
+                              'Contacter l’administrateur',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontWeight: FontWeight.w900),
+                            ),
+                            SizedBox(height: 6),
+                            SelectableText(
+                              'rccompanion.app@gmail.com',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: RCColors.primaryLight,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        TextButton(
+                          onPressed: onSignOut,
+                          child: const Text('Se déconnecter'),
+                        ),
                     ],
                   ),
                 ),
