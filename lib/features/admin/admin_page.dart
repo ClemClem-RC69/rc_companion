@@ -140,6 +140,8 @@ class _AdminPageState extends State<AdminPage> {
       itemBuilder: (context, index) {
         final row = _users[index];
         final admin = row['is_admin'] == true;
+        final email = _value(row, 'email').toLowerCase();
+        final owner = email == 'clementgabriac@gmail.com';
         return Card(
           child: ListTile(
             onTap: () async {
@@ -156,7 +158,11 @@ class _AdminPageState extends State<AdminPage> {
               vertical: 10,
             ),
             leading: Icon(
-              admin ? Icons.admin_panel_settings_rounded : Icons.person_rounded,
+              owner
+                  ? Icons.workspace_premium_rounded
+                  : (admin
+                        ? Icons.admin_panel_settings_rounded
+                        : Icons.person_rounded),
             ),
             title: Text(
               _value(row, 'pseudo') == '—'
@@ -180,9 +186,11 @@ class _AdminPageState extends State<AdminPage> {
               ),
             ),
             trailing: Text(
-              admin
-                  ? 'ADMIN'
-                  : (row['enabled'] == false ? 'DÉSACTIVÉ' : 'ACTIF'),
+              owner
+                  ? 'PROPRIÉTAIRE • ILLIMITÉ'
+                  : (admin
+                        ? 'ADMIN'
+                        : (row['enabled'] == false ? 'DÉSACTIVÉ' : 'ACTIF')),
             ),
           ),
         );
@@ -383,12 +391,18 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
   bool get _isProtectedAdminAccount =>
       _value('email').toLowerCase() == 'rccompanion.app@gmail.com';
 
+  bool get _isProtectedOwnerAccount =>
+      _value('email').toLowerCase() == 'clementgabriac@gmail.com';
+
+  bool get _isProtectedAccount =>
+      _isProtectedAdminAccount || _isProtectedOwnerAccount;
+
   Future<void> _editUser() async {
-    if (_isProtectedAdminAccount) {
+    if (_isProtectedAccount) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Le compte RC Companion Admin est protégé et ne peut pas être modifié ici.',
+            'Ce compte RC Companion est protégé et ne peut pas être modifié ici.',
           ),
         ),
       );
@@ -613,12 +627,13 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
     final email = _value('email');
     final admin = widget.user['is_admin'] == true;
     final enabled = widget.user['enabled'] != false;
+    final owner = _isProtectedOwnerAccount;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(pseudo == '—' ? email : pseudo),
         actions: [
-          if (!_isProtectedAdminAccount)
+          if (!_isProtectedAccount)
             TextButton.icon(
               onPressed: _editUser,
               icon: const Icon(Icons.edit_rounded),
@@ -642,9 +657,11 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
                 child: Row(
                   children: [
                     Icon(
-                      admin
-                          ? Icons.admin_panel_settings_rounded
-                          : Icons.person_rounded,
+                      owner
+                          ? Icons.workspace_premium_rounded
+                          : (admin
+                                ? Icons.admin_panel_settings_rounded
+                                : Icons.person_rounded),
                       size: 42,
                     ),
                     const SizedBox(width: 16),
@@ -673,7 +690,11 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
                     ),
                     Chip(
                       label: Text(
-                        admin ? 'ADMIN' : (enabled ? 'ACTIF' : 'DÉSACTIVÉ'),
+                        owner
+                            ? 'PROPRIÉTAIRE • ILLIMITÉ'
+                            : (admin
+                                  ? 'ADMIN'
+                                  : (enabled ? 'ACTIF' : 'DÉSACTIVÉ')),
                       ),
                     ),
                   ],
@@ -690,23 +711,51 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
                 ),
               ),
             ],
+            if (_isProtectedOwnerAccount) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Compte propriétaire protégé : accès illimité sur Android, Windows, macOS et iPhone / iPad. Ce compte n’est pas administrateur et ses autorisations ne sont pas modifiables depuis cette fiche.',
+                style: TextStyle(
+                  color: RCColors.textSecondary,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             const Text(
               'Autorisations par plateforme',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                _quota('Android', 'max_android'),
-                const SizedBox(width: 10),
-                _quota('Windows', 'max_windows'),
-                const SizedBox(width: 10),
-                _quota('macOS', 'max_macos'),
-                const SizedBox(width: 10),
-                _quota('iOS', 'max_ios'),
-              ],
-            ),
+            if (_isProtectedOwnerAccount)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.all_inclusive_rounded),
+                      SizedBox(width: 10),
+                      Text(
+                        'ILLIMITÉ • Android • Windows • macOS • iPhone / iPad',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Row(
+                children: [
+                  _quota('Android', 'max_android'),
+                  const SizedBox(width: 10),
+                  _quota('Windows', 'max_windows'),
+                  const SizedBox(width: 10),
+                  _quota('macOS', 'max_macos'),
+                  const SizedBox(width: 10),
+                  _quota('iOS', 'max_ios'),
+                ],
+              ),
             const SizedBox(height: 22),
             Row(
               children: [
