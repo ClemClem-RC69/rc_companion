@@ -1,5 +1,6 @@
 ; RC Companion - Installateur personnel Windows
-; MySource et MyOutput sont fournis par GitHub Actions via /D.
+; Généré pour le build GitHub Actions.
+; MySource et MyOutput sont fournis par le workflow via /D.
 
 #ifndef MySource
   #error MySource is required
@@ -50,12 +51,11 @@ Name: "{autodesktop}\RC Companion"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Tasks]
 Name: "desktopicon"; Description: "Créer une icône sur le Bureau"; GroupDescription: "Icônes supplémentaires :"; Flags: unchecked
 
-
 [Registry]
 Root: HKCR; Subkey: "rccompanion"; ValueType: string; ValueName: ""; ValueData: "URL:RC Companion Protocol"; Flags: uninsdeletekey
 Root: HKCR; Subkey: "rccompanion"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCR; Subkey: "rccompanion\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"
-Root: HKCR; Subkey: "rccompanion\shell\open\command"; ValueType: string; ValueName: ""; ValueData: "\"{app}\{#MyAppExeName}\" \"%1\""
+Root: HKCR; Subkey: "rccompanion\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Lancer RC Companion"; Flags: nowait postinstall skipifsilent
