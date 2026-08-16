@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/app.dart';
 import '../../services/supabase_service.dart';
@@ -633,6 +634,26 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
     }
   }
 
+  Future<void> _removeDeletedEmailFromLocalMemory(String email) async {
+    const rememberedKey = 'rc_remembered_login_emails_v1';
+    const lastKey = 'rc_last_remembered_login_email_v1';
+
+    final normalized = email.trim().toLowerCase();
+    final prefs = await SharedPreferences.getInstance();
+
+    final remembered =
+        (prefs.getStringList(rememberedKey) ?? const <String>[])
+            .where((item) => item.trim().toLowerCase() != normalized)
+            .toList()
+          ..sort();
+
+    await prefs.setStringList(rememberedKey, remembered);
+
+    if (prefs.getString(lastKey)?.trim().toLowerCase() == normalized) {
+      await prefs.remove(lastKey);
+    }
+  }
+
   Future<void> _deleteUserAccount() async {
     if (_isProtectedAccount) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -759,6 +780,10 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
           'La suppression n’a pas été confirmée par le serveur.',
         );
       }
+
+      await _removeDeletedEmailFromLocalMemory(email);
+
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

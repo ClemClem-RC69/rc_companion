@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/supabase_service.dart';
 
@@ -11,6 +12,9 @@ class AuthPage extends StatefulWidget {
 }
 
 class _AuthPageState extends State<AuthPage> {
+  static const _rememberedEmailsKey = 'rc_remembered_login_emails_v1';
+  static const _lastRememberedEmailKey = 'rc_last_remembered_login_email_v1';
+
   final identifierController = TextEditingController();
   final emailController = TextEditingController();
   final pseudoController = TextEditingController();
@@ -23,6 +27,83 @@ class _AuthPageState extends State<AuthPage> {
   bool hideConfirmPassword = true;
   bool rememberMe = true;
   bool acceptTerms = false;
+  bool showRememberedEmails = false;
+  List<String> rememberedEmails = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberedEmails();
+  }
+
+  Future<void> _loadRememberedEmails() async {
+    final prefs = await SharedPreferences.getInstance();
+    final emails =
+        (prefs.getStringList(_rememberedEmailsKey) ?? const <String>[])
+            .map((email) => email.trim().toLowerCase())
+            .where((email) => email.contains('@'))
+            .toSet()
+            .toList()
+          ..sort();
+
+    final lastEmail = prefs
+        .getString(_lastRememberedEmailKey)
+        ?.trim()
+        .toLowerCase();
+
+    if (!mounted) return;
+
+    setState(() {
+      rememberedEmails = emails;
+      if (identifierController.text.trim().isEmpty &&
+          lastEmail != null &&
+          emails.contains(lastEmail)) {
+        identifierController.text = lastEmail;
+      }
+    });
+  }
+
+  Future<void> _rememberSuccessfulLogin(String email) async {
+    final normalized = email.trim().toLowerCase();
+    final prefs = await SharedPreferences.getInstance();
+    final emails = <String>{...rememberedEmails};
+
+    if (rememberMe) {
+      emails.add(normalized);
+      await prefs.setString(_lastRememberedEmailKey, normalized);
+    } else {
+      emails.remove(normalized);
+      final lastEmail = prefs.getString(_lastRememberedEmailKey);
+      if (lastEmail == normalized) {
+        await prefs.remove(_lastRememberedEmailKey);
+      }
+    }
+
+    final sorted = emails.toList()..sort();
+    await prefs.setStringList(_rememberedEmailsKey, sorted);
+
+    if (!mounted) return;
+    setState(() => rememberedEmails = sorted);
+  }
+
+  Future<void> _forgetRememberedEmail(String email) async {
+    final normalized = email.trim().toLowerCase();
+    final prefs = await SharedPreferences.getInstance();
+    final emails =
+        rememberedEmails
+            .where((item) => item.toLowerCase() != normalized)
+            .toList()
+          ..sort();
+
+    await prefs.setStringList(_rememberedEmailsKey, emails);
+
+    if (prefs.getString(_lastRememberedEmailKey)?.toLowerCase() == normalized) {
+      await prefs.remove(_lastRememberedEmailKey);
+    }
+
+    if (!mounted) return;
+    setState(() => rememberedEmails = emails);
+  }
 
   @override
   void dispose() {
@@ -56,12 +137,13 @@ class _AuthPageState extends State<AuthPage> {
         return;
       }
 
-      await _runAuthAction(
-        () => SupabaseService.client.auth.signInWithPassword(
+      await _runAuthAction(() async {
+        await SupabaseService.client.auth.signInWithPassword(
           email: identifier,
           password: password,
-        ),
-      );
+        );
+        await _rememberSuccessfulLogin(identifier);
+      });
       return;
     }
 
@@ -210,12 +292,101 @@ class _AuthPageState extends State<AuthPage> {
                               controller: identifierController,
                               label: 'Adresse e-mail',
                               icon: Icons.person_outline_rounded,
+                              keyboardType: TextInputType.emailAddress,
                               inputAction: TextInputAction.next,
                               autofillHints: const [
                                 AutofillHints.username,
                                 AutofillHints.email,
                               ],
+                              suffixIcon: IconButton(
+                                tooltip: 'Adresses mémorisées',
+                                onPressed: isLoading
+                                    ? null
+                                    : () {
+                                        if (rememberedEmails.isEmpty) {
+                                          _showMessage(
+                                            'Aucune adresse e-mail mémorisée sur cet appareil.',
+                                          );
+                                          return;
+                                        }
+                                        setState(
+                                          () => showRememberedEmails =
+                                              !showRememberedEmails,
+                                        );
+                                      },
+                                icon: Icon(
+                                  showRememberedEmails
+                                      ? Icons.arrow_drop_up_rounded
+                                      : Icons.arrow_drop_down_rounded,
+                                ),
+                              ),
                             ),
+                            if (showRememberedEmails &&
+                                rememberedEmails.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0B1A2E),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: const Color(0xFF34506F),
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    for (
+                                      var index = 0;
+                                      index < rememberedEmails.length;
+                                      index++
+                                    ) ...[
+                                      ListTile(
+                                        dense: true,
+                                        visualDensity: VisualDensity.compact,
+                                        leading: const Icon(
+                                          Icons.account_circle_outlined,
+                                          size: 20,
+                                        ),
+                                        title: Text(
+                                          rememberedEmails[index],
+                                          style: const TextStyle(fontSize: 13),
+                                        ),
+                                        onTap: () {
+                                          setState(() {
+                                            identifierController.text =
+                                                rememberedEmails[index];
+                                            rememberMe = true;
+                                            showRememberedEmails = false;
+                                          });
+                                        },
+                                        trailing: IconButton(
+                                          tooltip: 'Retirer de cette liste',
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: () async {
+                                            final email =
+                                                rememberedEmails[index];
+                                            await _forgetRememberedEmail(email);
+                                            if (!mounted) return;
+                                            if (rememberedEmails.isEmpty) {
+                                              setState(
+                                                () => showRememberedEmails =
+                                                    false,
+                                              );
+                                            }
+                                          },
+                                          icon: const Icon(
+                                            Icons.close_rounded,
+                                            size: 18,
+                                          ),
+                                        ),
+                                      ),
+                                      if (index < rememberedEmails.length - 1)
+                                        const Divider(height: 1),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 12),
                             _passwordField(
                               controller: passwordController,
@@ -391,13 +562,18 @@ class _AuthPageState extends State<AuthPage> {
     TextInputType? keyboardType,
     TextInputAction? inputAction,
     Iterable<String>? autofillHints,
+    Widget? suffixIcon,
   }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       textInputAction: inputAction,
       autofillHints: autofillHints,
-      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        suffixIcon: suffixIcon,
+      ),
     );
   }
 
