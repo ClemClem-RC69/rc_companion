@@ -183,7 +183,14 @@ class AuthGate extends StatefulWidget {
   State<AuthGate> createState() => _AuthGateState();
 }
 
-enum _AccessGateState { signedOut, checking, allowed, admin, blocked }
+enum _AccessGateState {
+  signedOut,
+  checking,
+  allowed,
+  admin,
+  blocked,
+  passwordRecovery,
+}
 
 class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   late final StreamSubscription<AuthState> authSubscription;
@@ -267,6 +274,29 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       }
 
       session = nextSession;
+
+      if (data.event == AuthChangeEvent.passwordRecovery) {
+        await _stopDeviceAccessRealtime();
+        if (!mounted) return;
+        setState(() {
+          session = nextSession;
+          gateState = _AccessGateState.passwordRecovery;
+          accessResult = null;
+          accessError = null;
+        });
+        return;
+      }
+
+      // Pendant la récupération, updateUser() peut émettre un événement
+      // d'authentification supplémentaire avant que _finishPasswordRecovery()
+      // n'ait le temps de fermer la session temporaire. Tant que l'écran de
+      // récupération est actif, aucun de ces événements ne doit router vers
+      // le Dashboard ou l'administration.
+      if (gateState == _AccessGateState.passwordRecovery) {
+        session = nextSession;
+        return;
+      }
+
       _startDeviceAccessRealtime();
 
       // Une connexion volontaire peut prendre la place d’un autre appareil
@@ -450,6 +480,26 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     await _activateAfterVoluntarySignIn(currentSession);
   }
 
+  Future<void> _finishPasswordRecovery() async {
+    try {
+      await SupabaseService.client.auth.signOut();
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Erreur lors de la fermeture de la session de récupération : $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      session = null;
+      gateState = _AccessGateState.signedOut;
+      accessResult = null;
+      accessError = null;
+    });
+  }
+
   Future<void> _signOutFromBlockedPage() async {
     try {
       await SupabaseService.client.auth.signOut();
@@ -560,7 +610,9 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   }
 
   Future<void> _recheckCurrentDevice() async {
-    if (_accessCheckRunning || _handlingAuthEvent) {
+    if (_accessCheckRunning ||
+        _handlingAuthEvent ||
+        gateState == _AccessGateState.passwordRecovery) {
       return;
     }
 
@@ -643,6 +695,12 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
           result: accessResult,
           onReactivate: _reactivateCurrentDevice,
           onSignOut: _signOutFromBlockedPage,
+        );
+
+      case _AccessGateState.passwordRecovery:
+        return AuthPage(
+          passwordRecoveryMode: true,
+          onPasswordResetComplete: _finishPasswordRecovery,
         );
     }
   }

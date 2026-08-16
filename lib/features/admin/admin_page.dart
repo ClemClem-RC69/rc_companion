@@ -888,53 +888,80 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final mediaQuery = MediaQuery.of(dialogContext);
+            final isPhone = mediaQuery.size.width < 600;
+            final keyboardHeight = mediaQuery.viewInsets.bottom;
+            final maxDialogHeight =
+                mediaQuery.size.height - keyboardHeight - (isPhone ? 32 : 64);
+
             return AlertDialog(
+              insetPadding: EdgeInsets.symmetric(
+                horizontal: isPhone ? 16 : 40,
+                vertical: isPhone ? 16 : 24,
+              ),
               title: const Text('Supprimer définitivement ce compte ?'),
-              content: SizedBox(
-                width: 560,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      email,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
+              content: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 560,
+                  maxHeight: maxDialogHeight.clamp(220.0, 700.0),
+                ),
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        email,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Cette action est définitive. Le compte utilisateur, ses '
-                      'appareils et toutes ses données serveur RC Companion '
-                      'seront supprimés. Cette opération est irréversible.',
-                      style: TextStyle(
-                        color: RCColors.textSecondary,
-                        height: 1.4,
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Cette action est définitive. Le compte utilisateur, ses '
+                        'appareils et toutes ses données serveur RC Companion '
+                        'seront supprimés. Cette opération est irréversible.',
+                        style: TextStyle(
+                          color: RCColors.textSecondary,
+                          height: 1.4,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Pour confirmer, saisissez SUPPRIMER :',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: confirmController,
-                      autofocus: true,
-                      autocorrect: false,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(hintText: 'SUPPRIMER'),
-                      onChanged: (value) {
-                        final next = value.trim().toUpperCase() == 'SUPPRIMER';
-                        if (next != canDelete) {
-                          setDialogState(() => canDelete = next);
-                        }
-                      },
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Pour confirmer, saisissez SUPPRIMER :',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: confirmController,
+                        autofocus: true,
+                        autocorrect: false,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: const InputDecoration(
+                          hintText: 'SUPPRIMER',
+                        ),
+                        onChanged: (value) {
+                          final next =
+                              value.trim().toUpperCase() == 'SUPPRIMER';
+                          if (next != canDelete) {
+                            setDialogState(() => canDelete = next);
+                          }
+                        },
+                        onSubmitted: (_) {
+                          if (canDelete) {
+                            Navigator.of(dialogContext).pop(true);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              actionsOverflowAlignment: OverflowBarAlignment.end,
+              actionsOverflowDirection: VerticalDirection.down,
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(false),
