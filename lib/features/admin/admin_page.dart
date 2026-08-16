@@ -534,6 +534,18 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
                 ),
               ),
               actions: [
+                if (!_isProtectedAccount)
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      Future<void>.delayed(Duration.zero, _deleteUserAccount);
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: RCColors.accent,
+                    ),
+                    icon: const Icon(Icons.delete_forever_rounded),
+                    label: const Text('Supprimer le compte'),
+                  ),
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(),
                   child: const Text('Annuler'),
@@ -617,6 +629,151 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Modification impossible : $error')),
+      );
+    }
+  }
+
+  Future<void> _deleteUserAccount() async {
+    if (_isProtectedAccount) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ce compte RC Companion est protégé et ne peut pas être supprimé.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final authUserId = widget.user['auth_user_id']?.toString().trim();
+    final email = _value('email').trim();
+
+    if (authUserId == null || authUserId.isEmpty || email == '—') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Suppression impossible : compte Authentication introuvable.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        var canDelete = false;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Supprimer définitivement ce compte ?'),
+              content: SizedBox(
+                width: 560,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      email,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Cette action est définitive. Le compte utilisateur, ses '
+                      'appareils et toutes ses données serveur RC Companion '
+                      'seront supprimés. Cette opération est irréversible.',
+                      style: TextStyle(
+                        color: RCColors.textSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Pour confirmer, saisissez SUPPRIMER :',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: confirmController,
+                      autofocus: true,
+                      autocorrect: false,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: const InputDecoration(hintText: 'SUPPRIMER'),
+                      onChanged: (value) {
+                        final next = value.trim().toUpperCase() == 'SUPPRIMER';
+                        if (next != canDelete) {
+                          setDialogState(() => canDelete = next);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton.icon(
+                  onPressed: canDelete
+                      ? () => Navigator.of(dialogContext).pop(true)
+                      : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: RCColors.accent,
+                  ),
+                  icon: const Icon(Icons.delete_forever_rounded),
+                  label: const Text('Supprimer définitivement'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    confirmController.dispose();
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final response = await SupabaseService.client.rpc(
+        'rc_admin_delete_user',
+        params: <String, dynamic>{
+          'p_auth_user_id': authUserId,
+          'p_email': email,
+        },
+      );
+
+      if (!mounted) return;
+
+      final deleted = response is Map && response['deleted'] == true;
+      if (!deleted) {
+        throw StateError(
+          'La suppression n’a pas été confirmée par le serveur.',
+        );
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Compte utilisateur et données supprimés définitivement.',
+          ),
+        ),
+      );
+
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Suppression impossible : $error')),
       );
     }
   }
