@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../legal/rc_legal_documents.dart';
+
 class InfoPage extends StatelessWidget {
   const InfoPage({super.key});
 
@@ -7,276 +9,9 @@ class InfoPage extends StatelessWidget {
   static const String batteryHealthVersion = 'V1.2';
   static const String batteryCompatibilityVersion = 'V1.0';
   static const String batteryChargeStateVersion = 'V1.1';
-  static const String offlineArchitectureVersion = 'V1.1';
-  static const String authenticationVersion = 'V1.0';
+  static const String offlineArchitectureVersion = 'V1.2';
+  static const String authenticationVersion = 'V1.1';
   static const String lastUpdate = 'Août 2026';
-
-  static const String _termsOfUseV1 = """
-CONDITIONS D’UTILISATION — RC COMPANION
-
-Version du 16 août 2026
-
-1. Objet
-
-RC Companion est une application de gestion destinée au modélisme radiocommandé. Elle permet notamment d’enregistrer et d’organiser des informations relatives aux modèles RC, batteries, sessions d’utilisation, opérations de maintenance, documents et autres éléments proposés par l’application.
-
-RC Companion constitue exclusivement un outil d’organisation, de suivi et d’aide à la gestion. L’application ne constitue pas un dispositif de sécurité, de diagnostic, de certification ou de contrôle technique.
-
-2. Acceptation des conditions
-
-La création d’un compte nécessite l’acceptation des présentes Conditions d’utilisation.
-
-L’utilisateur reconnaît les avoir consultées avant de créer son compte.
-
-3. Compte utilisateur
-
-L’utilisateur doit fournir une adresse e-mail valide à laquelle il a accès et est responsable de la confidentialité de ses identifiants et de son mot de passe.
-
-Il lui appartient de protéger l’accès aux appareils sur lesquels RC Companion est installé et de signaler ou désactiver, lorsque les fonctionnalités disponibles le permettent, un appareil qui ne devrait plus accéder à son compte.
-
-4. Informations enregistrées
-
-L’utilisateur demeure responsable de l’exactitude des informations qu’il saisit dans RC Companion.
-
-Certaines informations affichées par l’application peuvent résulter de calculs, de données antérieurement enregistrées ou de synchronisations entre appareils.
-
-Malgré les contrôles réalisés par l’application, une information peut être incomplète, incorrecte, obsolète ou temporairement non synchronisée.
-
-Toute information susceptible d’influencer la sécurité ou l’utilisation d’un équipement doit être vérifiée par l’utilisateur avant utilisation du matériel.
-
-5. Batteries
-
-Les fonctions relatives aux batteries constituent uniquement des outils de suivi.
-
-Les indications telles que l’état de charge, le pourcentage restant, les tensions, résistances internes, températures, compatibilités, état de santé ou toute autre information affichée par RC Companion ne constituent aucune certification de l’état ou de la sécurité d’une batterie.
-
-Une batterie indiquée comme « Bonne », « Chargée », « Storage », compatible ou présentant toute autre indication favorable peut néanmoins être endommagée, défectueuse ou dangereuse.
-
-L’utilisateur reste seul responsable du contrôle physique de ses batteries ainsi que de leur choix, branchement, charge, décharge, équilibrage, stockage, transport, entretien et utilisation conformément notamment aux instructions des fabricants.
-
-RC Companion ne remplace ni un chargeur adapté, ni un appareil de mesure, ni les contrôles de sécurité nécessaires.
-
-6. Modèles radiocommandés et autres équipements
-
-RC Companion ne garantit jamais qu’un modèle radiocommandé, une batterie, un système radio, un chargeur ou tout autre équipement est en état de fonctionner ou peut être utilisé en sécurité.
-
-Les historiques de sessions et de maintenance, compteurs, rappels et informations enregistrées ne remplacent pas l’inspection du matériel.
-
-L’utilisateur demeure responsable de l’état mécanique, électrique et électronique de son matériel avant et pendant son utilisation.
-
-7. Utilisation des modèles RC
-
-L’utilisateur est seul responsable de l’utilisation de ses modèles radiocommandés et doit respecter les règles de sécurité, les recommandations des fabricants et la réglementation applicable au lieu et au matériel utilisés.
-
-Il lui appartient notamment de s’assurer que son utilisation ne présente pas de danger pour les personnes, les animaux, les biens ou l’environnement.
-
-8. Fonctionnement hors ligne et synchronisation
-
-RC Companion est conçu pour permettre certaines utilisations locales et une synchronisation des données lorsque les conditions techniques nécessaires sont réunies.
-
-Une synchronisation immédiate ou permanente entre plusieurs appareils ne peut cependant être garantie.
-
-Une absence de connexion, une interruption réseau, l’indisponibilité d’un service tiers, un conflit de données, un dysfonctionnement matériel ou logiciel ou tout autre incident technique peut retarder ou empêcher temporairement une synchronisation.
-
-9. Données et fichiers
-
-Les données structurées nécessaires au fonctionnement de RC Companion peuvent être enregistrées localement sur les appareils et synchronisées au moyen de l’infrastructure utilisée par RC Companion.
-
-Elles ne constituent pas une sauvegarde Google Drive et ne sont pas présentées comme exportables par l’utilisateur sous la forme d’une sauvegarde complète de la base RC Companion.
-
-Lorsque l’utilisateur active une fonctionnalité permettant de stocker des fichiers dans son propre espace Google Drive, les fichiers concernés sont placés dans l’espace associé à son compte Google.
-
-La disponibilité et la capacité de cet espace ainsi que certains mécanismes de conservation ou récupération dépendent alors également des services proposés par Google.
-
-10. Perte ou altération de données
-
-RC Companion met en œuvre des mécanismes destinés à enregistrer et synchroniser les informations nécessaires au service.
-
-Toutefois, aucun système informatique ne permet de garantir une conservation ou une disponibilité absolue des données.
-
-Dans les limites autorisées par la loi, RC Companion ne saurait être tenu responsable d’une perte ou altération résultant notamment d’une panne ou perte d’un appareil, d’une suppression volontaire effectuée par l’utilisateur, d’un dysfonctionnement d’un service tiers, d’une interruption réseau ou d’un événement indépendant du fonctionnement normalement attendu de RC Companion.
-
-Cette disposition ne limite pas les responsabilités qui ne peuvent légalement être exclues ou limitées.
-
-11. Services tiers
-
-RC Companion utilise ou peut utiliser des services fournis par des prestataires tiers pour certaines fonctionnalités, notamment l’authentification, la synchronisation et, lorsque l’utilisateur l’active, Google Drive.
-
-La disponibilité et les conditions de fonctionnement de ces services peuvent évoluer indépendamment de RC Companion.
-
-12. Suppression du compte
-
-Lorsque l’utilisateur demande la suppression définitive de son compte par les fonctions prévues à cet effet, les données serveur associées au compte et gérées par RC Companion sont destinées à être supprimées conformément au fonctionnement prévu par l’application.
-
-Cette opération est irréversible.
-
-Les éléments éventuellement conservés dans un service personnel externe appartenant à l’utilisateur, notamment son propre espace Google Drive, peuvent relever d’un stockage distinct et doivent être gérés depuis le service concerné lorsque nécessaire.
-
-13. Limitation de responsabilité
-
-Dans les limites autorisées par la législation applicable, RC Companion ne peut être considéré comme garant de l’état, des performances, de la compatibilité ou de la sécurité du matériel enregistré dans l’application.
-
-RC Companion ne saurait notamment être considéré comme responsable d’un dommage résultant de l’utilisation d’un modèle RC, d’une batterie, d’un chargeur ou d’un autre équipement sur la seule base d’une indication fournie par l’application.
-
-L’utilisateur doit toujours appliquer les règles de sécurité appropriées et contrôler son matériel indépendamment des informations affichées par RC Companion.
-
-Aucune disposition des présentes conditions n’a pour objet d’exclure ou de limiter une responsabilité lorsque son exclusion ou sa limitation est interdite par la loi applicable.
-
-14. Disponibilité et évolution
-
-RC Companion peut faire l’objet de mises à jour, opérations de maintenance, corrections ou modifications.
-
-Certaines fonctionnalités peuvent évoluer, être remplacées ou supprimées lorsque cela est nécessaire au développement, à la sécurité ou au fonctionnement de l’application.
-
-15. Propriété intellectuelle
-
-Sauf indication contraire, RC Companion, son nom, son interface, ses éléments graphiques et les éléments logiciels qui la composent sont protégés par les droits de propriété intellectuelle applicables.
-
-L’utilisation de l’application n’accorde à l’utilisateur aucun droit de propriété sur ces éléments.
-
-Les marques, noms et contenus appartenant à des tiers restent la propriété de leurs titulaires respectifs.
-
-16. Modification des présentes conditions
-
-Les présentes Conditions d’utilisation peuvent être modifiées afin de tenir compte notamment de l’évolution de RC Companion, de ses services ou du cadre juridique applicable.
-
-Lorsque cela est nécessaire, l’utilisateur sera informé d’une nouvelle version et une nouvelle acceptation pourra être demandée.
-
-17. Droit applicable et contact
-
-Les présentes conditions sont soumises au droit français, sous réserve des dispositions impératives éventuellement applicables au lieu de résidence de l’utilisateur.
-
-Pour toute question relative à RC Companion :
-
-rccompanion.app@gmail.com
-""";
-
-  static const String _privacyPolicyV1 = """
-POLITIQUE DE CONFIDENTIALITÉ — RC COMPANION
-
-Version du 16 août 2026
-
-1. Objet
-
-La présente Politique de confidentialité explique quelles données personnelles peuvent être traitées lors de l’utilisation de RC Companion, pour quelles raisons et quels sont les droits de l’utilisateur.
-
-2. Données liées au compte
-
-La création et l’utilisation d’un compte peuvent notamment nécessiter :
-
-• l’adresse e-mail ;
-• le pseudo choisi ;
-• les informations techniques nécessaires à l’authentification ;
-• les informations nécessaires à la gestion des appareils autorisés et des sessions de connexion.
-
-Le mot de passe est traité par le système d’authentification et n’est pas destiné à être accessible en clair par RC Companion.
-
-3. Données saisies dans RC Companion
-
-L’utilisateur peut enregistrer des informations concernant notamment ses modèles radiocommandés, batteries, sessions et opérations de maintenance.
-
-Ces données servent à fournir les fonctionnalités demandées par l’utilisateur et à permettre leur synchronisation lorsque celle-ci est disponible.
-
-Certaines informations peuvent indirectement constituer des données personnelles lorsqu’elles sont associées au compte d’un utilisateur.
-
-4. Finalités
-
-Les données sont utilisées uniquement dans la mesure nécessaire notamment pour :
-
-• créer et sécuriser le compte ;
-• authentifier l’utilisateur ;
-• fournir les fonctionnalités RC Companion ;
-• synchroniser les données entre les appareils autorisés ;
-• permettre la gestion et la sécurité des appareils associés au compte ;
-• permettre la récupération du compte et la réinitialisation du mot de passe ;
-• assurer le fonctionnement, la sécurité et la maintenance technique du service.
-
-Les données ne sont pas destinées à être vendues à des annonceurs.
-
-5. Base juridique
-
-Les traitements strictement nécessaires à la création du compte et à la fourniture des fonctionnalités demandées sont réalisés dans le cadre nécessaire à la fourniture du service.
-
-Lorsque le consentement constitue la base juridique appropriée pour une fonctionnalité facultative, il doit être recueilli séparément.
-
-6. Stockage local et synchronisation
-
-Une partie des données RC Companion est conservée localement sur les appareils utilisés.
-
-Les données nécessaires à la synchronisation peuvent être transmises à l’infrastructure serveur utilisée par RC Companion afin de permettre leur disponibilité sur les différents appareils associés au compte.
-
-7. Supabase
-
-RC Companion utilise Supabase pour certaines fonctions serveur, notamment l’authentification et la synchronisation.
-
-Supabase intervient comme prestataire technique pour les traitements nécessaires au fonctionnement du service.
-
-8. Google Drive
-
-Google Drive est une fonctionnalité distincte et facultative lorsqu’elle est proposée.
-
-Si l’utilisateur choisit de connecter son compte Google, RC Companion accède uniquement aux autorisations Google nécessaires aux fonctionnalités proposées.
-
-Les données Google auxquelles RC Companion accède sont utilisées uniquement pour fournir les fonctionnalités correspondantes.
-
-Les fichiers enregistrés dans Google Drive restent associés à l’espace Google de l’utilisateur.
-
-RC Companion ne vend pas les données Google de l’utilisateur et ne les utilise pas à des fins publicitaires.
-
-9. Appareil photo
-
-RC Companion peut demander l’autorisation d’utiliser l’appareil photo pour les fonctionnalités qui le nécessitent, notamment la lecture de QR Codes.
-
-Cette autorisation permet d’utiliser la caméra pour la fonctionnalité demandée et ne constitue pas en elle-même un consentement général à d’autres traitements de données.
-
-10. Destinataires
-
-Les données sont accessibles dans la mesure nécessaire :
-
-• à l’utilisateur ;
-• aux systèmes techniques nécessaires au fonctionnement de RC Companion ;
-• aux prestataires techniques utilisés par RC Companion dans le cadre de leurs fonctions respectives ;
-• aux autorités lorsqu’une obligation légale l’impose.
-
-RC Companion ne prévoit pas la commercialisation des données personnelles de ses utilisateurs.
-
-11. Durée de conservation
-
-Les données associées au compte sont conservées pendant la durée nécessaire au fonctionnement du compte et du service, sauf obligation légale ou nécessité technique justifiant une durée différente.
-
-Lorsqu’un compte est définitivement supprimé, les données serveur associées et gérées par RC Companion sont destinées à être supprimées selon le fonctionnement prévu par le service.
-
-Les données éventuellement détenues indépendamment par un service tiers personnel, tel que Google Drive, peuvent obéir aux règles de conservation du service concerné.
-
-12. Sécurité
-
-Des mesures techniques et organisationnelles adaptées sont mises en œuvre afin de protéger les données contre les accès non autorisés, pertes, altérations ou divulgations.
-
-Aucun système informatique ou réseau ne pouvant garantir une sécurité absolue, les mesures sont adaptées et réévaluées en fonction des risques et de l’évolution du service.
-
-13. Droits de l’utilisateur
-
-Conformément à la réglementation applicable en matière de protection des données, l’utilisateur peut, selon les conditions prévues par celle-ci, exercer notamment ses droits :
-
-• d’accès ;
-• de rectification ;
-• d’effacement ;
-• de limitation ;
-• d’opposition lorsque ce droit est applicable ;
-• à la portabilité lorsque les conditions légales sont réunies.
-
-L’utilisateur dispose également du droit d’introduire une réclamation auprès de l’autorité de contrôle compétente, notamment la CNIL en France.
-
-Pour exercer ses droits ou poser une question relative aux données personnelles :
-
-rccompanion.app@gmail.com
-
-14. Modification de la politique
-
-Cette Politique de confidentialité peut évoluer afin de refléter les modifications de RC Companion, des services utilisés ou de la réglementation.
-
-La version applicable et sa date de mise à jour doivent rester accessibles à l’utilisateur.
-""";
 
   @override
   Widget build(BuildContext context) {
@@ -352,17 +87,29 @@ La version applicable et sa date de mise à jour doivent rester accessibles à l
               ),
               SizedBox(height: 12),
               Text(
-                'Évolutions prévues',
+                'Validation, récupération et appareils',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               SizedBox(height: 8),
               _InfoBullet(
-                'Déverrouillage local par Face ID, Touch ID ou biométrie '
-                'Android, selon les capacités de l’appareil.',
+                'La création d’un compte nécessite la validation de l’adresse '
+                'e-mail. Le message de validation peut parfois être classé '
+                'dans les courriers indésirables ou le dossier Spam.',
               ),
               _InfoBullet(
-                'Verrouillage local de l’application sans déconnexion du '
-                'compte utilisateur.',
+                'La fonction Mot de passe oublié permet de définir un nouveau '
+                'mot de passe depuis le lien reçu par e-mail. Le nouveau mot '
+                'de passe remplace l’ancien.',
+              ),
+              _InfoBullet(
+                'RC Companion contrôle les appareils autorisés à utiliser le '
+                'compte. Un appareil désactivé doit être réactivé avant de '
+                'pouvoir accéder aux données du compte.',
+              ),
+              _InfoBullet(
+                'La suppression du compte est définitive et entraîne la '
+                'suppression des données associées conformément aux '
+                'informations présentées avant confirmation.',
               ),
               SizedBox(height: 12),
               _VersionLine(
@@ -434,6 +181,52 @@ La version applicable et sa date de mise à jour doivent rester accessibles à l
               _VersionLine(
                 label: 'Version de l’architecture hors ligne',
                 value: offlineArchitectureVersion,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _sectionCard(
+            context,
+            icon: Icons.sports_motorsports_rounded,
+            title: 'Sessions, historique et maintenance',
+            children: const [
+              Text(
+                'RC Companion permet de suivre l’utilisation réelle des '
+                'modèles et des batteries tout en conservant un historique '
+                'consultable.',
+              ),
+              SizedBox(height: 12),
+              Text('Sessions', style: TextStyle(fontWeight: FontWeight.w700)),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Deux sessions peuvent être actives simultanément lorsque '
+                'les modèles concernés sont différents. Une même batterie ne '
+                'doit pas être utilisée simultanément dans deux sessions.',
+              ),
+              _InfoBullet(
+                'Les sessions antérieures permettent de compléter un '
+                'historique initial. Les relevés rétroactifs associés ne '
+                'doivent pas modifier l’état actuel ou la santé actuelle '
+                'd’une batterie.',
+              ),
+              _InfoBullet(
+                'La clôture d’une session alimente l’historique du modèle '
+                'avec les roulages et les informations enregistrées.',
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Maintenance et historique',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 8),
+              _InfoBullet(
+                'Les révisions, réparations et modifications peuvent être '
+                'enregistrées et rattachées au modèle concerné.',
+              ),
+              _InfoBullet(
+                'Les informations affichées par RC Companion dépendent des '
+                'données saisies par l’utilisateur et ne remplacent pas les '
+                'contrôles, notices et recommandations du fabricant.',
               ),
             ],
           ),
@@ -981,6 +774,52 @@ La version applicable et sa date de mise à jour doivent rester accessibles à l
           const SizedBox(height: 16),
           _sectionCard(
             context,
+            icon: Icons.info_outline_rounded,
+            title: 'Informations importantes avant utilisation',
+            children: const [
+              Text(
+                'Ces informations résument des précautions pratiques propres '
+                'au fonctionnement de RC Companion. Elles ne remplacent pas '
+                'les Conditions d’utilisation.',
+              ),
+              SizedBox(height: 12),
+              _InfoBullet(
+                'Vérifier les données saisies, notamment les caractéristiques '
+                'des modèles et batteries, avant de s’appuyer sur les '
+                'indications ou calculs affichés par l’application.',
+              ),
+              _InfoBullet(
+                'Les états de charge, indicateurs de santé, compatibilités et '
+                'autres calculs sont des aides au suivi. Ils ne constituent '
+                'pas une garantie de sécurité, de performance ou de bon état '
+                'd’un matériel.',
+              ),
+              _InfoBullet(
+                'Respecter en priorité les notices, limites et consignes des '
+                'fabricants des batteries, chargeurs, modèles, radios et '
+                'autres équipements utilisés.',
+              ),
+              _InfoBullet(
+                'Une synchronisation ou un téléchargement de fichier peut '
+                'nécessiter un délai. Avant une utilisation sans réseau, '
+                'vérifier que les données et fichiers nécessaires sont bien '
+                'présents sur l’appareil.',
+              ),
+              _InfoBullet(
+                'Google Drive est facultatif et concerne les fichiers pris en '
+                'charge. Les données structurées synchronisées via Supabase '
+                'ne sont pas exportées vers Google Drive.',
+              ),
+              _InfoBullet(
+                'La suppression d’un modèle, d’une batterie, d’une session, '
+                'd’une maintenance ou du compte peut supprimer définitivement '
+                'les données associées selon l’action confirmée.',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _sectionCard(
+            context,
             icon: Icons.gavel_rounded,
             title: 'Informations légales',
             children: [
@@ -996,12 +835,14 @@ La version applicable et sa date de mise à jour doivent rester accessibles à l
                   'Conditions d’utilisation',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
-                subtitle: const Text('Version du 16 août 2026'),
+                subtitle: const Text(
+                  'Version du ${RcLegalDocuments.versionDate}',
+                ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _showLegalDocument(
                   context,
                   title: 'Conditions d’utilisation',
-                  body: _termsOfUseV1,
+                  body: RcLegalDocuments.termsOfUse,
                 ),
               ),
               const Divider(),
@@ -1012,12 +853,14 @@ La version applicable et sa date de mise à jour doivent rester accessibles à l
                   'Politique de confidentialité',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
-                subtitle: const Text('Version du 16 août 2026'),
+                subtitle: const Text(
+                  'Version du ${RcLegalDocuments.versionDate}',
+                ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _showLegalDocument(
                   context,
                   title: 'Politique de confidentialité',
-                  body: _privacyPolicyV1,
+                  body: RcLegalDocuments.privacyPolicy,
                 ),
               ),
             ],
@@ -1041,6 +884,19 @@ La version applicable et sa date de mise à jour doivent rester accessibles à l
                 'choix mémoire interne/carte SD sur Android, de Google Drive '
                 'pour la sauvegarde et la synchronisation des fichiers, de la '
                 'reconstruction du stockage et de sa mise à jour automatique.',
+              ),
+              _InfoBullet(
+                'Août 2026 : ajout des sessions simultanées et antérieures, '
+                'de la gestion des appareils autorisés, de la validation '
+                'e-mail, de la récupération du mot de passe, des informations '
+                'sur la suppression du compte et des précautions importantes '
+                'avant utilisation.',
+              ),
+              _InfoBullet(
+                'Août 2026 : Conditions d’utilisation et Politique de '
+                'confidentialité centralisées dans une source documentaire '
+                'unique afin de présenter la même version dans l’inscription '
+                'et dans Informations & Références.',
               ),
             ],
           ),
