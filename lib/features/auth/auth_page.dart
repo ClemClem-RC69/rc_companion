@@ -28,6 +28,7 @@ class _AuthPageState extends State<AuthPage> {
   bool rememberMe = true;
   bool acceptTerms = false;
   bool showRememberedEmails = false;
+  String? pendingVerificationEmail;
   List<String> rememberedEmails = const [];
 
   @override
@@ -181,12 +182,49 @@ class _AuthPageState extends State<AuthPage> {
       );
 
       if (response.session == null && mounted) {
-        _showMessage('Compte créé. Vérifie ton e-mail avant de te connecter.');
         setState(() {
-          isLoginMode = true;
-          identifierController.text = email;
+          pendingVerificationEmail = email.trim().toLowerCase();
+          identifierController.text = email.trim().toLowerCase();
+          passwordController.clear();
+          confirmPasswordController.clear();
         });
       }
+    });
+  }
+
+  Future<void> _resendVerificationEmail() async {
+    final email = pendingVerificationEmail;
+    if (email == null || email.isEmpty) return;
+
+    await _runAuthAction(() async {
+      await SupabaseService.client.auth.resend(
+        type: OtpType.signup,
+        email: email,
+      );
+      _showMessage('E-mail de validation renvoyé à $email.');
+    });
+  }
+
+  void _editVerificationEmail() {
+    final email = pendingVerificationEmail ?? '';
+    setState(() {
+      pendingVerificationEmail = null;
+      isLoginMode = false;
+      emailController.text = email;
+      passwordController.clear();
+      confirmPasswordController.clear();
+      acceptTerms = false;
+    });
+  }
+
+  void _backToLoginFromVerification() {
+    final email = pendingVerificationEmail ?? '';
+    setState(() {
+      pendingVerificationEmail = null;
+      isLoginMode = true;
+      identifierController.text = email;
+      passwordController.clear();
+      confirmPasswordController.clear();
     });
   }
 
@@ -223,6 +261,10 @@ class _AuthPageState extends State<AuthPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (pendingVerificationEmail != null) {
+      return _buildEmailVerificationPage();
+    }
+
     return Scaffold(
       body: Stack(
         children: [
@@ -544,6 +586,139 @@ class _AuthPageState extends State<AuthPage> {
                           ],
                         ],
                       ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmailVerificationPage() {
+    final email = pendingVerificationEmail ?? '';
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          const _GridBackground(),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF071426),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFF34506F)),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black54,
+                          blurRadius: 28,
+                          offset: Offset(0, 14),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.mark_email_unread_outlined,
+                          size: 54,
+                          color: Color(0xFF2493FF),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'VALIDE TON ADRESSE E-MAIL',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: .4,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        const Text(
+                          'Ton compte RC Companion a été créé.\n'
+                          'Un e-mail de validation a été envoyé à :',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        const SizedBox(height: 10),
+                        SelectableText(
+                          email,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(0xFF2493FF),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        const Text(
+                          'Ouvre cet e-mail et clique sur le lien de validation. '
+                          'Tu pourras ensuite revenir dans RC Companion et te connecter.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(height: 1.4),
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: FilledButton.icon(
+                            onPressed: isLoading
+                                ? null
+                                : _resendVerificationEmail,
+                            icon: isLoading
+                                ? const SizedBox(
+                                    width: 19,
+                                    height: 19,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh_rounded),
+                            label: const Text(
+                              'Renvoyer l’e-mail de validation',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: OutlinedButton.icon(
+                            onPressed: isLoading
+                                ? null
+                                : _editVerificationEmail,
+                            icon: const Icon(Icons.edit_outlined),
+                            label: const Text('Corriger l’adresse e-mail'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: isLoading
+                              ? null
+                              : _backToLoginFromVerification,
+                          icon: const Icon(Icons.login_rounded),
+                          label: const Text('Retour à la connexion'),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Si tu ne vois pas l’e-mail, vérifie également le dossier spam ou courrier indésirable.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFF8290A5),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

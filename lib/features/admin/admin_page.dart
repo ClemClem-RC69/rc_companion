@@ -18,18 +18,31 @@ class _AdminPageState extends State<AdminPage> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _users = const [];
+  Timer? _usersWatchdog;
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
+    _usersWatchdog = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      _loadUsers(showLoading: false);
+    });
   }
 
-  Future<void> _loadUsers() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _usersWatchdog?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadUsers({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final response = await SupabaseService.client.rpc('rc_admin_list_users');
       final rows = <Map<String, dynamic>>[];
@@ -51,6 +64,185 @@ class _AdminPageState extends State<AdminPage> {
         _error = error.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _addUser() async {
+    final emailController = TextEditingController();
+    final androidController = TextEditingController(text: '1');
+    final windowsController = TextEditingController(text: '1');
+    final macosController = TextEditingController(text: '1');
+    final iosController = TextEditingController(text: '1');
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Ajouter un utilisateur'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Préautorise l’adresse e-mail avant la création du compte RC Companion.',
+                      style: TextStyle(color: RCColors.textSecondary),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Adresse e-mail',
+                      prefixIcon: Icon(Icons.mail_outline_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Nombre d’appareils simultanés autorisés',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: androidController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Android',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: windowsController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Windows',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: macosController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'macOS'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: iosController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'iOS'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Annuler'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                final email = emailController.text.trim().toLowerCase();
+                final android = int.tryParse(androidController.text.trim());
+                final windows = int.tryParse(windowsController.text.trim());
+                final macos = int.tryParse(macosController.text.trim());
+                final ios = int.tryParse(iosController.text.trim());
+
+                if (!email.contains('@') ||
+                    android == null ||
+                    windows == null ||
+                    macos == null ||
+                    ios == null ||
+                    android < 0 ||
+                    windows < 0 ||
+                    macos < 0 ||
+                    ios < 0) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Vérifie l’adresse e-mail et les quatre quotas.',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+
+                Navigator.of(dialogContext).pop(<String, dynamic>{
+                  'email': email,
+                  'max_android': android,
+                  'max_windows': windows,
+                  'max_macos': macos,
+                  'max_ios': ios,
+                });
+              },
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text('Ajouter'),
+            ),
+          ],
+        );
+      },
+    );
+
+    emailController.dispose();
+    androidController.dispose();
+    windowsController.dispose();
+    macosController.dispose();
+    iosController.dispose();
+
+    if (result == null || !mounted) return;
+
+    try {
+      await SupabaseService.client.rpc(
+        'rc_admin_add_user',
+        params: <String, dynamic>{
+          'p_email': result['email'],
+          'p_max_android': result['max_android'],
+          'p_max_windows': result['max_windows'],
+          'p_max_macos': result['max_macos'],
+          'p_max_ios': result['max_ios'],
+        },
+      );
+
+      if (!mounted) return;
+      await _loadUsers(showLoading: false);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Utilisateur ${result['email']} préautorisé. Il peut maintenant créer son compte.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ajout impossible : $error')));
     }
   }
 
@@ -87,14 +279,20 @@ class _AdminPageState extends State<AdminPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Gestion des comptes',
-              style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Consultation uniquement pour cette première étape.',
-              style: TextStyle(color: RCColors.textSecondary),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Gestion des comptes',
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: _loading ? null : _addUser,
+                  icon: const Icon(Icons.person_add_alt_1_rounded),
+                  label: const Text('Ajouter un utilisateur'),
+                ),
+              ],
             ),
             const SizedBox(height: 20),
             Expanded(child: _content()),
