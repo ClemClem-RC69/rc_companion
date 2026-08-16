@@ -827,7 +827,7 @@ class _DeviceAccessBlockedPage extends StatelessWidget {
                         const SizedBox(height: 18),
                       ],
                       if (reason == 'device_disabled_by_admin' ||
-                          reason == 'user_not_authorized')
+                          reason == 'user_not_authorized') ...[
                         const Column(
                           children: [
                             Text(
@@ -845,12 +845,13 @@ class _DeviceAccessBlockedPage extends StatelessWidget {
                               ),
                             ),
                           ],
-                        )
-                      else
-                        TextButton(
-                          onPressed: onSignOut,
-                          child: const Text('Se déconnecter'),
                         ),
+                        const SizedBox(height: 18),
+                      ],
+                      TextButton(
+                        onPressed: onSignOut,
+                        child: const Text('Revenir à la page de connexion'),
+                      ),
                     ],
                   ),
                 ),

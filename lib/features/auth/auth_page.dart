@@ -178,6 +178,7 @@ class _AuthPageState extends State<AuthPage> {
       final response = await SupabaseService.client.auth.signUp(
         email: email,
         password: password,
+        emailRedirectTo: 'rccompanion://login-callback',
         data: {'pseudo': pseudo},
       );
 

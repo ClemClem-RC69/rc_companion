@@ -22,6 +22,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.367024202560-uqnj6idh7foicqn4qr2vddlkd54hnrr8</string>
+				<string>rccompanion</string>
 			</array>
 		</dict>
 	</array>
