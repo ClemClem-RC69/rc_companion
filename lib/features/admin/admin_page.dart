@@ -208,6 +208,7 @@ class _AdminPageState extends State<AdminPage> {
     );
 
     emailController.dispose();
+    emailController.dispose();
     androidController.dispose();
     windowsController.dispose();
     macosController.dispose();
@@ -609,6 +610,9 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
     }
 
     var enabled = widget.user['enabled'] != false;
+    final authUserId = widget.user['auth_user_id']?.toString().trim();
+    final isPendingUser = authUserId == null || authUserId.isEmpty;
+    final emailController = TextEditingController(text: _value('email'));
     final androidController = TextEditingController(
       text: _quotaValue('max_android').toString(),
     );
@@ -660,13 +664,28 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          _value('email'),
-                          style: const TextStyle(color: RCColors.textSecondary),
+                      if (isPendingUser)
+                        TextField(
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          autocorrect: false,
+                          decoration: const InputDecoration(
+                            labelText: 'Adresse e-mail',
+                            prefixIcon: Icon(Icons.mail_outline_rounded),
+                            helperText:
+                                'Modifiable tant que le compte n’a pas encore été créé.',
+                          ),
+                        )
+                      else
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _value('email'),
+                            style: const TextStyle(
+                              color: RCColors.textSecondary,
+                            ),
+                          ),
                         ),
-                      ),
                       const SizedBox(height: 18),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
@@ -751,12 +770,15 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
                 ),
                 FilledButton(
                   onPressed: () {
+                    final email = emailController.text.trim().toLowerCase();
                     final android = int.tryParse(androidController.text.trim());
                     final windows = int.tryParse(windowsController.text.trim());
                     final macos = int.tryParse(macosController.text.trim());
                     final ios = int.tryParse(iosController.text.trim());
 
-                    if (android == null ||
+                    if ((isPendingUser &&
+                            (!email.contains('@') || email == '—')) ||
+                        android == null ||
                         windows == null ||
                         macos == null ||
                         ios == null ||
@@ -775,6 +797,7 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
                     }
 
                     Navigator.of(dialogContext).pop(<String, dynamic>{
+                      'email': email,
                       'enabled': enabled,
                       'max_android': android,
                       'max_windows': windows,
@@ -799,10 +822,26 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
     if (result == null || !mounted) return;
 
     try {
+      final oldEmail = _value('email').trim().toLowerCase();
+      final newEmail = (result['email'] ?? oldEmail)
+          .toString()
+          .trim()
+          .toLowerCase();
+
+      if (isPendingUser && newEmail != oldEmail) {
+        await SupabaseService.client.rpc(
+          'rc_admin_update_pending_user_email',
+          params: <String, dynamic>{
+            'p_old_email': oldEmail,
+            'p_new_email': newEmail,
+          },
+        );
+      }
+
       await SupabaseService.client.rpc(
         'rc_admin_update_user',
         params: <String, dynamic>{
-          'p_email': _value('email'),
+          'p_email': isPendingUser ? newEmail : oldEmail,
           'p_enabled': result['enabled'],
           'p_max_android': result['max_android'],
           'p_max_windows': result['max_windows'],
@@ -814,6 +853,9 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
       if (!mounted) return;
 
       setState(() {
+        if (isPendingUser) {
+          widget.user['email'] = newEmail;
+        }
         widget.user['enabled'] = result['enabled'];
         widget.user['max_android'] = result['max_android'];
         widget.user['max_windows'] = result['max_windows'];
@@ -867,14 +909,71 @@ class _AdminUserDetailPageState extends State<_AdminUserDetailPage> {
     final authUserId = widget.user['auth_user_id']?.toString().trim();
     final email = _value('email').trim();
 
-    if (authUserId == null || authUserId.isEmpty || email == '—') {
+    if (email == '—') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Suppression impossible : compte Authentication introuvable.',
-          ),
+          content: Text('Adresse e-mail utilisateur introuvable.'),
         ),
       );
+      return;
+    }
+
+    if (authUserId == null || authUserId.isEmpty) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Supprimer cette préautorisation ?'),
+            content: Text(
+              '$email\n\n'
+              'Aucun compte Authentication n’est encore associé à cette '
+              'adresse. Seule cette préautorisation sera supprimée.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Annuler'),
+              ),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                style: FilledButton.styleFrom(backgroundColor: RCColors.accent),
+                icon: const Icon(Icons.delete_forever_rounded),
+                label: const Text('Supprimer'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true || !mounted) return;
+
+      try {
+        final response = await SupabaseService.client.rpc(
+          'rc_admin_delete_pending_user',
+          params: <String, dynamic>{'p_email': email},
+        );
+
+        if (!mounted) return;
+
+        if (response is Map &&
+            response.containsKey('deleted') &&
+            response['deleted'] != true) {
+          throw StateError(
+            'La suppression de la préautorisation n’a pas été confirmée.',
+          );
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Préautorisation supprimée.')),
+        );
+        Navigator.of(context).pop(true);
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Suppression impossible : $error')),
+        );
+      }
       return;
     }
 
