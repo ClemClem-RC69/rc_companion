@@ -210,14 +210,11 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   void initState() {
     super.initState();
 
-    session = SupabaseService.client.auth.currentSession;
-
-    if (session == null) {
-      gateState = _AccessGateState.signedOut;
-    } else {
-      gateState = _AccessGateState.checking;
-      unawaited(_checkRememberedSession());
-    }
+    // Toujours afficher la page de connexion au lancement de RC Companion.
+    // Une session Supabase persistée ne doit jamais ouvrir automatiquement
+    // le Dashboard ou l'administration.
+    session = null;
+    gateState = _AccessGateState.signedOut;
 
     WidgetsBinding.instance.addObserver(this);
 
@@ -243,10 +240,6 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         debugPrintStack(stackTrace: stackTrace);
       },
     );
-
-    if (session != null) {
-      _startDeviceAccessRealtime();
-    }
 
     _accessWatchdog = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || session == null) return;
@@ -297,6 +290,16 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         return;
       }
 
+      // Au lancement, Supabase peut restaurer une session persistée et émettre
+      // initialSession / tokenRefreshed. Tant que l'utilisateur n'a pas appuyé
+      // volontairement sur « Se connecter », ces événements ne doivent jamais
+      // ouvrir le Dashboard ou l'administration.
+      if (gateState == _AccessGateState.signedOut &&
+          data.event != AuthChangeEvent.signedIn) {
+        session = null;
+        return;
+      }
+
       _startDeviceAccessRealtime();
 
       // Une connexion volontaire peut prendre la place d’un autre appareil
@@ -312,13 +315,6 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     } finally {
       _handlingAuthEvent = false;
     }
-  }
-
-  Future<void> _checkRememberedSession() async {
-    final currentSession = session;
-    if (currentSession == null) return;
-
-    await _checkExistingAccess(currentSession);
   }
 
   Future<bool> _routeToAdminIfNeeded(Session activeSession) async {
@@ -613,6 +609,12 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     if (_accessCheckRunning ||
         _handlingAuthEvent ||
         gateState == _AccessGateState.passwordRecovery) {
+      return;
+    }
+
+    // Tant que RC Companion est sur la page de connexion, une éventuelle
+    // session Supabase restaurée en arrière-plan ne doit pas rouvrir l'app.
+    if (session == null || gateState == _AccessGateState.signedOut) {
       return;
     }
 

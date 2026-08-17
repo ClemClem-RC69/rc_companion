@@ -4,11 +4,11 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
+  camera_windows
   connectivity_plus
   file_selector_windows
   flutter_secure_storage_windows
   printing
-  simple_camera_windows
   sqlite3_flutter_libs
   url_launcher_windows
 )

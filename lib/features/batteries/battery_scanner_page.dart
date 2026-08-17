@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:typed_data';
-
+import 'package:camera_platform_interface/camera_platform_interface.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:simple_camera_windows/simple_camera_windows.dart';
 import 'package:zxing2/qrcode.dart' as zxing;
 
 class BatteryScannerPage extends StatefulWidget {
@@ -20,10 +19,12 @@ class BatteryScannerPage extends StatefulWidget {
 class _BatteryScannerPageState extends State<BatteryScannerPage> {
   MobileScannerController? _mobileController;
 
-  final SimpleCameraWindows _windowsCamera = SimpleCameraWindows();
-
+  int _windowsCameraId = -1;
+  Size? _windowsPreviewSize;
   Timer? _windowsScanTimer;
-  Uint8List? _windowsLastFrame;
+  StreamSubscription<CameraErrorEvent>? _windowsErrorSubscription;
+  StreamSubscription<CameraClosingEvent>? _windowsClosingSubscription;
+
   String _windowsStatus = 'Initialisation de la caméra Windows…';
   bool _windowsCameraStarted = false;
   bool _windowsCaptureRunning = false;
@@ -76,56 +77,227 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
       return;
     }
 
-    if (mounted) {
-      setState(() {
-        _windowsCameraUnavailable = false;
-        _windowsStatus = 'Recherche d’une caméra ou webcam Windows…';
-      });
+    await _disposeWindowsCamera();
+
+    if (!mounted) {
+      return;
     }
 
+    setState(() {
+      _windowsCameraUnavailable = false;
+      _windowsStatus = 'Recherche d’une caméra ou webcam Windows…';
+    });
+
+    int cameraId = -1;
+
     try {
-      await _windowsCamera.initializeCamera();
-      await _windowsCamera.startCamera();
+      final cameras = await CameraPlatform.instance.availableCameras().timeout(
+        const Duration(seconds: 8),
+      );
 
-      _windowsCameraStarted = true;
-
-      if (mounted) {
-        setState(() {
-          _windowsStatus =
-              'Caméra active. Présente le QR Code devant la webcam.';
-        });
+      if (cameras.isEmpty) {
+        throw PlatformException(
+          code: 'NoCamera',
+          message: 'Aucune caméra Windows détectée.',
+        );
       }
 
-      _windowsScanTimer?.cancel();
+      final selectedCamera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+
+      cameraId = await CameraPlatform.instance
+          .createCameraWithSettings(
+            selectedCamera,
+            const MediaSettings(
+              resolutionPreset: ResolutionPreset.medium,
+              fps: 15,
+              videoBitrate: 200000,
+              audioBitrate: 32000,
+              enableAudio: false,
+            ),
+          )
+          .timeout(const Duration(seconds: 8));
+
+      _windowsErrorSubscription = CameraPlatform.instance
+          .onCameraError(cameraId)
+          .listen(_onWindowsCameraError);
+
+      _windowsClosingSubscription = CameraPlatform.instance
+          .onCameraClosing(cameraId)
+          .listen(_onWindowsCameraClosing);
+
+      final initializedEvent = CameraPlatform.instance
+          .onCameraInitialized(cameraId)
+          .first;
+
+      await CameraPlatform.instance
+          .initializeCamera(cameraId)
+          .timeout(const Duration(seconds: 12));
+
+      final event = await initializedEvent.timeout(const Duration(seconds: 12));
+
+      if (!mounted || _isReturningResult) {
+        try {
+          await CameraPlatform.instance
+              .dispose(cameraId)
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {}
+        return;
+      }
+
+      _windowsCameraId = cameraId;
+      _windowsPreviewSize = Size(event.previewWidth, event.previewHeight);
+      _windowsCameraStarted = true;
+
+      setState(() {
+        _windowsStatus = 'Caméra active. Présente le QR Code devant la webcam.';
+      });
+
       _windowsScanTimer = Timer.periodic(
-        const Duration(milliseconds: 850),
+        const Duration(milliseconds: 1400),
         (_) => unawaited(_captureAndDecodeWindowsFrame()),
       );
 
       unawaited(_captureAndDecodeWindowsFrame());
+    } on TimeoutException catch (error, stackTrace) {
+      debugPrint('Caméra Windows trop lente ou bloquée : $error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      if (cameraId >= 0) {
+        try {
+          await CameraPlatform.instance
+              .dispose(cameraId)
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {}
+      }
+
+      await _showWindowsCameraError(
+        'La caméra Windows ne répond pas. Ferme les autres applications qui '
+        'utilisent la webcam, puis réessaie.',
+      );
+    } on CameraException catch (error, stackTrace) {
+      debugPrint(
+        'Scanner QR Windows indisponible (${error.code}) : '
+        '${error.description}',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+
+      if (cameraId >= 0) {
+        try {
+          await CameraPlatform.instance
+              .dispose(cameraId)
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {}
+      }
+
+      await _showWindowsCameraError(_windowsCameraMessage(error.code));
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint(
+        'Scanner QR Windows indisponible (${error.code}) : ${error.message}',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+
+      if (cameraId >= 0) {
+        try {
+          await CameraPlatform.instance
+              .dispose(cameraId)
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {}
+      }
+
+      await _showWindowsCameraError(_windowsCameraMessage(error.code));
     } catch (error, stackTrace) {
       debugPrint('Scanner QR Windows indisponible : $error');
       debugPrintStack(stackTrace: stackTrace);
 
-      _windowsScanTimer?.cancel();
-      _windowsScanTimer = null;
-      _windowsCameraStarted = false;
+      if (cameraId >= 0) {
+        try {
+          await CameraPlatform.instance
+              .dispose(cameraId)
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {}
+      }
 
-      if (!mounted) return;
-
-      setState(() {
-        _windowsCameraUnavailable = true;
-        _windowsStatus =
-            'Aucune caméra Windows utilisable n’a pu être ouverte. '
-            'La caméra peut être absente, désactivée, refusée par Windows '
-            'ou incompatible.';
-      });
+      await _showWindowsCameraError(
+        'La caméra Windows n’a pas pu être ouverte. Vérifie les autorisations '
+        'Caméra de Windows et ferme les applications qui utilisent la webcam.',
+      );
     }
   }
 
+  String _windowsCameraMessage(String code) {
+    switch (code) {
+      case 'CameraAccessDenied':
+      case 'CameraAccessDeniedWithoutPrompt':
+      case 'CameraAccessRestricted':
+        return 'Windows refuse l’accès à la caméra. Ouvre Paramètres Windows '
+            '> Confidentialité et sécurité > Caméra, puis autorise la caméra '
+            'pour les applications de bureau.';
+      case 'NoCamera':
+        return 'Aucune caméra ou webcam Windows n’a été détectée.';
+      default:
+        return 'La caméra Windows n’a pas pu être ouverte. Vérifie qu’elle '
+            'n’est pas utilisée par une autre application et que Windows '
+            'autorise son utilisation.';
+    }
+  }
+
+  Future<void> _showWindowsCameraError(String message) async {
+    await _disposeWindowsCamera();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _windowsCameraUnavailable = true;
+      _windowsStatus = message;
+    });
+  }
+
+  void _onWindowsCameraError(CameraErrorEvent event) {
+    debugPrint('Erreur caméra Windows : ${event.description}');
+
+    if (!mounted || _isReturningResult) {
+      return;
+    }
+
+    unawaited(
+      _showWindowsCameraError(
+        'La caméra Windows a rencontré une erreur. Vérifie qu’elle n’est pas '
+        'utilisée par une autre application, puis réessaie.',
+      ),
+    );
+  }
+
+  void _onWindowsCameraClosing(CameraClosingEvent event) {
+    debugPrint('Caméra Windows en cours de fermeture.');
+
+    if (!mounted || _isReturningResult) {
+      return;
+    }
+
+    _windowsScanTimer?.cancel();
+    _windowsScanTimer = null;
+
+    setState(() {
+      _windowsCameraStarted = false;
+      _windowsPreviewSize = null;
+      _windowsStatus =
+          'La caméra Windows a été fermée. Tu peux réessayer ou revenir à la '
+          'sélection manuelle.';
+      _windowsCameraUnavailable = true;
+    });
+  }
+
   Future<void> _captureAndDecodeWindowsFrame() async {
+    final cameraId = _windowsCameraId;
+
     if (!_isWindows ||
         !_windowsCameraStarted ||
+        cameraId < 0 ||
         _windowsCaptureRunning ||
         _isReturningResult) {
       return;
@@ -134,17 +306,18 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
     _windowsCaptureRunning = true;
 
     try {
-      final frame = await _windowsCamera.captureFrame();
+      final picture = await CameraPlatform.instance
+          .takePicture(cameraId)
+          .timeout(const Duration(seconds: 5));
 
-      if (frame == null || frame.isEmpty || _isReturningResult) {
+      final frame = await picture.readAsBytes();
+
+      if (frame.isEmpty || _isReturningResult) {
         return;
       }
 
-      if (mounted) {
-        setState(() => _windowsLastFrame = frame);
-      }
-
       final qrValue = _decodeWindowsQr(frame);
+
       if (qrValue == null || qrValue.isEmpty || _isReturningResult) {
         return;
       }
@@ -153,22 +326,24 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
       _windowsScanTimer?.cancel();
       _windowsScanTimer = null;
 
-      try {
-        await _windowsCamera.stopCamera();
-      } catch (_) {
-        // La caméra peut déjà avoir été fermée par Windows.
-      }
-      _windowsCameraStarted = false;
+      await _disposeWindowsCamera();
 
       if (!mounted) {
         return;
       }
 
       Navigator.of(context).pop(qrValue);
+    } on TimeoutException {
+      debugPrint(
+        'Capture webcam Windows trop longue : nouvelle tentative au prochain '
+        'cycle.',
+      );
+    } on CameraException catch (error) {
+      debugPrint(
+        'Capture webcam Windows impossible (${error.code}) : '
+        '${error.description}',
+      );
     } catch (error) {
-      // Une image sans QR Code est un cas normal pendant le scan.
-      // Les erreurs de capture ponctuelles sont également ignorées afin de
-      // laisser les captures suivantes retenter automatiquement.
       debugPrint('Lecture d’une image webcam Windows impossible : $error');
     } finally {
       _windowsCaptureRunning = false;
@@ -194,6 +369,7 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
 
       final bitmap = zxing.BinaryBitmap(zxing.HybridBinarizer(source));
       final result = zxing.QRCodeReader().decode(bitmap);
+
       return result.text.trim();
     } on zxing.ReaderException {
       return null;
@@ -203,29 +379,54 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
     }
   }
 
-  Future<void> _stopWindowsCamera() async {
+  Future<void> _disposeWindowsCamera() async {
     _windowsScanTimer?.cancel();
     _windowsScanTimer = null;
 
-    if (!_windowsCameraStarted) {
+    unawaited(_windowsErrorSubscription?.cancel());
+    _windowsErrorSubscription = null;
+
+    unawaited(_windowsClosingSubscription?.cancel());
+    _windowsClosingSubscription = null;
+
+    final cameraId = _windowsCameraId;
+
+    _windowsCameraId = -1;
+    _windowsPreviewSize = null;
+    _windowsCameraStarted = false;
+    _windowsCaptureRunning = false;
+
+    if (cameraId < 0) {
       return;
     }
 
-    _windowsCameraStarted = false;
-
     try {
-      await _windowsCamera.stopCamera();
+      await CameraPlatform.instance
+          .dispose(cameraId)
+          .timeout(const Duration(seconds: 3));
     } catch (_) {
-      // Fermeture best-effort : Windows peut déjà avoir libéré la webcam.
+      // La navigation ne doit jamais rester bloquée sur la fermeture caméra.
     }
   }
 
   @override
   void dispose() {
     _windowsScanTimer?.cancel();
+    _windowsScanTimer = null;
+
+    unawaited(_windowsErrorSubscription?.cancel());
+    _windowsErrorSubscription = null;
+
+    unawaited(_windowsClosingSubscription?.cancel());
+    _windowsClosingSubscription = null;
 
     if (_isWindows) {
-      unawaited(_stopWindowsCamera());
+      final cameraId = _windowsCameraId;
+      _windowsCameraId = -1;
+
+      if (cameraId >= 0) {
+        unawaited(CameraPlatform.instance.dispose(cameraId));
+      }
     } else {
       _mobileController?.dispose();
     }
@@ -296,6 +497,11 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
   }
 
   Widget _buildWindowsScanner(BuildContext context) {
+    final cameraReady =
+        _windowsCameraStarted &&
+        _windowsCameraId >= 0 &&
+        _windowsPreviewSize != null;
+
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
       body: SafeArea(
@@ -303,17 +509,30 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 620),
+              constraints: const BoxConstraints(maxWidth: 760),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    _windowsCameraUnavailable
-                        ? Icons.videocam_off_rounded
-                        : Icons.qr_code_scanner_rounded,
-                    size: 64,
-                  ),
-                  const SizedBox(height: 18),
+                  if (cameraReady) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: AspectRatio(
+                        aspectRatio:
+                            _windowsPreviewSize!.width /
+                            _windowsPreviewSize!.height,
+                        child: CameraPlatform.instance.buildPreview(
+                          _windowsCameraId,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                  ] else
+                    Icon(
+                      _windowsCameraUnavailable
+                          ? Icons.videocam_off_rounded
+                          : Icons.qr_code_scanner_rounded,
+                      size: 64,
+                    ),
                   Text(
                     _windowsStatus,
                     textAlign: TextAlign.center,
@@ -323,24 +542,14 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Sous Windows, RC Companion ouvre la caméra dans une '
-                    'fenêtre dédiée et analyse régulièrement une image de la '
-                    'webcam pour rechercher le QR Code de la batterie.',
+                  Text(
+                    cameraReady
+                        ? 'Présente le QR Code devant la webcam. RC Companion '
+                              'analyse automatiquement l’image.'
+                        : 'RC Companion recherche une webcam utilisable sur '
+                              'ce PC.',
                     textAlign: TextAlign.center,
                   ),
-                  if (_windowsLastFrame != null) ...[
-                    const SizedBox(height: 20),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.memory(
-                        _windowsLastFrame!,
-                        width: 360,
-                        fit: BoxFit.contain,
-                        gaplessPlayback: true,
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 24),
                   if (_windowsCameraUnavailable)
                     FilledButton.icon(
@@ -364,20 +573,30 @@ class _BatteryScannerPageState extends State<BatteryScannerPage> {
                   const SizedBox(height: 14),
                   OutlinedButton.icon(
                     onPressed: () async {
-                      await _stopWindowsCamera();
-                      if (!context.mounted) return;
+                      await _disposeWindowsCamera();
+
+                      if (!context.mounted) {
+                        return;
+                      }
+
                       Navigator.of(context).pop();
                     },
                     icon: const Icon(Icons.keyboard_rounded),
                     label: const Text('Retour à la sélection manuelle'),
                   ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Scanner QR Windows : intégration préparée, à valider '
-                    'sur un PC Windows équipé d’une webcam.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
-                  ),
+                  if (_windowsCameraUnavailable) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Si la caméra reste indisponible, vérifie dans Windows '
+                      'que l’accès Caméra est autorisé pour les applications '
+                      'de bureau.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

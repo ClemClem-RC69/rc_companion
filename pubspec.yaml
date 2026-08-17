@@ -23,9 +23,10 @@ dependencies:
   mobile_scanner: ^7.3.0
 
   # SCANNER QR WINDOWS
-  # Webcam Windows -> capture d'une image -> décodage QR en Dart.
-  # Le scanner existant mobile_scanner reste inchangé sur Android/iOS/macOS.
-  simple_camera_windows: ^0.0.8
+  # Webcam intégrée directement dans la page RC Companion.
+  # Le scanner mobile_scanner reste inchangé sur Android/iOS/macOS.
+  camera_platform_interface: ^2.13.1
+  camera_windows: ^0.2.6+4
   image: ^4.9.1
   zxing2: ^0.2.4
 
