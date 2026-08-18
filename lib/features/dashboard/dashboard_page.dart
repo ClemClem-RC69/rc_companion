@@ -5258,7 +5258,11 @@ class _MobileNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return NavigationBar(
+    final compactPhone = MediaQuery.sizeOf(context).width < 600;
+    final currentTheme = Theme.of(context);
+    final currentNavigationTheme = currentTheme.navigationBarTheme;
+
+    final navigationBar = NavigationBar(
       selectedIndex: 0,
       onDestinationSelected: (index) {
         switch (index) {
@@ -5301,6 +5305,26 @@ class _MobileNavigation extends StatelessWidget {
           label: 'Radios',
         ),
       ],
+    );
+
+    if (!compactPhone) {
+      return navigationBar;
+    }
+
+    return NavigationBarTheme(
+      data: currentNavigationTheme.copyWith(
+        labelTextStyle: WidgetStateProperty.resolveWith<TextStyle?>((states) {
+          final baseStyle =
+              currentTheme.textTheme.labelMedium ?? const TextStyle();
+          return baseStyle.copyWith(
+            fontSize: 9.5,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w700
+                : FontWeight.w500,
+          );
+        }),
+      ),
+      child: navigationBar,
     );
   }
 }
