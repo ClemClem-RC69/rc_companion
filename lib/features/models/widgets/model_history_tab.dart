@@ -255,11 +255,39 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     );
   }
 
+  List<_ModelMaintenanceGroup> get _maintenanceGroups {
+    final grouped = <String, List<_ModelMaintenanceRecord>>{};
+
+    for (final maintenance in _maintenances) {
+      grouped
+          .putIfAbsent(
+            maintenance.maintenanceGroupId,
+            () => <_ModelMaintenanceRecord>[],
+          )
+          .add(maintenance);
+    }
+
+    final groups = grouped.entries
+        .map((entry) {
+          final interventions = List<_ModelMaintenanceRecord>.from(entry.value)
+            ..sort((a, b) => a.date.compareTo(b.date));
+          return _ModelMaintenanceGroup(
+            id: entry.key,
+            interventions: List<_ModelMaintenanceRecord>.unmodifiable(
+              interventions,
+            ),
+          );
+        })
+        .toList(growable: false);
+
+    return groups;
+  }
+
   List<_TimelineItem> get _timelineItems {
     final items = <_TimelineItem>[
       for (final session in _sessions) _TimelineItem.session(session),
-      for (final maintenance in _maintenances)
-        _TimelineItem.maintenance(maintenance),
+      for (final maintenanceGroup in _maintenanceGroups)
+        _TimelineItem.maintenanceGroup(maintenanceGroup),
     ];
 
     final acquisitionDate = _currentModel.acquisitionDate;
@@ -638,98 +666,74 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     );
   }
 
-  Widget _maintenanceCard(_ModelMaintenanceRecord record) {
+  Widget _maintenanceGroupCard(_ModelMaintenanceGroup group) {
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
       child: ExpansionTile(
-        leading: Icon(record.icon),
+        leading: const Icon(Icons.build_circle_outlined),
         title: Text(
-          record.title.isEmpty ? record.typeLabel : record.title,
+          'Maintenance — ${_formatDate(group.date)}',
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
-        subtitle: Text(
-          '${record.typeLabel} • ${_formatDate(record.date)}'
-          '${record.isRevision ? ' • ${record.packsSinceLastRevision ?? 0} pack(s)' : ''}',
-        ),
+        subtitle: Text('${group.interventions.length} intervention(s)'),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
-          const SizedBox(height: 8),
-          _automaticLine(
-            label: 'Type',
-            value: record.typeLabel,
-            icon: record.icon,
-          ),
-          _automaticLine(
-            label: 'Date',
-            value: _formatDate(record.date),
-            icon: Icons.calendar_month_outlined,
-          ),
-          if (record.isRevision) ...[
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Depuis la révision précédente',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 8),
-                  _automaticLine(
-                    label: 'Packs consommés',
-                    value: '${record.packsSinceLastRevision ?? 0}',
-                    icon: Icons.battery_charging_full,
-                  ),
-                  _automaticLine(
-                    label: 'Temps d’utilisation',
-                    value: _durationLabel(
-                      record.runtimeMinutesSinceLastRevision,
+          for (var index = 0; index < group.interventions.length; index++) ...[
+            if (index > 0) const Divider(height: 22),
+            Builder(
+              builder: (context) {
+                final record = group.interventions[index];
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _automaticLine(
+                      label: record.typeLabel,
+                      value: record.title.trim().isEmpty
+                          ? record.typeLabel
+                          : record.title.trim(),
+                      icon: record.icon,
                     ),
-                    icon: Icons.timer_outlined,
-                  ),
-                ],
-              ),
+                    if (record.isRevision) ...[
+                      _automaticLine(
+                        label: 'Packs consommés',
+                        value: '${record.packsSinceLastRevision ?? 0}',
+                        icon: Icons.battery_charging_full,
+                      ),
+                      _automaticLine(
+                        label: 'Temps d’utilisation',
+                        value: _durationLabel(
+                          record.runtimeMinutesSinceLastRevision,
+                        ),
+                        icon: Icons.timer_outlined,
+                      ),
+                    ],
+                    if (record.fluids.isNotEmpty)
+                      for (final entry in record.fluids.entries)
+                        _automaticLine(
+                          label: _fluidLabel(entry.key),
+                          value: '${entry.value} cSt',
+                          icon: Icons.opacity_outlined,
+                        ),
+                    if (record.setupChanges.isNotEmpty)
+                      for (final change in record.setupChanges)
+                        _automaticLine(
+                          label: change['field'] ?? 'Réglage',
+                          value: change['newValue'] ?? '',
+                          icon: Icons.tune,
+                        ),
+                    if (record.notes.trim().isNotEmpty)
+                      _optionalSection(
+                        title: record.isRevision
+                            ? 'Texte libre'
+                            : 'Description',
+                        value: record.notes,
+                        icon: Icons.notes_outlined,
+                      ),
+                  ],
+                );
+              },
             ),
           ],
-          if (record.fluids.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Fluides remplacés',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 6),
-            for (final entry in record.fluids.entries)
-              _automaticLine(
-                label: _fluidLabel(entry.key),
-                value: '${entry.value} cSt',
-                icon: Icons.opacity_outlined,
-              ),
-          ],
-          if (record.setupChanges.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Réglages modifiés',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 6),
-            for (final change in record.setupChanges)
-              _automaticLine(
-                label: change['field'] ?? 'Réglage',
-                value: change['newValue'] ?? '',
-                icon: Icons.tune,
-              ),
-          ],
-          _optionalSection(
-            title: record.isRevision ? 'Texte libre' : 'Description',
-            value: record.notes,
-            icon: Icons.notes_outlined,
-          ),
         ],
       ),
     );
@@ -773,8 +777,8 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       return _sessionCard(item.session!);
     }
 
-    if (item.maintenance != null) {
-      return _maintenanceCard(item.maintenance!);
+    if (item.maintenanceGroup != null) {
+      return _maintenanceGroupCard(item.maintenanceGroup!);
     }
 
     return _acquisitionCard(item.date);
@@ -1229,36 +1233,43 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       );
     }
 
-    if (item.maintenance != null) {
-      final record = item.maintenance!;
-      final details = <String>[
-        if (record.title.trim().isNotEmpty) record.title.trim(),
-        if (record.notes.trim().isNotEmpty) record.notes.trim(),
-        if (record.fluids.isNotEmpty)
-          record.fluids.entries
-              .map((entry) => '${_fluidLabel(entry.key)} : ${entry.value} cSt')
-              .join(' / '),
-        if (record.setupChanges.isNotEmpty)
-          record.setupChanges
-              .map(
-                (change) =>
-                    '${change['field'] ?? 'Réglage'} : '
-                    '${change['newValue'] ?? ''}',
-              )
-              .join(' / '),
-      ].where((value) => value.isNotEmpty).join('\n');
+    if (item.maintenanceGroup != null) {
+      final group = item.maintenanceGroup!;
+      final details = <String>[];
+
+      for (final record in group.interventions) {
+        final interventionDetails = <String>[
+          if (record.title.trim().isNotEmpty) record.title.trim(),
+          if (record.notes.trim().isNotEmpty) record.notes.trim(),
+          if (record.fluids.isNotEmpty)
+            record.fluids.entries
+                .map(
+                  (entry) => '${_fluidLabel(entry.key)} : ${entry.value} cSt',
+                )
+                .join(' / '),
+          if (record.setupChanges.isNotEmpty)
+            record.setupChanges
+                .map(
+                  (change) =>
+                      '${change['field'] ?? 'Réglage'} : '
+                      '${change['newValue'] ?? ''}',
+                )
+                .join(' / '),
+        ].where((value) => value.isNotEmpty).join(' - ');
+
+        details.add(
+          interventionDetails.isEmpty
+              ? record.typeLabel
+              : '${record.typeLabel} : $interventionDetails',
+        );
+      }
 
       return pw.TableRow(
         children: [
-          _pdfHistoryCell(_formatDate(record.date)),
-          _pdfHistoryCell(record.typeLabel),
-          _pdfHistoryCell(details.isEmpty ? record.typeLabel : details),
-          _pdfHistoryCell(
-            record.isRevision
-                ? '${record.packsSinceLastRevision ?? 0} pack(s)'
-                      ' - ${_durationLabel(record.runtimeMinutesSinceLastRevision)}'
-                : '-',
-          ),
+          _pdfHistoryCell(_formatDate(group.date)),
+          _pdfHistoryCell('Maintenance'),
+          _pdfHistoryCell(details.join('\n')),
+          _pdfHistoryCell('${group.interventions.length} intervention(s)'),
         ],
       );
     }
@@ -1449,14 +1460,23 @@ class _PdfLabelValue {
 }
 
 class _TimelineItem {
-  const _TimelineItem._({required this.date, this.session, this.maintenance});
+  const _TimelineItem._({
+    required this.date,
+    this.session,
+    this.maintenanceGroup,
+  });
 
   factory _TimelineItem.session(RcSession session) {
     return _TimelineItem._(date: session.startedAt, session: session);
   }
 
-  factory _TimelineItem.maintenance(_ModelMaintenanceRecord maintenance) {
-    return _TimelineItem._(date: maintenance.date, maintenance: maintenance);
+  factory _TimelineItem.maintenanceGroup(
+    _ModelMaintenanceGroup maintenanceGroup,
+  ) {
+    return _TimelineItem._(
+      date: maintenanceGroup.date,
+      maintenanceGroup: maintenanceGroup,
+    );
   }
 
   factory _TimelineItem.acquisition(DateTime date) {
@@ -1465,7 +1485,7 @@ class _TimelineItem {
 
   final DateTime date;
   final RcSession? session;
-  final _ModelMaintenanceRecord? maintenance;
+  final _ModelMaintenanceGroup? maintenanceGroup;
 }
 
 class _ModelMaintenanceRecord {
@@ -1491,7 +1511,20 @@ class _ModelMaintenanceRecord {
 
   bool get isRevision => recordType == 'REVISION';
 
+  String get maintenanceGroupId {
+    final value = data['maintenanceGroupId']?.toString().trim() ?? '';
+    return value.isEmpty ? id : value;
+  }
+
+  bool get isAdjustment =>
+      recordType == 'MODIFICATION' &&
+      data['interventionSubtype']?.toString() == 'REGLAGE';
+
   String get typeLabel {
+    if (isAdjustment) {
+      return 'Réglage';
+    }
+
     switch (recordType) {
       case 'REPARATION':
         return 'Réparation';
@@ -1504,6 +1537,10 @@ class _ModelMaintenanceRecord {
   }
 
   IconData get icon {
+    if (isAdjustment) {
+      return Icons.tune_outlined;
+    }
+
     switch (recordType) {
       case 'REPARATION':
         return Icons.handyman_outlined;
@@ -1560,6 +1597,17 @@ class _ModelMaintenanceRecord {
           (row['runtime_minutes_since_last_revision'] as num?)?.toInt(),
     );
   }
+}
+
+class _ModelMaintenanceGroup {
+  const _ModelMaintenanceGroup({required this.id, required this.interventions});
+
+  final String id;
+  final List<_ModelMaintenanceRecord> interventions;
+
+  DateTime get date => interventions
+      .map((record) => record.date)
+      .reduce((a, b) => a.isAfter(b) ? a : b);
 }
 
 class _SummaryValue extends StatelessWidget {

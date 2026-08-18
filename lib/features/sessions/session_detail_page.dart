@@ -564,35 +564,21 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
               _sectionTitle(context, 'Bilan de la session'),
               if (_session.drivingNotes.isNotEmpty)
                 _infoCard(
-                  label: 'Comportement et réglages constatés',
+                  label: 'Comportement pendant la session',
                   value: _session.drivingNotes,
                 ),
               if (_session.breakages.isNotEmpty)
                 _infoCard(label: 'Casses', value: _session.breakages),
               if (_session.partsReplacedOnSite.isNotEmpty)
                 _infoCard(
-                  label: 'Pièces remplacées sur place',
+                  label: 'Maintenance / réglages sur place',
                   value: _session.partsReplacedOnSite,
                 ),
               if (_session.maintenanceToDo.isNotEmpty)
                 _infoCard(
-                  label: 'Entretien à effectuer',
+                  label:
+                      'Entretien / réglages / modifications avant prochaine session',
                   value: _session.maintenanceToDo,
-                ),
-              if (_session.partsToOrder.isNotEmpty)
-                _infoCard(
-                  label: 'Pièces à commander',
-                  value: _session.partsToOrder,
-                ),
-              if (_session.changesBeforeNextSession.isNotEmpty)
-                _infoCard(
-                  label: 'Modifications avant la prochaine session',
-                  value: _session.changesBeforeNextSession,
-                ),
-              if (_session.generalNotes.isNotEmpty)
-                _infoCard(
-                  label: 'Notes générales',
-                  value: _session.generalNotes,
                 ),
             ],
           ],
@@ -733,9 +719,6 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
   late final TextEditingController _breakagesController;
   late final TextEditingController _partsReplacedController;
   late final TextEditingController _maintenanceController;
-  late final TextEditingController _partsToOrderController;
-  late final TextEditingController _changesController;
-  late final TextEditingController _generalNotesController;
 
   @override
   void initState() {
@@ -749,11 +732,6 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
     _maintenanceController = TextEditingController(
       text: session.maintenanceToDo,
     );
-    _partsToOrderController = TextEditingController(text: session.partsToOrder);
-    _changesController = TextEditingController(
-      text: session.changesBeforeNextSession,
-    );
-    _generalNotesController = TextEditingController(text: session.generalNotes);
   }
 
   @override
@@ -762,9 +740,6 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
     _breakagesController.dispose();
     _partsReplacedController.dispose();
     _maintenanceController.dispose();
-    _partsToOrderController.dispose();
-    _changesController.dispose();
-    _generalNotesController.dispose();
     super.dispose();
   }
 
@@ -775,9 +750,9 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
         breakages: _breakagesController.text.trim(),
         partsReplacedOnSite: _partsReplacedController.text.trim(),
         maintenanceToDo: _maintenanceController.text.trim(),
-        partsToOrder: _partsToOrderController.text.trim(),
-        changesBeforeNextSession: _changesController.text.trim(),
-        generalNotes: _generalNotesController.text.trim(),
+        partsToOrder: widget.session.partsToOrder,
+        changesBeforeNextSession: widget.session.changesBeforeNextSession,
+        generalNotes: widget.session.generalNotes,
       ),
     );
   }
@@ -905,20 +880,17 @@ class _EditTerrainDialogState extends State<_EditTerrainDialog> {
             final fields = <Widget>[
               _compactField(
                 _drivingNotesController,
-                'Comportement et réglages',
+                'Comportement pendant la session',
               ),
               _compactField(_breakagesController, 'Casses'),
               _compactField(
                 _partsReplacedController,
-                'Pièces remplacées sur place',
+                'Maintenance / réglages sur place',
               ),
-              _compactField(_maintenanceController, 'Entretien à effectuer'),
-              _compactField(_partsToOrderController, 'Pièces à commander'),
               _compactField(
-                _changesController,
-                'Modifications prochaine session',
+                _maintenanceController,
+                'Entretien / réglages / modifications avant prochaine session',
               ),
-              _compactField(_generalNotesController, 'Notes générales'),
             ];
 
             return Wrap(

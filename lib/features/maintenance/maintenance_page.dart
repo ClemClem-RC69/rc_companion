@@ -8,6 +8,7 @@ import '../../database/app_database.dart';
 import '../../models/rc_model.dart';
 import '../../services/maintenance_local_store.dart';
 import '../../services/maintenance_service.dart';
+import '../../services/model_operational_event_service.dart';
 import '../../services/model_setup_service.dart';
 import '../../services/supabase_service.dart';
 
@@ -35,6 +36,11 @@ class _MaintenancePageState extends State<MaintenancePage> {
   String _historyCategory = 'Tous';
 
   StreamSubscription<List<Map<String, dynamic>>>? _maintenanceSubscription;
+  StreamSubscription<List<LocalModelOperationalEvent>>?
+  _operationalEventSubscription;
+
+  Map<String, List<LocalModelOperationalEvent>> _openEventsByModel =
+      <String, List<LocalModelOperationalEvent>>{};
 
   bool _initialRecordHandled = false;
 
@@ -42,14 +48,45 @@ class _MaintenancePageState extends State<MaintenancePage> {
   void initState() {
     super.initState();
     _startMaintenanceLiveUpdates();
+    _startOperationalEventLiveUpdates();
     _loadData();
   }
 
   @override
   void dispose() {
     _maintenanceSubscription?.cancel();
+    _operationalEventSubscription?.cancel();
     _historySearchController.dispose();
     super.dispose();
+  }
+
+  void _startOperationalEventLiveUpdates() {
+    _operationalEventSubscription =
+        ModelOperationalEventService.watchOpenEvents().listen((events) {
+          if (!mounted) {
+            return;
+          }
+
+          final grouped = <String, List<LocalModelOperationalEvent>>{};
+
+          for (final event in events) {
+            grouped
+                .putIfAbsent(
+                  event.modelId,
+                  () => <LocalModelOperationalEvent>[],
+                )
+                .add(event);
+          }
+
+          setState(() {
+            _openEventsByModel = grouped.map(
+              (key, value) => MapEntry(
+                key,
+                List<LocalModelOperationalEvent>.unmodifiable(value),
+              ),
+            );
+          });
+        });
   }
 
   void _startMaintenanceLiveUpdates() {
@@ -225,6 +262,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       builder: (_) => _MaintenanceDialog(
         models: _models,
         initialModelId: widget.initialModelId,
+        openEventsByModel: _openEventsByModel,
       ),
     );
 
@@ -232,7 +270,14 @@ class _MaintenancePageState extends State<MaintenancePage> {
       return;
     }
 
-    await _saveMaintenance(draft);
+    final maintenanceGroupId =
+        'maintenance-${DateTime.now().microsecondsSinceEpoch}';
+
+    await _saveMaintenance(
+      draft,
+      allowContinuation: true,
+      maintenanceGroupId: maintenanceGroupId,
+    );
   }
 
   Future<void> _openEditDialog(_MaintenanceRecord record) async {
@@ -249,7 +294,11 @@ class _MaintenancePageState extends State<MaintenancePage> {
     await _updateMaintenance(record, draft);
   }
 
-  Future<void> _saveMaintenance(_MaintenanceDraft draft) async {
+  Future<void> _saveMaintenance(
+    _MaintenanceDraft draft, {
+    bool allowContinuation = false,
+    required String maintenanceGroupId,
+  }) async {
     final user = SupabaseService.client.auth.currentUser;
 
     if (user == null) {
@@ -265,13 +314,16 @@ class _MaintenancePageState extends State<MaintenancePage> {
     }
 
     try {
-      await MaintenanceService.createRecord(
+      final createdRecord = await MaintenanceService.createRecord(
         modelId: modelId,
         maintenanceDate: draft.date,
         recordType: draft.type.databaseValue,
         title: draft.title.trim(),
         notes: draft.notes.trim(),
-        data: draft.data,
+        data: <String, dynamic>{
+          ...draft.data,
+          'maintenanceGroupId': maintenanceGroupId,
+        },
         packsSinceLastRevision: draft.type == _MaintenanceType.revision
             ? 0
             : null,
@@ -279,6 +331,16 @@ class _MaintenancePageState extends State<MaintenancePage> {
             ? 0
             : null,
       );
+
+      final maintenanceId = createdRecord['id']?.toString() ?? '';
+
+      if (maintenanceId.isNotEmpty &&
+          draft.resolvedOperationalEventIds.isNotEmpty) {
+        await ModelOperationalEventService.resolveEvents(
+          eventIds: draft.resolvedOperationalEventIds,
+          maintenanceId: maintenanceId,
+        );
+      }
 
       if (draft.type == _MaintenanceType.revision) {
         await _rebuildCurrentSetupFromHistory(modelId);
@@ -291,9 +353,75 @@ class _MaintenancePageState extends State<MaintenancePage> {
 
       _showMessage('${draft.type.label} enregistrée.');
       await _loadData(refreshRemote: false);
+
+      if (allowContinuation && mounted) {
+        await _offerAnotherIntervention(
+          draft.model,
+          maintenanceGroupId: maintenanceGroupId,
+        );
+      }
     } catch (error) {
       _showMessage('Enregistrement impossible : $error');
     }
+  }
+
+  Future<void> _offerAnotherIntervention(
+    RcModel model, {
+    required String maintenanceGroupId,
+  }) async {
+    final addAnother = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.build_circle_outlined),
+        title: const Text('Effectuer une autre intervention ?'),
+        content: Text(
+          'L’intervention est enregistrée pour ${model.name}.\n\n'
+          'Tu peux poursuivre cette maintenance avec une révision, une '
+          'réparation, un réglage ou une modification.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Terminer la maintenance'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.add),
+            label: const Text('Autre intervention'),
+          ),
+        ],
+      ),
+    );
+
+    if (addAnother != true || !mounted) {
+      return;
+    }
+
+    final modelId = model.id?.trim();
+    if (modelId == null || modelId.isEmpty) {
+      return;
+    }
+
+    final nextDraft = await showDialog<_MaintenanceDraft>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _MaintenanceDialog(
+        models: _models,
+        initialModelId: modelId,
+        openEventsByModel: _openEventsByModel,
+      ),
+    );
+
+    if (nextDraft == null || !mounted) {
+      return;
+    }
+
+    await _saveMaintenance(
+      nextDraft,
+      allowContinuation: true,
+      maintenanceGroupId: maintenanceGroupId,
+    );
   }
 
   Future<void> _updateMaintenance(
@@ -322,7 +450,11 @@ class _MaintenancePageState extends State<MaintenancePage> {
         recordType: draft.type.databaseValue,
         title: draft.title.trim(),
         notes: draft.notes.trim(),
-        data: draft.data,
+        data: <String, dynamic>{
+          ...draft.data,
+          if (record.maintenanceGroupId.isNotEmpty)
+            'maintenanceGroupId': record.maintenanceGroupId,
+        },
         packsSinceLastRevision: record.packsSinceLastRevision,
         runtimeMinutesSinceLastRevision: record.runtimeMinutesSinceLastRevision,
       );
@@ -644,6 +776,9 @@ class _MaintenancePageState extends State<MaintenancePage> {
 
     try {
       await MaintenanceService.deleteRecord(maintenanceId: record.id);
+      await ModelOperationalEventService.reopenEventsResolvedByMaintenance(
+        record.id,
+      );
 
       if (record.type == _MaintenanceType.revision) {
         await _rebuildCurrentSetupFromHistory(record.modelId);
@@ -701,6 +836,35 @@ class _MaintenancePageState extends State<MaintenancePage> {
     }
 
     return '${hours}h ${remaining}min';
+  }
+
+  List<_MaintenanceGroup> _groupMaintenanceRecords(
+    List<_MaintenanceRecord> records,
+  ) {
+    final grouped = <String, List<_MaintenanceRecord>>{};
+
+    for (final record in records) {
+      grouped
+          .putIfAbsent(record.maintenanceGroupId, () => <_MaintenanceRecord>[])
+          .add(record);
+    }
+
+    final groups =
+        grouped.entries
+            .map((entry) {
+              final interventions = List<_MaintenanceRecord>.from(entry.value)
+                ..sort((a, b) => a.date.compareTo(b.date));
+              return _MaintenanceGroup(
+                id: entry.key,
+                interventions: List<_MaintenanceRecord>.unmodifiable(
+                  interventions,
+                ),
+              );
+            })
+            .toList(growable: false)
+          ..sort((a, b) => b.date.compareTo(a.date));
+
+    return groups;
   }
 
   @override
@@ -780,6 +944,9 @@ class _MaintenancePageState extends State<MaintenancePage> {
                         return matchesCategory && matchesSearch;
                       })
                       .toList(growable: false);
+                  final filteredGroups = _groupMaintenanceRecords(
+                    filteredRecords,
+                  );
 
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -807,7 +974,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                         },
                       ),
                       const SizedBox(height: 12),
-                      if (filteredRecords.isEmpty)
+                      if (filteredGroups.isEmpty)
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 48),
                           child: Center(
@@ -817,80 +984,47 @@ class _MaintenancePageState extends State<MaintenancePage> {
                             ),
                           ),
                         ),
-                      for (final record in filteredRecords)
+                      for (final group in filteredGroups)
                         Card(
                           margin: const EdgeInsets.only(bottom: 12),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () => _showDetails(record),
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(child: Icon(record.type.icon)),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          record.modelName,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleLarge
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${record.type.label} • '
-                                          '${_formatDate(record.date)}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        if (record.title.isNotEmpty) ...[
-                                          const SizedBox(height: 4),
-                                          Text(record.title),
-                                        ],
-                                        if (record.type ==
-                                            _MaintenanceType.revision) ...[
-                                          const SizedBox(height: 8),
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 8,
-                                            children: [
-                                              Chip(
-                                                avatar: const Icon(
-                                                  Icons.battery_charging_full,
-                                                  size: 18,
-                                                ),
-                                                label: Text(
-                                                  '${record.packsSinceLastRevision ?? 0} pack(s)',
-                                                ),
-                                              ),
-                                              Chip(
-                                                avatar: const Icon(
-                                                  Icons.timer_outlined,
-                                                  size: 18,
-                                                ),
-                                                label: Text(
-                                                  _durationLabel(
-                                                    record
-                                                        .runtimeMinutesSinceLastRevision,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ],
+                          child: ExpansionTile(
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.build_circle_outlined),
+                            ),
+                            title: Text(
+                              group.modelName,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            subtitle: Text(
+                              'Maintenance • ${_formatDate(group.date)} • '
+                              '${group.interventions.length} intervention(s)',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            childrenPadding: const EdgeInsets.fromLTRB(
+                              12,
+                              0,
+                              8,
+                              12,
+                            ),
+                            children: [
+                              for (final record in group.interventions)
+                                ListTile(
+                                  leading: Icon(record.type.icon),
+                                  title: Text(
+                                    record.title.isEmpty
+                                        ? record.type.label
+                                        : record.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                  PopupMenuButton<String>(
-                                    tooltip: 'Options',
+                                  subtitle: Text(record.type.label),
+                                  onTap: () => _showDetails(record),
+                                  trailing: PopupMenuButton<String>(
+                                    tooltip: 'Options de l’intervention',
                                     onSelected: (value) {
                                       if (value == 'details') {
                                         _showDetails(record);
@@ -933,9 +1067,8 @@ class _MaintenancePageState extends State<MaintenancePage> {
                                       ),
                                     ],
                                   ),
-                                ],
-                              ),
-                            ),
+                                ),
+                            ],
                           ),
                         ),
                     ],
@@ -1052,11 +1185,13 @@ class _MaintenanceDialog extends StatefulWidget {
     required this.models,
     this.record,
     this.initialModelId,
+    this.openEventsByModel = const <String, List<LocalModelOperationalEvent>>{},
   });
 
   final List<RcModel> models;
   final _MaintenanceRecord? record;
   final String? initialModelId;
+  final Map<String, List<LocalModelOperationalEvent>> openEventsByModel;
 
   @override
   State<_MaintenanceDialog> createState() => _MaintenanceDialogState();
@@ -1079,6 +1214,7 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
   };
 
   final List<_SetupChangeEditor> _setupChanges = [];
+  final Set<String> _resolvedOperationalEventIds = <String>{};
 
   String? _errorMessage;
 
@@ -1169,6 +1305,47 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
     }
 
     super.dispose();
+  }
+
+  List<LocalModelOperationalEvent> get _selectedModelOpenEvents {
+    if (widget.record != null) {
+      return const <LocalModelOperationalEvent>[];
+    }
+
+    final modelId = _selectedModel?.id?.trim();
+    if (modelId == null || modelId.isEmpty) {
+      return const <LocalModelOperationalEvent>[];
+    }
+
+    return widget.openEventsByModel[modelId] ??
+        const <LocalModelOperationalEvent>[];
+  }
+
+  Color _operationalEventColor(
+    BuildContext context,
+    LocalModelOperationalEvent event,
+  ) {
+    if (event.eventType == ModelOperationalEventService.repairType) {
+      return Theme.of(context).colorScheme.error;
+    }
+
+    return Colors.orange.shade800;
+  }
+
+  IconData _operationalEventIcon(LocalModelOperationalEvent event) {
+    if (event.eventType == ModelOperationalEventService.repairType) {
+      return Icons.error_outline;
+    }
+
+    return Icons.build_circle_outlined;
+  }
+
+  String _operationalEventLabel(LocalModelOperationalEvent event) {
+    if (event.eventType == ModelOperationalEventService.repairType) {
+      return 'Réparation à effectuer';
+    }
+
+    return 'Entretien / réglage / modification à effectuer';
   }
 
   DateTime get _firstAllowedDate {
@@ -1293,7 +1470,12 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
         data: <String, dynamic>{
           if (fluids.isNotEmpty) 'fluids': fluids,
           if (setupChanges.isNotEmpty) 'setupChanges': setupChanges,
+          if (_selectedType == _MaintenanceType.reglage)
+            'interventionSubtype': 'REGLAGE',
         },
+        resolvedOperationalEventIds: Set<String>.unmodifiable(
+          _resolvedOperationalEventIds,
+        ),
       ),
     );
   }
@@ -1347,6 +1529,7 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
                 onChanged: (value) {
                   setState(() {
                     _selectedModel = value;
+                    _resolvedOperationalEventIds.clear();
 
                     if (_selectedDate.isBefore(_firstAllowedDate)) {
                       _selectedDate = _firstAllowedDate;
@@ -1354,6 +1537,64 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
                   });
                 },
               ),
+              if (_selectedModelOpenEvents.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.notification_important_outlined),
+                          title: Text(
+                            'Éléments en attente issus des sessions',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          subtitle: Text(
+                            'Coche uniquement ce qui est réellement traité '
+                            'dans cette maintenance.',
+                          ),
+                        ),
+                        for (final event in _selectedModelOpenEvents)
+                          CheckboxListTile(
+                            value: _resolvedOperationalEventIds.contains(
+                              event.eventId,
+                            ),
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            secondary: Icon(
+                              _operationalEventIcon(event),
+                              color: _operationalEventColor(context, event),
+                            ),
+                            title: Text(
+                              _operationalEventLabel(event),
+                              style: TextStyle(
+                                color: _operationalEventColor(context, event),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            subtitle: Text(event.description),
+                            onChanged: (checked) {
+                              setState(() {
+                                if (checked == true) {
+                                  _resolvedOperationalEventIds.add(
+                                    event.eventId,
+                                  );
+                                } else {
+                                  _resolvedOperationalEventIds.remove(
+                                    event.eventId,
+                                  );
+                                }
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               DropdownButtonFormField<_MaintenanceType>(
                 initialValue: _selectedType,
@@ -1610,15 +1851,22 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
 
   Widget _buildSimpleFields() {
     final isRepair = _selectedType == _MaintenanceType.reparation;
+    final isAdjustment = _selectedType == _MaintenanceType.reglage;
 
     return Column(
       children: [
         TextField(
           controller: _titleController,
           decoration: _decoration(
-            isRepair ? 'Réparation effectuée' : 'Modification réalisée',
+            isRepair
+                ? 'Réparation effectuée'
+                : isAdjustment
+                ? 'Réglage effectué'
+                : 'Modification réalisée',
             hint: isRepair
                 ? 'Ex. Remplacement du servo de direction'
+                : isAdjustment
+                ? 'Ex. Contrôle de la direction et réglage du trim'
                 : 'Ex. Montage d’un nouveau moteur',
           ),
         ),
@@ -1628,6 +1876,8 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
           label: 'Description',
           hint: isRepair
               ? 'Décris simplement la panne et ce qui a été fait.'
+              : isAdjustment
+              ? 'Décris simplement le contrôle et les réglages effectués.'
               : 'Décris simplement les éléments ajoutés, retirés ou modifiés.',
         ),
       ],
@@ -1869,6 +2119,7 @@ class _MaintenanceDetailsDialog extends StatelessWidget {
 enum _MaintenanceType {
   revision,
   reparation,
+  reglage,
   modification;
 
   String get label {
@@ -1877,6 +2128,8 @@ enum _MaintenanceType {
         return 'Révision';
       case _MaintenanceType.reparation:
         return 'Réparation';
+      case _MaintenanceType.reglage:
+        return 'Réglage';
       case _MaintenanceType.modification:
         return 'Modification';
     }
@@ -1888,6 +2141,8 @@ enum _MaintenanceType {
         return 'REVISION';
       case _MaintenanceType.reparation:
         return 'REPARATION';
+      case _MaintenanceType.reglage:
+        return 'MODIFICATION';
       case _MaintenanceType.modification:
         return 'MODIFICATION';
     }
@@ -1899,6 +2154,8 @@ enum _MaintenanceType {
         return Icons.tune;
       case _MaintenanceType.reparation:
         return Icons.handyman_outlined;
+      case _MaintenanceType.reglage:
+        return Icons.tune_outlined;
       case _MaintenanceType.modification:
         return Icons.construction_outlined;
     }
@@ -1925,6 +2182,7 @@ class _MaintenanceDraft {
     required this.title,
     required this.notes,
     required this.data,
+    this.resolvedOperationalEventIds = const <String>{},
   });
 
   final RcModel model;
@@ -1933,6 +2191,7 @@ class _MaintenanceDraft {
   final String title;
   final String notes;
   final Map<String, dynamic> data;
+  final Set<String> resolvedOperationalEventIds;
 
   Map<String, String> get fluids {
     final raw = data['fluids'];
@@ -1991,6 +2250,11 @@ class _MaintenanceRecord {
   final int? packsSinceLastRevision;
   final int? runtimeMinutesSinceLastRevision;
 
+  String get maintenanceGroupId {
+    final value = data['maintenanceGroupId']?.toString().trim() ?? '';
+    return value.isEmpty ? id : value;
+  }
+
   Map<String, String> get fluids {
     final raw = data['fluids'];
 
@@ -2025,6 +2289,9 @@ class _MaintenanceRecord {
     final modelId = row['model_id'] as String;
     final model = modelById[modelId];
     final rawData = row['data'];
+    final data = rawData is Map
+        ? Map<String, dynamic>.from(rawData)
+        : const <String, dynamic>{};
 
     return _MaintenanceRecord(
       id: row['id'] as String,
@@ -2033,20 +2300,35 @@ class _MaintenanceRecord {
       modelBrand: model?.brand ?? '',
       modelCategory: model?.category ?? '',
       date: DateTime.parse(row['maintenance_date'].toString()).toLocal(),
-      type: _MaintenanceType.fromDatabase(
-        row['record_type'] as String? ?? 'REVISION',
-      ),
+      type:
+          row['record_type']?.toString() == 'MODIFICATION' &&
+              data['interventionSubtype']?.toString() == 'REGLAGE'
+          ? _MaintenanceType.reglage
+          : _MaintenanceType.fromDatabase(
+              row['record_type'] as String? ?? 'REVISION',
+            ),
       title: row['title'] as String? ?? '',
       notes: row['notes'] as String? ?? '',
-      data: rawData is Map
-          ? Map<String, dynamic>.from(rawData)
-          : const <String, dynamic>{},
+      data: data,
       packsSinceLastRevision: (row['packs_since_last_revision'] as num?)
           ?.toInt(),
       runtimeMinutesSinceLastRevision:
           (row['runtime_minutes_since_last_revision'] as num?)?.toInt(),
     );
   }
+}
+
+class _MaintenanceGroup {
+  const _MaintenanceGroup({required this.id, required this.interventions});
+
+  final String id;
+  final List<_MaintenanceRecord> interventions;
+
+  _MaintenanceRecord get first => interventions.first;
+  String get modelName => first.modelName;
+  DateTime get date => interventions
+      .map((record) => record.date)
+      .reduce((a, b) => a.isAfter(b) ? a : b);
 }
 
 class _SetupFieldChoice {

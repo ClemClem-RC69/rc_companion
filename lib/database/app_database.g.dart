@@ -5018,6 +5018,659 @@ class LocalMaintenanceRecordsCompanion
   }
 }
 
+class $LocalModelOperationalEventsTable extends LocalModelOperationalEvents
+    with
+        TableInfo<
+          $LocalModelOperationalEventsTable,
+          LocalModelOperationalEvent
+        > {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalModelOperationalEventsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _localKeyMeta = const VerificationMeta(
+    'localKey',
+  );
+  @override
+  late final GeneratedColumn<String> localKey = GeneratedColumn<String>(
+    'local_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _eventIdMeta = const VerificationMeta(
+    'eventId',
+  );
+  @override
+  late final GeneratedColumn<String> eventId = GeneratedColumn<String>(
+    'event_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _modelIdMeta = const VerificationMeta(
+    'modelId',
+  );
+  @override
+  late final GeneratedColumn<String> modelId = GeneratedColumn<String>(
+    'model_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceSessionIdMeta = const VerificationMeta(
+    'sourceSessionId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceSessionId = GeneratedColumn<String>(
+    'source_session_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _eventTypeMeta = const VerificationMeta(
+    'eventType',
+  );
+  @override
+  late final GeneratedColumn<String> eventType = GeneratedColumn<String>(
+    'event_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _resolvedAtMeta = const VerificationMeta(
+    'resolvedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> resolvedAt = GeneratedColumn<DateTime>(
+    'resolved_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _resolutionMaintenanceIdMeta =
+      const VerificationMeta('resolutionMaintenanceId');
+  @override
+  late final GeneratedColumn<String> resolutionMaintenanceId =
+      GeneratedColumn<String>(
+        'resolution_maintenance_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    localKey,
+    userId,
+    eventId,
+    modelId,
+    sourceSessionId,
+    eventType,
+    description,
+    createdAt,
+    resolvedAt,
+    resolutionMaintenanceId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_model_operational_events';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalModelOperationalEvent> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('local_key')) {
+      context.handle(
+        _localKeyMeta,
+        localKey.isAcceptableOrUnknown(data['local_key']!, _localKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localKeyMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('event_id')) {
+      context.handle(
+        _eventIdMeta,
+        eventId.isAcceptableOrUnknown(data['event_id']!, _eventIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_eventIdMeta);
+    }
+    if (data.containsKey('model_id')) {
+      context.handle(
+        _modelIdMeta,
+        modelId.isAcceptableOrUnknown(data['model_id']!, _modelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modelIdMeta);
+    }
+    if (data.containsKey('source_session_id')) {
+      context.handle(
+        _sourceSessionIdMeta,
+        sourceSessionId.isAcceptableOrUnknown(
+          data['source_session_id']!,
+          _sourceSessionIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceSessionIdMeta);
+    }
+    if (data.containsKey('event_type')) {
+      context.handle(
+        _eventTypeMeta,
+        eventType.isAcceptableOrUnknown(data['event_type']!, _eventTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_eventTypeMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_descriptionMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('resolved_at')) {
+      context.handle(
+        _resolvedAtMeta,
+        resolvedAt.isAcceptableOrUnknown(data['resolved_at']!, _resolvedAtMeta),
+      );
+    }
+    if (data.containsKey('resolution_maintenance_id')) {
+      context.handle(
+        _resolutionMaintenanceIdMeta,
+        resolutionMaintenanceId.isAcceptableOrUnknown(
+          data['resolution_maintenance_id']!,
+          _resolutionMaintenanceIdMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {localKey};
+  @override
+  LocalModelOperationalEvent map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalModelOperationalEvent(
+      localKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_key'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      eventId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}event_id'],
+      )!,
+      modelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}model_id'],
+      )!,
+      sourceSessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_session_id'],
+      )!,
+      eventType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}event_type'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      resolvedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}resolved_at'],
+      ),
+      resolutionMaintenanceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}resolution_maintenance_id'],
+      ),
+    );
+  }
+
+  @override
+  $LocalModelOperationalEventsTable createAlias(String alias) {
+    return $LocalModelOperationalEventsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalModelOperationalEvent extends DataClass
+    implements Insertable<LocalModelOperationalEvent> {
+  final String localKey;
+  final String userId;
+  final String eventId;
+  final String modelId;
+  final String sourceSessionId;
+  final String eventType;
+  final String description;
+  final DateTime createdAt;
+  final DateTime? resolvedAt;
+  final String? resolutionMaintenanceId;
+  const LocalModelOperationalEvent({
+    required this.localKey,
+    required this.userId,
+    required this.eventId,
+    required this.modelId,
+    required this.sourceSessionId,
+    required this.eventType,
+    required this.description,
+    required this.createdAt,
+    this.resolvedAt,
+    this.resolutionMaintenanceId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['local_key'] = Variable<String>(localKey);
+    map['user_id'] = Variable<String>(userId);
+    map['event_id'] = Variable<String>(eventId);
+    map['model_id'] = Variable<String>(modelId);
+    map['source_session_id'] = Variable<String>(sourceSessionId);
+    map['event_type'] = Variable<String>(eventType);
+    map['description'] = Variable<String>(description);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || resolvedAt != null) {
+      map['resolved_at'] = Variable<DateTime>(resolvedAt);
+    }
+    if (!nullToAbsent || resolutionMaintenanceId != null) {
+      map['resolution_maintenance_id'] = Variable<String>(
+        resolutionMaintenanceId,
+      );
+    }
+    return map;
+  }
+
+  LocalModelOperationalEventsCompanion toCompanion(bool nullToAbsent) {
+    return LocalModelOperationalEventsCompanion(
+      localKey: Value(localKey),
+      userId: Value(userId),
+      eventId: Value(eventId),
+      modelId: Value(modelId),
+      sourceSessionId: Value(sourceSessionId),
+      eventType: Value(eventType),
+      description: Value(description),
+      createdAt: Value(createdAt),
+      resolvedAt: resolvedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(resolvedAt),
+      resolutionMaintenanceId: resolutionMaintenanceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(resolutionMaintenanceId),
+    );
+  }
+
+  factory LocalModelOperationalEvent.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalModelOperationalEvent(
+      localKey: serializer.fromJson<String>(json['localKey']),
+      userId: serializer.fromJson<String>(json['userId']),
+      eventId: serializer.fromJson<String>(json['eventId']),
+      modelId: serializer.fromJson<String>(json['modelId']),
+      sourceSessionId: serializer.fromJson<String>(json['sourceSessionId']),
+      eventType: serializer.fromJson<String>(json['eventType']),
+      description: serializer.fromJson<String>(json['description']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      resolvedAt: serializer.fromJson<DateTime?>(json['resolvedAt']),
+      resolutionMaintenanceId: serializer.fromJson<String?>(
+        json['resolutionMaintenanceId'],
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'localKey': serializer.toJson<String>(localKey),
+      'userId': serializer.toJson<String>(userId),
+      'eventId': serializer.toJson<String>(eventId),
+      'modelId': serializer.toJson<String>(modelId),
+      'sourceSessionId': serializer.toJson<String>(sourceSessionId),
+      'eventType': serializer.toJson<String>(eventType),
+      'description': serializer.toJson<String>(description),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'resolvedAt': serializer.toJson<DateTime?>(resolvedAt),
+      'resolutionMaintenanceId': serializer.toJson<String?>(
+        resolutionMaintenanceId,
+      ),
+    };
+  }
+
+  LocalModelOperationalEvent copyWith({
+    String? localKey,
+    String? userId,
+    String? eventId,
+    String? modelId,
+    String? sourceSessionId,
+    String? eventType,
+    String? description,
+    DateTime? createdAt,
+    Value<DateTime?> resolvedAt = const Value.absent(),
+    Value<String?> resolutionMaintenanceId = const Value.absent(),
+  }) => LocalModelOperationalEvent(
+    localKey: localKey ?? this.localKey,
+    userId: userId ?? this.userId,
+    eventId: eventId ?? this.eventId,
+    modelId: modelId ?? this.modelId,
+    sourceSessionId: sourceSessionId ?? this.sourceSessionId,
+    eventType: eventType ?? this.eventType,
+    description: description ?? this.description,
+    createdAt: createdAt ?? this.createdAt,
+    resolvedAt: resolvedAt.present ? resolvedAt.value : this.resolvedAt,
+    resolutionMaintenanceId: resolutionMaintenanceId.present
+        ? resolutionMaintenanceId.value
+        : this.resolutionMaintenanceId,
+  );
+  LocalModelOperationalEvent copyWithCompanion(
+    LocalModelOperationalEventsCompanion data,
+  ) {
+    return LocalModelOperationalEvent(
+      localKey: data.localKey.present ? data.localKey.value : this.localKey,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      eventId: data.eventId.present ? data.eventId.value : this.eventId,
+      modelId: data.modelId.present ? data.modelId.value : this.modelId,
+      sourceSessionId: data.sourceSessionId.present
+          ? data.sourceSessionId.value
+          : this.sourceSessionId,
+      eventType: data.eventType.present ? data.eventType.value : this.eventType,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      resolvedAt: data.resolvedAt.present
+          ? data.resolvedAt.value
+          : this.resolvedAt,
+      resolutionMaintenanceId: data.resolutionMaintenanceId.present
+          ? data.resolutionMaintenanceId.value
+          : this.resolutionMaintenanceId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalModelOperationalEvent(')
+          ..write('localKey: $localKey, ')
+          ..write('userId: $userId, ')
+          ..write('eventId: $eventId, ')
+          ..write('modelId: $modelId, ')
+          ..write('sourceSessionId: $sourceSessionId, ')
+          ..write('eventType: $eventType, ')
+          ..write('description: $description, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('resolvedAt: $resolvedAt, ')
+          ..write('resolutionMaintenanceId: $resolutionMaintenanceId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    localKey,
+    userId,
+    eventId,
+    modelId,
+    sourceSessionId,
+    eventType,
+    description,
+    createdAt,
+    resolvedAt,
+    resolutionMaintenanceId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalModelOperationalEvent &&
+          other.localKey == this.localKey &&
+          other.userId == this.userId &&
+          other.eventId == this.eventId &&
+          other.modelId == this.modelId &&
+          other.sourceSessionId == this.sourceSessionId &&
+          other.eventType == this.eventType &&
+          other.description == this.description &&
+          other.createdAt == this.createdAt &&
+          other.resolvedAt == this.resolvedAt &&
+          other.resolutionMaintenanceId == this.resolutionMaintenanceId);
+}
+
+class LocalModelOperationalEventsCompanion
+    extends UpdateCompanion<LocalModelOperationalEvent> {
+  final Value<String> localKey;
+  final Value<String> userId;
+  final Value<String> eventId;
+  final Value<String> modelId;
+  final Value<String> sourceSessionId;
+  final Value<String> eventType;
+  final Value<String> description;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> resolvedAt;
+  final Value<String?> resolutionMaintenanceId;
+  final Value<int> rowid;
+  const LocalModelOperationalEventsCompanion({
+    this.localKey = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.eventId = const Value.absent(),
+    this.modelId = const Value.absent(),
+    this.sourceSessionId = const Value.absent(),
+    this.eventType = const Value.absent(),
+    this.description = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.resolvedAt = const Value.absent(),
+    this.resolutionMaintenanceId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalModelOperationalEventsCompanion.insert({
+    required String localKey,
+    required String userId,
+    required String eventId,
+    required String modelId,
+    required String sourceSessionId,
+    required String eventType,
+    required String description,
+    required DateTime createdAt,
+    this.resolvedAt = const Value.absent(),
+    this.resolutionMaintenanceId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : localKey = Value(localKey),
+       userId = Value(userId),
+       eventId = Value(eventId),
+       modelId = Value(modelId),
+       sourceSessionId = Value(sourceSessionId),
+       eventType = Value(eventType),
+       description = Value(description),
+       createdAt = Value(createdAt);
+  static Insertable<LocalModelOperationalEvent> custom({
+    Expression<String>? localKey,
+    Expression<String>? userId,
+    Expression<String>? eventId,
+    Expression<String>? modelId,
+    Expression<String>? sourceSessionId,
+    Expression<String>? eventType,
+    Expression<String>? description,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? resolvedAt,
+    Expression<String>? resolutionMaintenanceId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (localKey != null) 'local_key': localKey,
+      if (userId != null) 'user_id': userId,
+      if (eventId != null) 'event_id': eventId,
+      if (modelId != null) 'model_id': modelId,
+      if (sourceSessionId != null) 'source_session_id': sourceSessionId,
+      if (eventType != null) 'event_type': eventType,
+      if (description != null) 'description': description,
+      if (createdAt != null) 'created_at': createdAt,
+      if (resolvedAt != null) 'resolved_at': resolvedAt,
+      if (resolutionMaintenanceId != null)
+        'resolution_maintenance_id': resolutionMaintenanceId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalModelOperationalEventsCompanion copyWith({
+    Value<String>? localKey,
+    Value<String>? userId,
+    Value<String>? eventId,
+    Value<String>? modelId,
+    Value<String>? sourceSessionId,
+    Value<String>? eventType,
+    Value<String>? description,
+    Value<DateTime>? createdAt,
+    Value<DateTime?>? resolvedAt,
+    Value<String?>? resolutionMaintenanceId,
+    Value<int>? rowid,
+  }) {
+    return LocalModelOperationalEventsCompanion(
+      localKey: localKey ?? this.localKey,
+      userId: userId ?? this.userId,
+      eventId: eventId ?? this.eventId,
+      modelId: modelId ?? this.modelId,
+      sourceSessionId: sourceSessionId ?? this.sourceSessionId,
+      eventType: eventType ?? this.eventType,
+      description: description ?? this.description,
+      createdAt: createdAt ?? this.createdAt,
+      resolvedAt: resolvedAt ?? this.resolvedAt,
+      resolutionMaintenanceId:
+          resolutionMaintenanceId ?? this.resolutionMaintenanceId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (localKey.present) {
+      map['local_key'] = Variable<String>(localKey.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (eventId.present) {
+      map['event_id'] = Variable<String>(eventId.value);
+    }
+    if (modelId.present) {
+      map['model_id'] = Variable<String>(modelId.value);
+    }
+    if (sourceSessionId.present) {
+      map['source_session_id'] = Variable<String>(sourceSessionId.value);
+    }
+    if (eventType.present) {
+      map['event_type'] = Variable<String>(eventType.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (resolvedAt.present) {
+      map['resolved_at'] = Variable<DateTime>(resolvedAt.value);
+    }
+    if (resolutionMaintenanceId.present) {
+      map['resolution_maintenance_id'] = Variable<String>(
+        resolutionMaintenanceId.value,
+      );
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalModelOperationalEventsCompanion(')
+          ..write('localKey: $localKey, ')
+          ..write('userId: $userId, ')
+          ..write('eventId: $eventId, ')
+          ..write('modelId: $modelId, ')
+          ..write('sourceSessionId: $sourceSessionId, ')
+          ..write('eventType: $eventType, ')
+          ..write('description: $description, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('resolvedAt: $resolvedAt, ')
+          ..write('resolutionMaintenanceId: $resolutionMaintenanceId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncQueueEntriesTable extends SyncQueueEntries
     with TableInfo<$SyncQueueEntriesTable, SyncQueueEntry> {
   @override
@@ -6116,6 +6769,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $LocalModelRadioSetupsTable(this);
   late final $LocalMaintenanceRecordsTable localMaintenanceRecords =
       $LocalMaintenanceRecordsTable(this);
+  late final $LocalModelOperationalEventsTable localModelOperationalEvents =
+      $LocalModelOperationalEventsTable(this);
   late final $SyncQueueEntriesTable syncQueueEntries = $SyncQueueEntriesTable(
     this,
   );
@@ -6136,6 +6791,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localRadios,
     localModelRadioSetups,
     localMaintenanceRecords,
+    localModelOperationalEvents,
     syncQueueEntries,
     localSyncStates,
   ];
@@ -8683,6 +9339,328 @@ typedef $$LocalMaintenanceRecordsTableProcessedTableManager =
       LocalMaintenanceRecord,
       PrefetchHooks Function()
     >;
+typedef $$LocalModelOperationalEventsTableCreateCompanionBuilder =
+    LocalModelOperationalEventsCompanion Function({
+      required String localKey,
+      required String userId,
+      required String eventId,
+      required String modelId,
+      required String sourceSessionId,
+      required String eventType,
+      required String description,
+      required DateTime createdAt,
+      Value<DateTime?> resolvedAt,
+      Value<String?> resolutionMaintenanceId,
+      Value<int> rowid,
+    });
+typedef $$LocalModelOperationalEventsTableUpdateCompanionBuilder =
+    LocalModelOperationalEventsCompanion Function({
+      Value<String> localKey,
+      Value<String> userId,
+      Value<String> eventId,
+      Value<String> modelId,
+      Value<String> sourceSessionId,
+      Value<String> eventType,
+      Value<String> description,
+      Value<DateTime> createdAt,
+      Value<DateTime?> resolvedAt,
+      Value<String?> resolutionMaintenanceId,
+      Value<int> rowid,
+    });
+
+class $$LocalModelOperationalEventsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalModelOperationalEventsTable> {
+  $$LocalModelOperationalEventsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get localKey => $composableBuilder(
+    column: $table.localKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get eventId => $composableBuilder(
+    column: $table.eventId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceSessionId => $composableBuilder(
+    column: $table.sourceSessionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get eventType => $composableBuilder(
+    column: $table.eventType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get resolvedAt => $composableBuilder(
+    column: $table.resolvedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get resolutionMaintenanceId => $composableBuilder(
+    column: $table.resolutionMaintenanceId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalModelOperationalEventsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalModelOperationalEventsTable> {
+  $$LocalModelOperationalEventsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get localKey => $composableBuilder(
+    column: $table.localKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get eventId => $composableBuilder(
+    column: $table.eventId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get modelId => $composableBuilder(
+    column: $table.modelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceSessionId => $composableBuilder(
+    column: $table.sourceSessionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get eventType => $composableBuilder(
+    column: $table.eventType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get resolvedAt => $composableBuilder(
+    column: $table.resolvedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get resolutionMaintenanceId => $composableBuilder(
+    column: $table.resolutionMaintenanceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalModelOperationalEventsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalModelOperationalEventsTable> {
+  $$LocalModelOperationalEventsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get localKey =>
+      $composableBuilder(column: $table.localKey, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get eventId =>
+      $composableBuilder(column: $table.eventId, builder: (column) => column);
+
+  GeneratedColumn<String> get modelId =>
+      $composableBuilder(column: $table.modelId, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceSessionId => $composableBuilder(
+    column: $table.sourceSessionId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get eventType =>
+      $composableBuilder(column: $table.eventType, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get resolvedAt => $composableBuilder(
+    column: $table.resolvedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get resolutionMaintenanceId => $composableBuilder(
+    column: $table.resolutionMaintenanceId,
+    builder: (column) => column,
+  );
+}
+
+class $$LocalModelOperationalEventsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalModelOperationalEventsTable,
+          LocalModelOperationalEvent,
+          $$LocalModelOperationalEventsTableFilterComposer,
+          $$LocalModelOperationalEventsTableOrderingComposer,
+          $$LocalModelOperationalEventsTableAnnotationComposer,
+          $$LocalModelOperationalEventsTableCreateCompanionBuilder,
+          $$LocalModelOperationalEventsTableUpdateCompanionBuilder,
+          (
+            LocalModelOperationalEvent,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalModelOperationalEventsTable,
+              LocalModelOperationalEvent
+            >,
+          ),
+          LocalModelOperationalEvent,
+          PrefetchHooks Function()
+        > {
+  $$LocalModelOperationalEventsTableTableManager(
+    _$AppDatabase db,
+    $LocalModelOperationalEventsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalModelOperationalEventsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LocalModelOperationalEventsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LocalModelOperationalEventsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> localKey = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> eventId = const Value.absent(),
+                Value<String> modelId = const Value.absent(),
+                Value<String> sourceSessionId = const Value.absent(),
+                Value<String> eventType = const Value.absent(),
+                Value<String> description = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> resolvedAt = const Value.absent(),
+                Value<String?> resolutionMaintenanceId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalModelOperationalEventsCompanion(
+                localKey: localKey,
+                userId: userId,
+                eventId: eventId,
+                modelId: modelId,
+                sourceSessionId: sourceSessionId,
+                eventType: eventType,
+                description: description,
+                createdAt: createdAt,
+                resolvedAt: resolvedAt,
+                resolutionMaintenanceId: resolutionMaintenanceId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String localKey,
+                required String userId,
+                required String eventId,
+                required String modelId,
+                required String sourceSessionId,
+                required String eventType,
+                required String description,
+                required DateTime createdAt,
+                Value<DateTime?> resolvedAt = const Value.absent(),
+                Value<String?> resolutionMaintenanceId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalModelOperationalEventsCompanion.insert(
+                localKey: localKey,
+                userId: userId,
+                eventId: eventId,
+                modelId: modelId,
+                sourceSessionId: sourceSessionId,
+                eventType: eventType,
+                description: description,
+                createdAt: createdAt,
+                resolvedAt: resolvedAt,
+                resolutionMaintenanceId: resolutionMaintenanceId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalModelOperationalEventsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalModelOperationalEventsTable,
+      LocalModelOperationalEvent,
+      $$LocalModelOperationalEventsTableFilterComposer,
+      $$LocalModelOperationalEventsTableOrderingComposer,
+      $$LocalModelOperationalEventsTableAnnotationComposer,
+      $$LocalModelOperationalEventsTableCreateCompanionBuilder,
+      $$LocalModelOperationalEventsTableUpdateCompanionBuilder,
+      (
+        LocalModelOperationalEvent,
+        BaseReferences<
+          _$AppDatabase,
+          $LocalModelOperationalEventsTable,
+          LocalModelOperationalEvent
+        >,
+      ),
+      LocalModelOperationalEvent,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncQueueEntriesTableCreateCompanionBuilder =
     SyncQueueEntriesCompanion Function({
       Value<int> id,
@@ -9246,6 +10224,12 @@ class $AppDatabaseManager {
       $$LocalMaintenanceRecordsTableTableManager(
         _db,
         _db.localMaintenanceRecords,
+      );
+  $$LocalModelOperationalEventsTableTableManager
+  get localModelOperationalEvents =>
+      $$LocalModelOperationalEventsTableTableManager(
+        _db,
+        _db.localModelOperationalEvents,
       );
   $$SyncQueueEntriesTableTableManager get syncQueueEntries =>
       $$SyncQueueEntriesTableTableManager(_db, _db.syncQueueEntries);

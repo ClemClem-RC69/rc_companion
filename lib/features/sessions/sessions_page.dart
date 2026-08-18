@@ -8,6 +8,7 @@ import '../../models/rc_model.dart';
 import '../../models/rc_session.dart';
 import '../../services/battery_service.dart';
 import '../../services/model_local_store.dart';
+import '../../services/model_operational_event_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/session_local_store.dart';
 import '../../services/session_service.dart';
@@ -110,12 +111,17 @@ class _SessionsPageState extends State<SessionsPage> {
 
   StreamSubscription<List<RcModel>>? _modelSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _sessionSubscription;
+  StreamSubscription? _operationalEventSubscription;
+
+  Map<String, ModelOperationalStatus> _modelOperationalStatuses =
+      <String, ModelOperationalStatus>{};
 
   @override
   void initState() {
     super.initState();
     _startModelLiveUpdates();
     _startSessionLiveUpdates();
+    _startOperationalEventLiveUpdates();
     _loadData();
   }
 
@@ -123,6 +129,7 @@ class _SessionsPageState extends State<SessionsPage> {
   void dispose() {
     _modelSubscription?.cancel();
     _sessionSubscription?.cancel();
+    _operationalEventSubscription?.cancel();
     _historySearchController.dispose();
     super.dispose();
   }
@@ -146,6 +153,20 @@ class _SessionsPageState extends State<SessionsPage> {
 
       unawaited(_refreshSessionsFromLocal());
     });
+  }
+
+  void _startOperationalEventLiveUpdates() {
+    _operationalEventSubscription =
+        ModelOperationalEventService.watchOpenEvents().listen((events) {
+          if (!mounted) {
+            return;
+          }
+
+          setState(() {
+            _modelOperationalStatuses =
+                ModelOperationalEventService.statusesFromEvents(events);
+          });
+        });
   }
 
   void _startSessionLiveUpdates() {
@@ -345,15 +366,7 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   bool _isHistoricalSession(RcSession session) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final sessionDay = DateTime(
-      session.startedAt.year,
-      session.startedAt.month,
-      session.startedAt.day,
-    );
-
-    return sessionDay.isBefore(today);
+    return session.isHistorical;
   }
 
   DateTime _historicalRunStart(RcSession session) {
@@ -471,6 +484,7 @@ class _SessionsPageState extends State<SessionsPage> {
       context: context,
       builder: (context) => _OpenSessionDialog(
         models: _availableModels,
+        operationalStatuses: _modelOperationalStatuses,
         activeModelIds: _activeSessions
             .map((session) => session.model.id?.trim())
             .whereType<String>()
@@ -494,6 +508,7 @@ class _SessionsPageState extends State<SessionsPage> {
           model: result.model,
           startedAt: result.startedAt,
           location: result.location,
+          isHistorical: result.isHistorical,
         ),
       );
 
@@ -2433,10 +2448,12 @@ class _HistoryLine extends StatelessWidget {
 class _OpenSessionDialog extends StatefulWidget {
   const _OpenSessionDialog({
     required this.models,
+    required this.operationalStatuses,
     this.activeModelIds = const <String>{},
   });
 
   final List<RcModel> models;
+  final Map<String, ModelOperationalStatus> operationalStatuses;
   final Set<String> activeModelIds;
 
   @override
@@ -2463,6 +2480,112 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
       _startedAt.day,
     );
     return selectedDay.isBefore(today);
+  }
+
+  ModelOperationalStatus _statusFor(RcModel model) {
+    final id = model.id?.trim();
+    if (id == null || id.isEmpty) {
+      return ModelOperationalStatus.ready;
+    }
+    return widget.operationalStatuses[id] ?? ModelOperationalStatus.ready;
+  }
+
+  Color _statusColor(BuildContext context, ModelOperationalStatus status) {
+    switch (status.state) {
+      case ModelOperationalState.ready:
+        return Colors.green.shade700;
+      case ModelOperationalState.maintenance:
+        return Colors.orange.shade800;
+      case ModelOperationalState.unavailable:
+        return Theme.of(context).colorScheme.error;
+    }
+  }
+
+  IconData _statusIcon(ModelOperationalStatus status) {
+    switch (status.state) {
+      case ModelOperationalState.ready:
+        return Icons.check_circle_outline;
+      case ModelOperationalState.maintenance:
+        return Icons.build_circle_outlined;
+      case ModelOperationalState.unavailable:
+        return Icons.error_outline;
+    }
+  }
+
+  Future<bool> _confirmOperationalStatus(RcModel model) async {
+    if (_isHistorical) {
+      return true;
+    }
+
+    final status = _statusFor(model);
+    if (status.isReady) {
+      return true;
+    }
+
+    if (status.hasMaintenance) {
+      final details = status.maintenanceDescriptions.isEmpty
+          ? 'Une maintenance est à prévoir avant la prochaine session.'
+          : status.maintenanceDescriptions.map((item) => '• $item').join('\n');
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.orange.shade800,
+          ),
+          title: const Text('Maintenance à prévoir'),
+          content: Text('$details\n\nLe modèle reste disponible pour rouler.'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Continuer'),
+            ),
+          ],
+        ),
+      );
+
+      return mounted;
+    }
+
+    final repairText = status.repairDescriptions.isEmpty
+        ? 'Une réparation est encore en attente.'
+        : status.repairDescriptions.map((item) => '• $item').join('\n');
+    final maintenanceText = status.maintenanceDescriptions.isEmpty
+        ? ''
+        : '\n\nAutres opérations prévues :\n'
+              '${status.maintenanceDescriptions.map((item) => '• $item').join('\n')}';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(
+          Icons.error_outline,
+          color: Theme.of(dialogContext).colorScheme.error,
+        ),
+        title: const Text('Modèle indisponible'),
+        content: Text(
+          '$repairText$maintenanceText\n\n'
+          'Voulez-vous quand même utiliser ce modèle ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Choisir un autre modèle'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+            ),
+            child: const Text('Utiliser quand même'),
+          ),
+        ],
+      ),
+    );
+
+    return confirmed == true;
   }
 
   List<RcModel> get _selectableModels {
@@ -2607,18 +2730,53 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
                   labelText: 'Modèle utilisé',
                   border: OutlineInputBorder(),
                 ),
-                items: _selectableModels
-                    .map(
-                      (model) => DropdownMenuItem(
-                        value: model,
-                        child: Text(
-                          '${model.name} — ${model.brand}',
-                          overflow: TextOverflow.ellipsis,
+                items: _selectableModels.map((model) {
+                  final status = _statusFor(model);
+
+                  return DropdownMenuItem(
+                    value: model,
+                    child: Row(
+                      children: [
+                        if (!_isHistorical) ...[
+                          Icon(
+                            _statusIcon(status),
+                            size: 18,
+                            color: _statusColor(context, status),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Expanded(
+                          child: Text(
+                            _isHistorical
+                                ? '${model.name} — ${model.brand}'
+                                : '${model.name} — ${model.brand} • ${status.label}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) async {
+                  if (value == null) {
+                    setState(() {
+                      _selectedModel = null;
+                    });
+                    return;
+                  }
+
+                  final confirmed = await _confirmOperationalStatus(value);
+                  if (!mounted) {
+                    return;
+                  }
+
+                  if (!confirmed) {
+                    setState(() {
+                      _selectedModel = null;
+                    });
+                    return;
+                  }
+
                   setState(() {
                     _selectedModel = value;
                     final firstDate = _firstAllowedDate;
@@ -3227,9 +3385,6 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
   final _breakagesController = TextEditingController();
   final _partsReplacedController = TextEditingController();
   final _maintenanceController = TextEditingController();
-  final _partsToOrderController = TextEditingController();
-  final _changesController = TextEditingController();
-  final _generalNotesController = TextEditingController();
 
   @override
   void dispose() {
@@ -3237,9 +3392,6 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
     _breakagesController.dispose();
     _partsReplacedController.dispose();
     _maintenanceController.dispose();
-    _partsToOrderController.dispose();
-    _changesController.dispose();
-    _generalNotesController.dispose();
     super.dispose();
   }
 
@@ -3298,16 +3450,16 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
               spacing: 10,
               runSpacing: 10,
               children: [
-                field(_drivingNotesController, 'Comportement et réglages'),
-                field(_breakagesController, 'Casses'),
-                field(_partsReplacedController, 'Pièces remplacées sur place'),
-                field(_maintenanceController, 'Entretien à effectuer'),
-                field(_partsToOrderController, 'Pièces à commander'),
                 field(
-                  _changesController,
-                  'Modifications avant prochaine session',
+                  _drivingNotesController,
+                  'Comportement et réglages pendant la session',
                 ),
-                field(_generalNotesController, 'Notes générales'),
+                field(_breakagesController, 'Casses'),
+                field(_partsReplacedController, 'Maintenance sur place'),
+                field(
+                  _maintenanceController,
+                  'Entretien / réglages / modifications avant prochaine session',
+                ),
               ],
             );
           },
@@ -3326,9 +3478,9 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
                 breakages: _breakagesController.text.trim(),
                 partsReplacedOnSite: _partsReplacedController.text.trim(),
                 maintenanceToDo: _maintenanceController.text.trim(),
-                partsToOrder: _partsToOrderController.text.trim(),
-                changesBeforeNextSession: _changesController.text.trim(),
-                generalNotes: _generalNotesController.text.trim(),
+                partsToOrder: '',
+                changesBeforeNextSession: '',
+                generalNotes: '',
               ),
             );
           },

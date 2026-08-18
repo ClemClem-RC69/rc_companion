@@ -135,6 +135,22 @@ class LocalMaintenanceRecords extends Table {
   Set<Column<Object>> get primaryKey => {localKey};
 }
 
+class LocalModelOperationalEvents extends Table {
+  TextColumn get localKey => text()();
+  TextColumn get userId => text()();
+  TextColumn get eventId => text()();
+  TextColumn get modelId => text()();
+  TextColumn get sourceSessionId => text()();
+  TextColumn get eventType => text()();
+  TextColumn get description => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get resolvedAt => dateTime().nullable()();
+  TextColumn get resolutionMaintenanceId => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {localKey};
+}
+
 class SyncQueueEntries extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get userId => text()();
@@ -171,6 +187,7 @@ class LocalSyncStates extends Table {
     LocalRadios,
     LocalModelRadioSetups,
     LocalMaintenanceRecords,
+    LocalModelOperationalEvents,
     SyncQueueEntries,
     LocalSyncStates,
   ],
@@ -191,7 +208,7 @@ final class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration {
@@ -224,6 +241,9 @@ final class AppDatabase extends _$AppDatabase {
         }
         if (from < 9) {
           await migrator.createTable(localMaintenanceRecords);
+        }
+        if (from < 10) {
+          await migrator.createTable(localModelOperationalEvents);
         }
       },
       beforeOpen: (details) async {
@@ -377,6 +397,9 @@ final class AppDatabase extends _$AppDatabase {
       )..where((row) => row.userId.equals(userId))).go();
       await (delete(
         localMaintenanceRecords,
+      )..where((row) => row.userId.equals(userId))).go();
+      await (delete(
+        localModelOperationalEvents,
       )..where((row) => row.userId.equals(userId))).go();
       await (delete(
         localRadios,

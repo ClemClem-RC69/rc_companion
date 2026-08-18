@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/rc_model.dart';
 import '../../services/model_local_store.dart';
+import '../../services/model_operational_event_service.dart';
 import '../../services/model_service.dart';
 import 'model_detail_page.dart';
 import 'model_form_page.dart';
@@ -25,6 +26,10 @@ class _ModelsPageState extends State<ModelsPage> {
   List<_StoredModel> models = [];
 
   StreamSubscription<List<RcModel>>? _modelsSubscription;
+  StreamSubscription? _operationalEventSubscription;
+
+  Map<String, ModelOperationalStatus> _modelOperationalStatuses =
+      <String, ModelOperationalStatus>{};
 
   bool isLoading = true;
   String? errorMessage;
@@ -56,6 +61,7 @@ class _ModelsPageState extends State<ModelsPage> {
     super.initState();
     _searchController.addListener(_onSearchChanged);
     _startModelLiveUpdates();
+    _startOperationalEventLiveUpdates();
     loadModels();
   }
 
@@ -78,11 +84,35 @@ class _ModelsPageState extends State<ModelsPage> {
     ).listen(_applyCachedModels);
   }
 
+  void _startOperationalEventLiveUpdates() {
+    _operationalEventSubscription =
+        ModelOperationalEventService.watchOpenEvents().listen((events) {
+          if (!mounted) {
+            return;
+          }
+
+          setState(() {
+            _modelOperationalStatuses =
+                ModelOperationalEventService.statusesFromEvents(events);
+          });
+        });
+  }
+
+  ModelOperationalStatus _statusForModel(RcModel model) {
+    final id = model.id?.trim();
+    if (id == null || id.isEmpty) {
+      return ModelOperationalStatus.ready;
+    }
+
+    return _modelOperationalStatuses[id] ?? ModelOperationalStatus.ready;
+  }
+
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _modelsSubscription?.cancel();
+    _operationalEventSubscription?.cancel();
     super.dispose();
   }
 
@@ -441,6 +471,7 @@ class _ModelsPageState extends State<ModelsPage> {
             ...filteredModels.map(
               (storedModel) => _ModelCard(
                 storedModel: storedModel,
+                operationalStatus: _statusForModel(storedModel.model),
                 onTap: () => openModelDetail(storedModel),
                 onEdit: () => editModel(storedModel),
                 onDelete: () => confirmDelete(storedModel),
@@ -512,15 +543,39 @@ class _ModelsPageState extends State<ModelsPage> {
 class _ModelCard extends StatelessWidget {
   const _ModelCard({
     required this.storedModel,
+    required this.operationalStatus,
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
   });
 
   final _StoredModel storedModel;
+  final ModelOperationalStatus operationalStatus;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+
+  Color _statusColor(BuildContext context) {
+    switch (operationalStatus.state) {
+      case ModelOperationalState.ready:
+        return Colors.green.shade700;
+      case ModelOperationalState.maintenance:
+        return Colors.orange.shade800;
+      case ModelOperationalState.unavailable:
+        return Theme.of(context).colorScheme.error;
+    }
+  }
+
+  IconData get _statusIcon {
+    switch (operationalStatus.state) {
+      case ModelOperationalState.ready:
+        return Icons.check_circle_outline;
+      case ModelOperationalState.maintenance:
+        return Icons.build_circle_outlined;
+      case ModelOperationalState.unavailable:
+        return Icons.error_outline;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -583,6 +638,40 @@ class _ModelCard extends StatelessWidget {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _statusColor(context).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: _statusColor(context)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _statusIcon,
+                              size: 16,
+                              color: _statusColor(context),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              operationalStatus.label,
+                              style: TextStyle(
+                                color: _statusColor(context),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),

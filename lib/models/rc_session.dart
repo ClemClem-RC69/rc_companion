@@ -223,6 +223,7 @@ class RcSession {
     String generalNotes = '',
     this.location = '',
     this.id,
+    this.isHistorical = false,
     // Compatibilité temporaire avec l'ancien écran Sessions.
     DateTime? date,
     List<Battery>? batteries,
@@ -253,6 +254,13 @@ class RcSession {
   final String partsToOrder;
   final String changesBeforeNextSession;
   final String generalNotes;
+
+  /// V2 : session créée explicitement via le parcours « Session antérieure ».
+  ///
+  /// Ce marqueur est conservé localement pendant la phase de test V2 afin
+  /// qu'une saisie rétroactive n'influence ni l'état opérationnel du modèle,
+  /// ni l'état / la santé actuelle des batteries.
+  final bool isHistorical;
 
   bool get isClosed => endedAt != null;
 
@@ -303,6 +311,7 @@ class RcSession {
     String? partsToOrder,
     String? changesBeforeNextSession,
     String? generalNotes,
+    bool? isHistorical,
     bool clearEndedAt = false,
   }) {
     return RcSession(
@@ -320,6 +329,7 @@ class RcSession {
       changesBeforeNextSession:
           changesBeforeNextSession ?? this.changesBeforeNextSession,
       generalNotes: generalNotes ?? this.generalNotes,
+      isHistorical: isHistorical ?? this.isHistorical,
     );
   }
 

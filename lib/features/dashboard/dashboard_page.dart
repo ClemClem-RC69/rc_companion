@@ -1221,7 +1221,6 @@ class _DashboardPageState extends State<DashboardPage>
                 ? Row(
                     children: [
                       _DesktopSidebar(
-                        onHome: () {},
                         onModels: () => _open(const ModelsPage()),
                         onBatteries: () => _open(const BatteriesPage()),
                         onSessions: () =>
@@ -1240,7 +1239,6 @@ class _DashboardPageState extends State<DashboardPage>
                         width: landscapeSidebarWidth,
                         child: _CompactLandscapeSidebar(
                           dense: constraints.maxHeight < 500,
-                          onHome: () {},
                           onModels: () => _open(const ModelsPage()),
                           onBatteries: () => _open(const BatteriesPage()),
                           onSessions: () =>
@@ -1262,11 +1260,11 @@ class _DashboardPageState extends State<DashboardPage>
           bottomNavigationBar: desktop || compactLandscape
               ? null
               : _MobileNavigation(
-                  onHome: () {},
                   onModels: () => _open(const ModelsPage()),
                   onBatteries: () => _open(const BatteriesPage()),
                   onSessions: () =>
                       _open(const SessionsPage(historyOnly: true)),
+                  onMaintenance: () => _open(const MaintenancePage()),
                   onRadios: () => _open(const RadiosPage()),
                 ),
         );
@@ -4387,7 +4385,6 @@ class _TopBar extends StatelessWidget {
 
 class _DesktopSidebar extends StatelessWidget {
   const _DesktopSidebar({
-    required this.onHome,
     required this.onModels,
     required this.onBatteries,
     required this.onSessions,
@@ -4396,7 +4393,6 @@ class _DesktopSidebar extends StatelessWidget {
     required this.onInfo,
   });
 
-  final VoidCallback onHome;
   final VoidCallback onModels;
   final VoidCallback onBatteries;
   final VoidCallback onSessions;
@@ -4429,12 +4425,6 @@ class _DesktopSidebar extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          _SideItem(
-            icon: Icons.home_rounded,
-            label: 'Accueil',
-            selected: true,
-            onTap: onHome,
           ),
           _SideItem(
             icon: Icons.directions_car_filled_rounded,
@@ -5076,7 +5066,6 @@ class _DashboardChartPainter extends CustomPainter {
 class _CompactLandscapeSidebar extends StatelessWidget {
   const _CompactLandscapeSidebar({
     required this.dense,
-    required this.onHome,
     required this.onModels,
     required this.onBatteries,
     required this.onSessions,
@@ -5086,7 +5075,6 @@ class _CompactLandscapeSidebar extends StatelessWidget {
   });
 
   final bool dense;
-  final VoidCallback onHome;
   final VoidCallback onModels;
   final VoidCallback onBatteries;
   final VoidCallback onSessions;
@@ -5124,13 +5112,6 @@ class _CompactLandscapeSidebar extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _CompactLandscapeSideItem(
-                  dense: dense,
-                  icon: Icons.home_rounded,
-                  label: 'Accueil',
-                  selected: true,
-                  onTap: onHome,
-                ),
                 _CompactLandscapeSideItem(
                   dense: dense,
                   asset: 'assets/images/rc_icon_models_hd.png',
@@ -5262,17 +5243,17 @@ class _CompactLandscapeSideItem extends StatelessWidget {
 
 class _MobileNavigation extends StatelessWidget {
   const _MobileNavigation({
-    required this.onHome,
     required this.onModels,
     required this.onBatteries,
     required this.onSessions,
+    required this.onMaintenance,
     required this.onRadios,
   });
 
-  final VoidCallback onHome;
   final VoidCallback onModels;
   final VoidCallback onBatteries;
   final VoidCallback onSessions;
+  final VoidCallback onMaintenance;
   final VoidCallback onRadios;
 
   @override
@@ -5282,23 +5263,18 @@ class _MobileNavigation extends StatelessWidget {
       onDestinationSelected: (index) {
         switch (index) {
           case 0:
-            onHome();
-          case 1:
             onModels();
-          case 2:
+          case 1:
             onBatteries();
-          case 3:
+          case 2:
             onSessions();
+          case 3:
+            onMaintenance();
           case 4:
             onRadios();
         }
       },
       destinations: const [
-        NavigationDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home_rounded),
-          label: 'Accueil',
-        ),
         NavigationDestination(
           icon: Icon(Icons.directions_car_outlined),
           selectedIcon: Icon(Icons.directions_car_filled_rounded),
@@ -5313,6 +5289,11 @@ class _MobileNavigation extends StatelessWidget {
           icon: Icon(Icons.calendar_month_outlined),
           selectedIcon: Icon(Icons.calendar_month_rounded),
           label: 'Sessions',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.build_outlined),
+          selectedIcon: Icon(Icons.build_rounded),
+          label: 'Maintenance',
         ),
         NavigationDestination(
           icon: Icon(Icons.settings_remote_outlined),

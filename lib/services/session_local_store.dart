@@ -9,6 +9,8 @@ class SessionLocalStore {
 
   static final AppDatabase _database = AppDatabase.instance;
 
+  static const String _historicalFlagKey = '_local_is_historical';
+
   static String _sessionKey({
     required String userId,
     required String sessionId,
@@ -35,6 +37,24 @@ class SessionLocalStore {
         entityType: 'session',
       );
 
+      final existingRows = await (_database.select(
+        _database.localSessions,
+      )..where((row) => row.userId.equals(userId))).get();
+
+      final historicalFlags = <String, bool>{};
+      for (final existing in existingRows) {
+        try {
+          final payload = Map<String, dynamic>.from(
+            jsonDecode(existing.payloadJson) as Map,
+          );
+          if (payload[_historicalFlagKey] == true) {
+            historicalFlags[existing.sessionId] = true;
+          }
+        } catch (_) {
+          // Un ancien cache illisible ne doit pas bloquer le rafraîchissement.
+        }
+      }
+
       await (_database.delete(_database.localSessions)..where(
             (row) =>
                 row.userId.equals(userId) &
@@ -46,13 +66,20 @@ class SessionLocalStore {
           .where((row) => !pendingIds.contains(row['id']?.toString()))
           .map((row) {
             final sessionId = row['id'].toString();
+            final mergedRow = Map<String, dynamic>.from(row);
+            if (historicalFlags[sessionId] == true) {
+              mergedRow[_historicalFlagKey] = true;
+            }
+
             return LocalSessionsCompanion.insert(
               localKey: _sessionKey(userId: userId, sessionId: sessionId),
               userId: userId,
               sessionId: sessionId,
-              payloadJson: jsonEncode(row),
-              startedAt: DateTime.parse(row['started_at'].toString()).toLocal(),
-              updatedAt: Value(_parseNullableDate(row['updated_at'])),
+              payloadJson: jsonEncode(mergedRow),
+              startedAt: DateTime.parse(
+                mergedRow['started_at'].toString(),
+              ).toLocal(),
+              updatedAt: Value(_parseNullableDate(mergedRow['updated_at'])),
             );
           })
           .toList(growable: false);
@@ -79,11 +106,22 @@ class SessionLocalStore {
       throw StateError('Identifiant de session manquant');
     }
 
+    final existing = await getSessionRow(
+      userId: userId,
+      sessionId: sessionId,
+      includeDeleted: true,
+    );
+
     final startedAt = DateTime.parse(row['started_at'].toString()).toLocal();
     final now = DateTime.now();
     final normalized = Map<String, dynamic>.from(row)
       ..['user_id'] = userId
       ..['updated_at'] = now.toUtc().toIso8601String();
+
+    if (!normalized.containsKey(_historicalFlagKey) &&
+        existing?[_historicalFlagKey] == true) {
+      normalized[_historicalFlagKey] = true;
+    }
 
     await _database
         .into(_database.localSessions)

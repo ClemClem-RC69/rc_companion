@@ -9,6 +9,7 @@ import '../models/rc_model.dart';
 import '../models/rc_session.dart';
 import 'battery_local_store.dart';
 import 'battery_sync_service.dart';
+import 'model_operational_event_service.dart';
 import 'session_local_store.dart';
 import 'supabase_service.dart';
 
@@ -111,7 +112,11 @@ class SessionService {
         .toList(growable: false);
 
     await SessionLocalStore.replaceSessions(userId: userId, rows: rows);
-    return _parseSessions(rows, models: models, batteries: batteries);
+    return _getCachedSessions(
+      userId: userId,
+      models: models,
+      batteries: batteries,
+    );
   }
 
   static Future<RcSession> saveSession(RcSession session) async {
@@ -139,6 +144,8 @@ class SessionService {
       userId: user.id,
       session: saved,
     );
+
+    await ModelOperationalEventService.synchronizeSession(saved);
 
     unawaited(BatterySyncService.syncNow());
     return saved;
@@ -236,6 +243,10 @@ class SessionService {
       sessionId: sessionId,
     );
     await _deleteLocalBatteryHistoryForSession(
+      userId: user.id,
+      sessionId: sessionId,
+    );
+    await ModelOperationalEventService.removeAllEventsForSession(
       userId: user.id,
       sessionId: sessionId,
     );
@@ -357,6 +368,7 @@ class SessionService {
           changesBeforeNextSession:
               sessionRow['changes_before_next_session'] as String? ?? '',
           generalNotes: sessionRow['general_notes'] as String? ?? '',
+          isHistorical: sessionRow['_local_is_historical'] == true,
         ),
       );
     }
@@ -386,6 +398,7 @@ class SessionService {
         session.changesBeforeNextSession,
       ),
       'general_notes': _nullableText(session.generalNotes),
+      '_local_is_historical': session.isHistorical,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
       'session_runs': session.runs.map(_runToRow).toList(growable: false),
     };
@@ -446,15 +459,7 @@ class SessionService {
       return;
     }
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final sessionDay = DateTime(
-      session.startedAt.year,
-      session.startedAt.month,
-      session.startedAt.day,
-    );
-
-    if (session.isClosed && sessionDay.isBefore(today)) {
+    if (session.isHistorical) {
       await _deleteLocalBatteryHistoryForSession(
         userId: userId,
         sessionId: sessionId,
