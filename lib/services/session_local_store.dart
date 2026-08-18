@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
+import 'model_operational_event_service.dart';
 
 class SessionLocalStore {
   SessionLocalStore._();
@@ -67,8 +68,11 @@ class SessionLocalStore {
           .map((row) {
             final sessionId = row['id'].toString();
             final mergedRow = Map<String, dynamic>.from(row);
-            if (historicalFlags[sessionId] == true) {
+            if (mergedRow['is_historical'] == true ||
+                historicalFlags[sessionId] == true) {
               mergedRow[_historicalFlagKey] = true;
+            } else {
+              mergedRow[_historicalFlagKey] = false;
             }
 
             return LocalSessionsCompanion.insert(
@@ -94,6 +98,8 @@ class SessionLocalStore {
         });
       }
     });
+
+    await ModelOperationalEventService.rebuildFromLocalSessions(userId: userId);
   }
 
   static Future<void> upsertSessionRow({
@@ -118,7 +124,9 @@ class SessionLocalStore {
       ..['user_id'] = userId
       ..['updated_at'] = now.toUtc().toIso8601String();
 
-    if (!normalized.containsKey(_historicalFlagKey) &&
+    if (normalized['is_historical'] == true) {
+      normalized[_historicalFlagKey] = true;
+    } else if (!normalized.containsKey(_historicalFlagKey) &&
         existing?[_historicalFlagKey] == true) {
       normalized[_historicalFlagKey] = true;
     }

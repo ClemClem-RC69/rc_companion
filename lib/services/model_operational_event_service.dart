@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
@@ -141,7 +143,12 @@ class ModelOperationalEventService {
       return;
     }
 
+    final resolutionMaintenanceId = await _resolutionMaintenanceIdForEvent(
+      userId: userId,
+      eventId: eventId,
+    );
     final now = DateTime.now();
+
     await _database
         .into(_database.localModelOperationalEvents)
         .insert(
@@ -154,11 +161,51 @@ class ModelOperationalEventService {
             eventType: eventType,
             description: description,
             createdAt: existing?.createdAt ?? now,
-            resolvedAt: const Value(null),
-            resolutionMaintenanceId: const Value(null),
+            resolvedAt: Value(resolutionMaintenanceId == null ? null : now),
+            resolutionMaintenanceId: Value(resolutionMaintenanceId),
           ),
           mode: InsertMode.insertOrReplace,
         );
+  }
+
+  static Future<String?> _resolutionMaintenanceIdForEvent({
+    required String userId,
+    required String eventId,
+  }) async {
+    final rows =
+        await (_database.select(_database.localMaintenanceRecords)..where(
+              (row) => row.userId.equals(userId) & row.isDeleted.equals(false),
+            ))
+            .get();
+
+    for (final row in rows) {
+      try {
+        final payload = Map<String, dynamic>.from(
+          jsonDecode(row.payloadJson) as Map,
+        );
+        final rawData = payload['data'];
+        if (rawData is! Map) {
+          continue;
+        }
+
+        final data = Map<String, dynamic>.from(rawData);
+        final rawIds = data['resolvedOperationalEventIds'];
+        if (rawIds is! List) {
+          continue;
+        }
+
+        final resolvesEvent = rawIds.any(
+          (rawId) => rawId?.toString().trim() == eventId,
+        );
+        if (resolvesEvent) {
+          return row.maintenanceId;
+        }
+      } catch (_) {
+        // Une ancienne maintenance sans métadonnée de résolution est ignorée.
+      }
+    }
+
+    return null;
   }
 
   static Future<void> removeOpenEventsForSession({
@@ -239,6 +286,58 @@ class ModelOperationalEventService {
             resolutionMaintenanceId: Value(null),
           ),
         );
+  }
+
+  static Future<void> rebuildFromLocalSessions({required String userId}) async {
+    final sessionRows =
+        await (_database.select(_database.localSessions)..where(
+              (row) => row.userId.equals(userId) & row.isDeleted.equals(false),
+            ))
+            .get();
+
+    await (_database.delete(
+      _database.localModelOperationalEvents,
+    )..where((row) => row.userId.equals(userId))).go();
+
+    for (final localSession in sessionRows) {
+      try {
+        final session = Map<String, dynamic>.from(
+          jsonDecode(localSession.payloadJson) as Map,
+        );
+
+        final sessionId = session['id']?.toString().trim() ?? '';
+        final modelId = session['model_id']?.toString().trim() ?? '';
+        final isClosed =
+            session['ended_at'] != null &&
+            session['ended_at'].toString().trim().isNotEmpty;
+        final isHistorical =
+            session['is_historical'] == true ||
+            session['_local_is_historical'] == true;
+
+        if (sessionId.isEmpty || modelId.isEmpty || !isClosed || isHistorical) {
+          continue;
+        }
+
+        await _synchronizeEvent(
+          userId: userId,
+          sessionId: sessionId,
+          modelId: modelId,
+          eventType: repairType,
+          description: session['breakages']?.toString().trim() ?? '',
+        );
+
+        await _synchronizeEvent(
+          userId: userId,
+          sessionId: sessionId,
+          modelId: modelId,
+          eventType: maintenanceType,
+          description: session['maintenance_to_do']?.toString().trim() ?? '',
+        );
+      } catch (_) {
+        // Une ancienne session locale illisible ne doit pas bloquer
+        // la reconstruction des statuts des autres modèles.
+      }
+    }
   }
 
   static Future<List<LocalModelOperationalEvent>> getOpenEventsForModel(

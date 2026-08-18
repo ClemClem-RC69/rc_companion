@@ -49,6 +49,9 @@ class SessionSyncService {
       'parts_to_order': payload['parts_to_order'],
       'changes_before_next_session': payload['changes_before_next_session'],
       'general_notes': payload['general_notes'],
+      'is_historical':
+          payload['is_historical'] == true ||
+          payload['_local_is_historical'] == true,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
 

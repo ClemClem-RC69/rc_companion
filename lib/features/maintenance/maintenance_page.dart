@@ -323,6 +323,9 @@ class _MaintenancePageState extends State<MaintenancePage> {
         data: <String, dynamic>{
           ...draft.data,
           'maintenanceGroupId': maintenanceGroupId,
+          if (draft.resolvedOperationalEventIds.isNotEmpty)
+            'resolvedOperationalEventIds': draft.resolvedOperationalEventIds
+                .toList(growable: false),
         },
         packsSinceLastRevision: draft.type == _MaintenanceType.revision
             ? 0

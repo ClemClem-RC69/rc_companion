@@ -106,6 +106,28 @@ class MaintenanceLocalStore {
         entityType: 'maintenance',
       );
 
+      final remoteIds = rows
+          .map((row) => row['id']?.toString().trim() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+
+      final existingRows =
+          await (_database.select(_database.localMaintenanceRecords)..where(
+                (item) =>
+                    item.userId.equals(userId) & item.isDeleted.equals(false),
+              ))
+              .get();
+
+      for (final existing in existingRows) {
+        if (!pendingIds.contains(existing.maintenanceId) &&
+            !remoteIds.contains(existing.maintenanceId)) {
+          await _reopenOperationalEventsForMaintenance(
+            userId: userId,
+            maintenanceId: existing.maintenanceId,
+          );
+        }
+      }
+
       await (_database.delete(_database.localMaintenanceRecords)..where(
             (item) =>
                 item.userId.equals(userId) &
@@ -177,6 +199,14 @@ class MaintenanceLocalStore {
           ),
           mode: InsertMode.insertOrReplace,
         );
+
+    if (!isDeleted) {
+      await _applyOperationalEventResolutions(
+        userId: userId,
+        maintenanceId: maintenanceId,
+        row: normalizedRow,
+      );
+    }
   }
 
   static Future<void> markDeleted({
@@ -208,18 +238,85 @@ class MaintenanceLocalStore {
             updatedAt: Value(DateTime.now()),
           ),
         );
+
+    await _reopenOperationalEventsForMaintenance(
+      userId: userId,
+      maintenanceId: maintenanceId,
+    );
   }
 
   static Future<void> removePermanently({
     required String userId,
     required String maintenanceId,
   }) async {
+    await _reopenOperationalEventsForMaintenance(
+      userId: userId,
+      maintenanceId: maintenanceId,
+    );
+
     await (_database.delete(_database.localMaintenanceRecords)..where(
           (item) =>
               item.userId.equals(userId) &
               item.maintenanceId.equals(maintenanceId),
         ))
         .go();
+  }
+
+  static Future<void> _applyOperationalEventResolutions({
+    required String userId,
+    required String maintenanceId,
+    required Map<String, dynamic> row,
+  }) async {
+    final rawData = row['data'];
+    if (rawData is! Map) {
+      return;
+    }
+
+    final data = Map<String, dynamic>.from(rawData);
+    final rawIds = data['resolvedOperationalEventIds'];
+    if (rawIds is! List) {
+      return;
+    }
+
+    final ids = rawIds
+        .map((value) => value?.toString().trim() ?? '')
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+
+    if (ids.isEmpty) {
+      return;
+    }
+
+    await (_database.update(_database.localModelOperationalEvents)..where(
+          (event) =>
+              event.userId.equals(userId) &
+              event.eventId.isIn(ids) &
+              event.resolvedAt.isNull(),
+        ))
+        .write(
+          LocalModelOperationalEventsCompanion(
+            resolvedAt: Value(DateTime.now()),
+            resolutionMaintenanceId: Value(maintenanceId),
+          ),
+        );
+  }
+
+  static Future<void> _reopenOperationalEventsForMaintenance({
+    required String userId,
+    required String maintenanceId,
+  }) async {
+    await (_database.update(_database.localModelOperationalEvents)..where(
+          (event) =>
+              event.userId.equals(userId) &
+              event.resolutionMaintenanceId.equals(maintenanceId),
+        ))
+        .write(
+          const LocalModelOperationalEventsCompanion(
+            resolvedAt: Value(null),
+            resolutionMaintenanceId: Value(null),
+          ),
+        );
   }
 
   static Future<int> countRecords({required String userId}) async {

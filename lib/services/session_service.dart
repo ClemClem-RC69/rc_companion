@@ -368,7 +368,9 @@ class SessionService {
           changesBeforeNextSession:
               sessionRow['changes_before_next_session'] as String? ?? '',
           generalNotes: sessionRow['general_notes'] as String? ?? '',
-          isHistorical: sessionRow['_local_is_historical'] == true,
+          isHistorical:
+              sessionRow['is_historical'] == true ||
+              sessionRow['_local_is_historical'] == true,
         ),
       );
     }
@@ -398,6 +400,7 @@ class SessionService {
         session.changesBeforeNextSession,
       ),
       'general_notes': _nullableText(session.generalNotes),
+      'is_historical': session.isHistorical,
       '_local_is_historical': session.isHistorical,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
       'session_runs': session.runs.map(_runToRow).toList(growable: false),
