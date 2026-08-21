@@ -11,7 +11,7 @@
 #endif
 
 #define MyAppName "RC Companion"
-#define MyAppVersion "2.0.0"
+#define MyAppVersion "2.1.0"
 #define MyAppPublisher "RC Companion"
 #define MyAppExeName "rc_companion.exe"
 
