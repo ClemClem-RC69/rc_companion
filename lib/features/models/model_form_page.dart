@@ -162,6 +162,7 @@ class _ModelFormPageState extends State<ModelFormPage> {
 
     selectedRadioId = model?.radioId;
     acquisitionDate = model?.acquisitionDate;
+    purchaseType = model?.purchaseType;
 
     if (model != null) {
       category = categories.contains(model.category)

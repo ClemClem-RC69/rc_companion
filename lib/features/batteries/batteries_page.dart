@@ -638,10 +638,21 @@ class _BatteriesPageState extends State<BatteriesPage> {
         _selectedTechnology == 'Toutes' ||
         battery.technology == _selectedTechnology;
 
+    final searchableText = <String>[
+      battery.id,
+      battery.brand,
+      battery.cells,
+      battery.capacity.toString(),
+      '${battery.capacity} mah',
+    ].join(' ').toLowerCase();
+
+    final queryTerms = query
+        .split(RegExp(r'\\s+'))
+        .where((term) => term.isNotEmpty);
+
     final matchesSearch =
         query.isEmpty ||
-        battery.id.toLowerCase().contains(query) ||
-        battery.brand.toLowerCase().contains(query);
+        queryTerms.every((term) => searchableText.contains(term));
 
     return matchesTechnology && matchesSearch;
   }

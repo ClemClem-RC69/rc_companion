@@ -14,6 +14,7 @@ import '../../../services/session_local_store.dart';
 import '../../../services/session_service.dart';
 import '../../../services/maintenance_local_store.dart';
 import '../../../services/maintenance_service.dart';
+import '../../../services/model_photo_file_store.dart';
 import '../../../services/model_local_store.dart';
 import '../../../services/supabase_service.dart';
 
@@ -795,12 +796,26 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
   Future<Uint8List> _buildPdf(PdfPageFormat format) async {
     pw.ImageProvider? modelImage;
 
-    final photoUrl = _currentModel.photoUrl?.trim() ?? '';
-    if (photoUrl.isNotEmpty) {
+    final localPhotoPath = _currentModel.photoLocalPath?.trim() ?? '';
+    if (localPhotoPath.isNotEmpty) {
       try {
-        modelImage = await networkImage(photoUrl);
+        final bytes = await ModelPhotoFileStore.readBytes(localPhotoPath);
+        if (bytes != null && bytes.isNotEmpty) {
+          modelImage = pw.MemoryImage(bytes);
+        }
       } catch (_) {
         modelImage = null;
+      }
+    }
+
+    if (modelImage == null) {
+      final photoUrl = _currentModel.photoUrl?.trim() ?? '';
+      if (photoUrl.isNotEmpty) {
+        try {
+          modelImage = await networkImage(photoUrl);
+        } catch (_) {
+          modelImage = null;
+        }
       }
     }
 
@@ -1208,12 +1223,16 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         'Batteries utilisées : $physicalBatteryUses',
         if (batteryDescriptions.isNotEmpty)
           'Caractéristiques : ${batteryDescriptions.join(' / ')}',
+        if (session.drivingNotes.trim().isNotEmpty)
+          'Comportement et réglages : ${session.drivingNotes.trim()}',
         if (session.breakages.trim().isNotEmpty)
           'Casses : ${session.breakages.trim()}',
         if (session.partsReplacedOnSite.trim().isNotEmpty)
           'Pièces remplacées : ${session.partsReplacedOnSite.trim()}',
         if (session.maintenanceToDo.trim().isNotEmpty)
           'Entretien : ${session.maintenanceToDo.trim()}',
+        if (session.partsToOrder.trim().isNotEmpty)
+          'Pièces à commander : ${session.partsToOrder.trim()}',
         if (session.changesBeforeNextSession.trim().isNotEmpty)
           'Modifications : ${session.changesBeforeNextSession.trim()}',
         if (session.generalNotes.trim().isNotEmpty)
