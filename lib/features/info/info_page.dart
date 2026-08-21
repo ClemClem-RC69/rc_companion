@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../legal/rc_legal_documents.dart';
 
 class InfoPage extends StatelessWidget {
   const InfoPage({super.key});
 
-  static const String appVersion = 'V1.0';
   static const String batteryHealthVersion = 'V1.2';
   static const String batteryCompatibilityVersion = 'V1.0';
   static const String batteryChargeStateVersion = 'V1.1';
@@ -959,9 +959,19 @@ class InfoPage extends StatelessWidget {
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            const _VersionLine(
-              label: 'Version de l’application',
-              value: appVersion,
+            FutureBuilder<PackageInfo>(
+              future: PackageInfo.fromPlatform(),
+              builder: (context, snapshot) {
+                final info = snapshot.data;
+                final value = info == null
+                    ? 'Chargement…'
+                    : 'V${info.version} (build ${info.buildNumber})';
+
+                return _VersionLine(
+                  label: 'Version de l’application',
+                  value: value,
+                );
+              },
             ),
             const _VersionLine(
               label: 'Dernière mise à jour',
