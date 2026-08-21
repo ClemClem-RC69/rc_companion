@@ -11,7 +11,11 @@
 #endif
 
 #define MyAppName "RC Companion"
-#define MyAppVersion "2.1.0"
+
+#ifndef MyAppVersion
+  #error MyAppVersion is required
+#endif
+
 #define MyAppPublisher "RC Companion"
 #define MyAppExeName "rc_companion.exe"
 
@@ -25,7 +29,7 @@ DefaultDirName={autopf}\RC Companion
 DefaultGroupName=RC Companion
 DisableProgramGroupPage=yes
 OutputDir={#MyOutput}
-OutputBaseFilename=RC Companion Setup
+OutputBaseFilename=RC Companion Setup {#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

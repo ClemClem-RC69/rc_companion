@@ -35,6 +35,28 @@ jobs:
         run: |
           flutter pub get
 
+      - name: Read RC Companion version
+        id: app_version
+        shell: pwsh
+        run: |
+          $line = Get-Content "pubspec.yaml" |
+            Where-Object { $_ -match "^version:" } |
+            Select-Object -First 1
+
+          if (-not $line) {
+            throw "Version introuvable dans pubspec.yaml."
+          }
+
+          $fullVersion = ($line -replace "^version:\s*", "").Trim()
+          $version = ($fullVersion -split "\+")[0]
+
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Version RC Companion invalide."
+          }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "RC Companion version : $version"
+
       - name: Build Windows Release
         shell: pwsh
         env:
@@ -92,7 +114,8 @@ jobs:
 
           Copy-Item "$releaseDir\*" $packageDir -Recurse -Force
 
-          $zipPath = Join-Path $env:GITHUB_WORKSPACE "RC Companion Windows.zip"
+          $version = "${{ steps.app_version.outputs.version }}"
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE "RC Companion Windows $version.zip"
           if (Test-Path $zipPath) {
             Remove-Item $zipPath -Force
           }
@@ -116,9 +139,12 @@ jobs:
           $outputDir = Join-Path $env:GITHUB_WORKSPACE "windows-personal-installer-output"
           New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
+          $version = "${{ steps.app_version.outputs.version }}"
+
           & $iscc `
             "/DMySource=$releaseDir" `
             "/DMyOutput=$outputDir" `
+            "/DMyAppVersion=$version" `
             "windows\installer\rc_companion_personal.iss"
 
           if ($LASTEXITCODE -ne 0) {
@@ -134,9 +160,12 @@ jobs:
           $outputDir = Join-Path $env:GITHUB_WORKSPACE "windows-user-installer-output"
           New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
+          $version = "${{ steps.app_version.outputs.version }}"
+
           & $iscc `
             "/DMySource=$releaseDir" `
             "/DMyOutput=$outputDir" `
+            "/DMyAppVersion=$version" `
             "windows\installer\rc_companion_user.iss"
 
           if ($LASTEXITCODE -ne 0) {
@@ -146,23 +175,23 @@ jobs:
       - name: Upload personal Setup EXE
         uses: actions/upload-artifact@v4
         with:
-          name: RC-Companion-Windows-Setup
-          path: windows-personal-installer-output/RC Companion Setup.exe
+          name: RC-Companion-Windows-Setup-${{ steps.app_version.outputs.version }}
+          path: windows-personal-installer-output/RC Companion Setup ${{ steps.app_version.outputs.version }}.exe
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload User Setup EXE
         uses: actions/upload-artifact@v4
         with:
-          name: RC-Companion-User-Windows-Setup
-          path: windows-user-installer-output/RC Companion User Setup.exe
+          name: RC-Companion-User-Windows-Setup-${{ steps.app_version.outputs.version }}
+          path: windows-user-installer-output/RC Companion User Setup ${{ steps.app_version.outputs.version }}.exe
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload portable Windows ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: RC-Companion-Windows-ZIP
-          path: RC Companion Windows.zip
+          name: RC-Companion-Windows-ZIP-${{ steps.app_version.outputs.version }}
+          path: RC Companion Windows ${{ steps.app_version.outputs.version }}.zip
           if-no-files-found: error
           retention-days: 30

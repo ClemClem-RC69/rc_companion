@@ -4,7 +4,14 @@ set -euo pipefail
 APP_NAME="RC Companion"
 APP_PATH="build/macos/Build/Products/Release/${APP_NAME}.app"
 
-DMG_NAME="RC Companion.dmg"
+VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+
+if [[ -z "${VERSION}" ]]; then
+  echo "Erreur : impossible de lire la version dans pubspec.yaml"
+  exit 1
+fi
+
+DMG_NAME="RC Companion ${VERSION}.dmg"
 DMG_TEMP="build/macos/${DMG_NAME}"
 DMG_DEST="${HOME}/Desktop/RC Companion/Perso/${DMG_NAME}"
 
@@ -16,6 +23,7 @@ if [[ ! -d "${APP_PATH}" ]]; then
   exit 1
 fi
 
+echo "Version détectée : ${VERSION}"
 echo "Préparation du DMG…"
 
 rm -rf "${STAGING_DIR}"
