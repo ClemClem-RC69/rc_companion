@@ -1,11 +1,4 @@
-enum RadioControlType {
-  button,
-  trim,
-  dial,
-  switchControl,
-  lever,
-  auxiliary,
-}
+enum RadioControlType { button, trim, dial, switchControl, lever, auxiliary }
 
 class RadioControlDefinition {
   const RadioControlDefinition({
@@ -32,6 +25,76 @@ class RadioControlLayout {
 }
 
 const List<RadioControlLayout> radioControlCatalog = [
+  // ---------------------------------------------------------------------------
+  // RADIO D’ORIGINE / GÉNÉRIQUE
+  // ---------------------------------------------------------------------------
+  RadioControlLayout(
+    brand: 'Générique',
+    model: 'Radio d’origine',
+    controls: [
+      RadioControlDefinition(
+        key: 'button_1',
+        label: 'Bouton 1',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'button_2',
+        label: 'Bouton 2',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'button_3',
+        label: 'Bouton 3',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'button_4',
+        label: 'Bouton 4',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'switch_1',
+        label: 'Switch 1',
+        type: RadioControlType.switchControl,
+      ),
+      RadioControlDefinition(
+        key: 'switch_2',
+        label: 'Switch 2',
+        type: RadioControlType.switchControl,
+      ),
+      RadioControlDefinition(
+        key: 'switch_3',
+        label: 'Switch 3',
+        type: RadioControlType.switchControl,
+      ),
+      RadioControlDefinition(
+        key: 'switch_4',
+        label: 'Switch 4',
+        type: RadioControlType.switchControl,
+      ),
+      RadioControlDefinition(
+        key: 'dial_1',
+        label: 'Molette 1',
+        type: RadioControlType.dial,
+      ),
+      RadioControlDefinition(
+        key: 'dial_2',
+        label: 'Molette 2',
+        type: RadioControlType.dial,
+      ),
+      RadioControlDefinition(
+        key: 'trim_1',
+        label: 'Trim 1',
+        type: RadioControlType.trim,
+      ),
+      RadioControlDefinition(
+        key: 'trim_2',
+        label: 'Trim 2',
+        type: RadioControlType.trim,
+      ),
+    ],
+  ),
+
   // ---------------------------------------------------------------------------
   // TRAXXAS
   // ---------------------------------------------------------------------------
@@ -78,6 +141,11 @@ const List<RadioControlLayout> radioControlCatalog = [
       RadioControlDefinition(
         key: 'red_rocker',
         label: 'Red Rocker Switch',
+        type: RadioControlType.switchControl,
+      ),
+      RadioControlDefinition(
+        key: 't_lock_switch',
+        label: 'T-Lock Switch (CH4/CH5)',
         type: RadioControlType.switchControl,
       ),
     ],
@@ -538,6 +606,62 @@ const List<RadioControlLayout> radioControlCatalog = [
       RadioControlDefinition(
         key: 'vr_b',
         label: 'VRB',
+        type: RadioControlType.dial,
+      ),
+    ],
+  ),
+  RadioControlLayout(
+    brand: 'FlySky',
+    model: 'G11P',
+    controls: [
+      RadioControlDefinition(
+        key: 'tr1',
+        label: 'TR1 Trim',
+        type: RadioControlType.trim,
+      ),
+      RadioControlDefinition(
+        key: 'tr2',
+        label: 'TR2 Trim',
+        type: RadioControlType.trim,
+      ),
+      RadioControlDefinition(
+        key: 'tr3',
+        label: 'TR3 Trim',
+        type: RadioControlType.trim,
+      ),
+      RadioControlDefinition(
+        key: 'sw1',
+        label: 'SW1 Button',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'k1',
+        label: 'K1 Button',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'k2',
+        label: 'K2 Button',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'k3',
+        label: 'K3 Button',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'k4',
+        label: 'K4 Button',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'k5',
+        label: 'K5 Button',
+        type: RadioControlType.button,
+      ),
+      RadioControlDefinition(
+        key: 'vr1',
+        label: 'VR1 Knob',
         type: RadioControlType.dial,
       ),
     ],

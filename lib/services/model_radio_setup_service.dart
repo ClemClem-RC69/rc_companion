@@ -54,8 +54,7 @@ class ModelRadioSetupService {
     final now = DateTime.now().toUtc();
 
     final normalizedValues = <String, String>{
-      for (final fieldKey in setup.enabledFields)
-        fieldKey: setup.values[fieldKey]?.trim() ?? '',
+      for (final entry in setup.values.entries) entry.key: entry.value.trim(),
     };
 
     final saved = ModelRadioSetup(

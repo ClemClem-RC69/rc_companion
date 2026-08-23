@@ -222,6 +222,7 @@ class RcSession {
     this.changesBeforeNextSession = '',
     String generalNotes = '',
     this.location = '',
+    this.terrainType = '',
     this.id,
     this.isHistorical = false,
     // Compatibilité temporaire avec l'ancien écran Sessions.
@@ -247,6 +248,7 @@ class RcSession {
   final List<RcRun> runs;
 
   final String location;
+  final String terrainType;
   final String drivingNotes;
   final String breakages;
   final String partsReplacedOnSite;
@@ -304,6 +306,7 @@ class RcSession {
     DateTime? endedAt,
     List<RcRun>? runs,
     String? location,
+    String? terrainType,
     String? drivingNotes,
     String? breakages,
     String? partsReplacedOnSite,
@@ -321,6 +324,7 @@ class RcSession {
       endedAt: clearEndedAt ? null : endedAt ?? this.endedAt,
       runs: runs ?? this.runs,
       location: location ?? this.location,
+      terrainType: terrainType ?? this.terrainType,
       drivingNotes: drivingNotes ?? this.drivingNotes,
       breakages: breakages ?? this.breakages,
       partsReplacedOnSite: partsReplacedOnSite ?? this.partsReplacedOnSite,

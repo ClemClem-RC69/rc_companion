@@ -1,6 +1,17 @@
 import '../models/radio_catalog_item.dart';
 
 const List<RadioCatalogItem> radioCatalog = [
+  // Radio d’origine / générique
+  RadioCatalogItem(
+    id: 'generic_original_radio',
+    brand: 'Générique',
+    model: 'Radio d’origine',
+    level: RadioLevel.basic,
+    type: RadioType.wheel,
+    channels: 12,
+    protocols: ['2.4 GHz / propriétaire'],
+    programmable: true,
+  ),
   // Traxxas
   RadioCatalogItem(
     id: 'traxxas_tq_2ch',
@@ -143,6 +154,16 @@ const List<RadioCatalogItem> radioCatalog = [
     level: RadioLevel.intermediate,
     type: RadioType.wheel,
     channels: 7,
+    protocols: ['ANT'],
+    programmable: true,
+  ),
+  RadioCatalogItem(
+    id: 'flysky_g11p',
+    brand: 'FlySky',
+    model: 'G11P',
+    level: RadioLevel.intermediate,
+    type: RadioType.wheel,
+    channels: 11,
     protocols: ['ANT'],
     programmable: true,
   ),

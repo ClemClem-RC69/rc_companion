@@ -14,6 +14,8 @@ class SessionDetailPage extends StatefulWidget {
 }
 
 class _SessionDetailPageState extends State<SessionDetailPage> {
+  bool get _isBoat => _session.model.category.trim().toLowerCase() == 'bateau';
+
   late RcSession _session;
   bool _isSavingMeasurement = false;
   bool _isSavingSession = false;
@@ -76,6 +78,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       barrierDismissible: false,
       builder: (context) => _EditBatteryMeasurementDialog(
         battery: battery,
+        isBoat: _isBoat,
         initialReading: currentReading,
       ),
     );
@@ -199,6 +202,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
     final result = await showDialog<_EditRunResult>(
       context: context,
       builder: (context) => _EditRunDialog(
+        isBoat: _isBoat,
         durationMinutes: run.effectiveDurationMinutes,
         notes: run.notes,
       ),
@@ -417,7 +421,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
               children: [
                 Expanded(
                   child: Text(
-                    'Roulage ${index + 1}',
+                    '${_isBoat ? 'Navigation' : 'Roulage'} ${index + 1}',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -549,14 +553,20 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                 value: _session.location,
                 icon: Icons.location_on_outlined,
               ),
+            if (_session.terrainType.isNotEmpty)
+              _infoCard(
+                label: 'Type de terrain',
+                value: _session.terrainType,
+                icon: Icons.landscape_outlined,
+              ),
             _infoCard(
-              label: 'Roulages',
+              label: _isBoat ? 'Navigations' : 'Roulages',
               value:
-                  '${_session.runs.length} roulage(s) • ${_durationLabel(_session.totalDurationMinutes)}',
+                  '${_session.runs.length} ${_isBoat ? 'navigation(s)' : 'roulage(s)'} • ${_durationLabel(_session.totalDurationMinutes)}',
               icon: Icons.timer_outlined,
             ),
             if (_session.runs.isNotEmpty) ...[
-              _sectionTitle(context, 'Roulages'),
+              _sectionTitle(context, _isBoat ? 'Navigations' : 'Roulages'),
               for (var index = _session.runs.length - 1; index >= 0; index--)
                 _runCard(context, run: _session.runs[index], index: index),
             ],
@@ -596,10 +606,15 @@ class _EditRunResult {
 }
 
 class _EditRunDialog extends StatefulWidget {
-  const _EditRunDialog({required this.durationMinutes, required this.notes});
+  const _EditRunDialog({
+    required this.durationMinutes,
+    required this.notes,
+    required this.isBoat,
+  });
 
   final int durationMinutes;
   final String notes;
+  final bool isBoat;
 
   @override
   State<_EditRunDialog> createState() => _EditRunDialogState();
@@ -647,7 +662,9 @@ class _EditRunDialogState extends State<_EditRunDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Modifier le roulage'),
+      title: Text(
+        widget.isBoat ? 'Modifier la navigation' : 'Modifier le roulage',
+      ),
       content: SizedBox(
         width: 480,
         child: Column(
@@ -657,7 +674,9 @@ class _EditRunDialogState extends State<_EditRunDialog> {
               controller: _durationController,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                labelText: 'Temps de roulage (minutes)',
+                labelText: widget.isBoat
+                    ? 'Temps de navigation (minutes)'
+                    : 'Temps de roulage (minutes)',
                 border: const OutlineInputBorder(),
                 errorText: _errorText,
               ),
@@ -1044,10 +1063,12 @@ class _TerrainTextEditorPageState extends State<_TerrainTextEditorPage> {
 class _EditBatteryMeasurementDialog extends StatefulWidget {
   const _EditBatteryMeasurementDialog({
     required this.battery,
+    required this.isBoat,
     required this.initialReading,
   });
 
   final Battery battery;
+  final bool isBoat;
   final BatteryRunReading? initialReading;
 
   @override
@@ -1170,7 +1191,9 @@ class _EditBatteryMeasurementDialogState
 
     return AlertDialog(
       insetPadding: const EdgeInsets.all(12),
-      title: Text('Relevé fin de roulage — ${widget.battery.id}'),
+      title: Text(
+        '${widget.isBoat ? 'Relevé fin de navigation' : 'Relevé fin de roulage'} — ${widget.battery.id}',
+      ),
       content: SizedBox(
         width: dialogWidth,
         child: LayoutBuilder(

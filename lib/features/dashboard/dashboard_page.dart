@@ -1223,8 +1223,7 @@ class _DashboardPageState extends State<DashboardPage>
                       _DesktopSidebar(
                         onModels: () => _open(const ModelsPage()),
                         onBatteries: () => _open(const BatteriesPage()),
-                        onSessions: () =>
-                            _open(const SessionsPage(historyOnly: true)),
+                        onSessions: () => _open(const SessionsPage()),
                         onMaintenance: () => _open(const MaintenancePage()),
                         onRadios: () => _open(const RadiosPage()),
                         onInfo: () => _open(const InfoPage()),
@@ -1241,8 +1240,7 @@ class _DashboardPageState extends State<DashboardPage>
                           dense: constraints.maxHeight < 500,
                           onModels: () => _open(const ModelsPage()),
                           onBatteries: () => _open(const BatteriesPage()),
-                          onSessions: () =>
-                              _open(const SessionsPage(historyOnly: true)),
+                          onSessions: () => _open(const SessionsPage()),
                           onMaintenance: () => _open(const MaintenancePage()),
                           onRadios: () => _open(const RadiosPage()),
                           onInfo: () => _open(const InfoPage()),
@@ -1262,8 +1260,7 @@ class _DashboardPageState extends State<DashboardPage>
               : _MobileNavigation(
                   onModels: () => _open(const ModelsPage()),
                   onBatteries: () => _open(const BatteriesPage()),
-                  onSessions: () =>
-                      _open(const SessionsPage(historyOnly: true)),
+                  onSessions: () => _open(const SessionsPage()),
                   onMaintenance: () => _open(const MaintenancePage()),
                   onRadios: () => _open(const RadiosPage()),
                 ),
@@ -3653,8 +3650,9 @@ class _LiveRadioCommandsDialogState extends State<_LiveRadioCommandsDialog> {
         }
 
         final value = setup.value(key).trim();
+        final customLabel = setup.value('control_label_${control.key}').trim();
         assignments.add((
-          label: control.label,
+          label: customLabel.isEmpty ? control.label : customLabel,
           value: value.isEmpty ? 'Non renseignée' : value,
         ));
       }

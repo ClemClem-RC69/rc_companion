@@ -359,6 +359,7 @@ class SessionService {
           endedAt: _parseNullableDate(sessionRow['ended_at']),
           runs: List<RcRun>.unmodifiable(runs),
           location: sessionRow['location'] as String? ?? '',
+          terrainType: sessionRow['terrain_type'] as String? ?? '',
           drivingNotes: sessionRow['driving_notes'] as String? ?? '',
           breakages: sessionRow['breakages'] as String? ?? '',
           partsReplacedOnSite:
@@ -391,6 +392,7 @@ class SessionService {
       'started_at': session.startedAt.toUtc().toIso8601String(),
       'ended_at': session.endedAt?.toUtc().toIso8601String(),
       'location': _nullableText(session.location),
+      'terrain_type': _nullableText(session.terrainType),
       'driving_notes': _nullableText(session.drivingNotes),
       'breakages': _nullableText(session.breakages),
       'parts_replaced_on_site': _nullableText(session.partsReplacedOnSite),

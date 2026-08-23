@@ -351,6 +351,10 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     return '${hours}h ${remaining}min';
   }
 
+  bool get _isBoat => _currentModel.category.trim().toLowerCase() == 'bateau';
+
+  String get _runPluralLabel => _isBoat ? 'Navigations' : 'Roulages';
+
   String _batteryType(Battery battery) {
     final brand = battery.brand.trim();
     final characteristics =
@@ -368,7 +372,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       ),
       _SummaryValue(
         icon: Icons.sports_motorsports_outlined,
-        label: 'Roulages',
+        label: _runPluralLabel,
         value: _totalRuns.toString(),
       ),
       _SummaryValue(
@@ -497,7 +501,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Roulage ${index + 1}',
+            '${_isBoat ? 'Navigation' : 'Roulage'} ${index + 1}',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
@@ -562,6 +566,9 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     final location = session.location.trim().isEmpty
         ? 'Lieu non renseigné'
         : session.location.trim();
+    final terrainType = session.terrainType.trim().isEmpty
+        ? 'Type de terrain non renseigné'
+        : session.terrainType.trim();
 
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
@@ -574,7 +581,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         ),
         subtitle: Text(
           '$location • ${_durationLabel(session.totalDurationMinutes)} • '
-          '${session.runs.length} roulage(s)',
+          '${session.runs.length} ${_isBoat ? 'navigation(s)' : 'roulage(s)'}',
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
@@ -590,12 +597,17 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
             icon: Icons.location_on_outlined,
           ),
           _automaticLine(
+            label: 'Type de terrain',
+            value: terrainType,
+            icon: Icons.landscape_outlined,
+          ),
+          _automaticLine(
             label: 'Durée totale',
             value: _durationLabel(session.totalDurationMinutes),
             icon: Icons.timer_outlined,
           ),
           _automaticLine(
-            label: 'Nombre de roulages',
+            label: _isBoat ? 'Nombre de navigations' : 'Nombre de roulages',
             value: session.runs.length.toString(),
             icon: Icons.sports_motorsports_outlined,
           ),
@@ -962,7 +974,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
   pw.Widget _pdfVisualSummary() {
     final values = <List<String>>[
       ['Sessions', _sessions.length.toString()],
-      ['Roulages', _totalRuns.toString()],
+      [_runPluralLabel, _totalRuns.toString()],
       ['Packs utilisés', _totalPacks.toString()],
       ['Temps total', _durationLabel(_totalDurationMinutes)],
     ];
@@ -1107,10 +1119,13 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     final values = <List<String>>[
       [
         'Moyenne par session',
-        '${averageRuns.toStringAsFixed(1).replaceAll('.', ',')} roulage(s)'
+        '${averageRuns.toStringAsFixed(1).replaceAll('.', ',')} ${_isBoat ? 'navigation(s)' : 'roulage(s)'}'
             ' - ${_durationLabel(averageSessionMinutes)}',
       ],
-      ['Moyenne par roulage', _durationLabel(averageRunMinutes)],
+      [
+        _isBoat ? 'Moyenne par navigation' : 'Moyenne par roulage',
+        _durationLabel(averageRunMinutes),
+      ],
       ['Moyenne par pack', _durationLabel(averageRunMinutes)],
       [
         'Première session',
@@ -1197,6 +1212,9 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       final location = session.location.trim().isEmpty
           ? 'Lieu non renseigné'
           : session.location.trim();
+      final terrainType = session.terrainType.trim().isEmpty
+          ? 'Type de terrain non renseigné'
+          : session.terrainType.trim();
 
       final batteryDescriptions = <String>[];
       var physicalBatteryUses = 0;
@@ -1218,7 +1236,8 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
       }
 
       final details = <String>[
-        'Terrain : $location - ${session.runs.length} roulage(s) '
+        'Lieu : $location - Type de terrain : $terrainType - '
+            '${session.runs.length} ${_isBoat ? 'navigation(s)' : 'roulage(s)'} '
             '(${_durationLabel(session.totalDurationMinutes)})',
         'Batteries utilisées : $physicalBatteryUses',
         if (batteryDescriptions.isNotEmpty)

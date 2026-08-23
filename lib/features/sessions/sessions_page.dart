@@ -338,6 +338,9 @@ class _SessionsPageState extends State<SessionsPage> {
     return active.isEmpty ? null : active.first;
   }
 
+  bool _isBoatSession(RcSession session) =>
+      session.model.category.trim().toLowerCase() == 'bateau';
+
   RcSession? get _focusedSession {
     final key = _focusedSessionKey;
     if (key == null) {
@@ -508,6 +511,7 @@ class _SessionsPageState extends State<SessionsPage> {
           model: result.model,
           startedAt: result.startedAt,
           location: result.location,
+          terrainType: result.terrainType,
           isHistorical: result.isHistorical,
         ),
       );
@@ -628,7 +632,9 @@ class _SessionsPageState extends State<SessionsPage> {
 
     if (!battery.isUsable) {
       _showMessage(
-        '${battery.id} est « ${battery.chargeDisplayLabel} » et ne peut pas être utilisée pour un roulage.',
+        _isBoatSession(session)
+            ? '${battery.id} est « ${battery.chargeDisplayLabel} » et ne peut pas être utilisée pour une navigation.'
+            : '${battery.id} est « ${battery.chargeDisplayLabel} » et ne peut pas être utilisée pour un roulage.',
       );
       return;
     }
@@ -930,7 +936,11 @@ class _SessionsPageState extends State<SessionsPage> {
 
   Future<void> _startRun(RcSession session) async {
     if (session.hasActiveRun) {
-      _showMessage('Un roulage est déjà en cours.');
+      _showMessage(
+        _isBoatSession(session)
+            ? 'Une navigation est déjà en cours.'
+            : 'Un roulage est déjà en cours.',
+      );
       return;
     }
 
@@ -999,7 +1009,9 @@ class _SessionsPageState extends State<SessionsPage> {
       _clearBatteriesFor(session);
     });
 
-    _showMessage('Roulage démarré.');
+    _showMessage(
+      _isBoatSession(session) ? 'Navigation démarrée.' : 'Roulage démarré.',
+    );
   }
 
   Future<void> _editRun(RcSession session, int runIndex) async {
@@ -1010,13 +1022,18 @@ class _SessionsPageState extends State<SessionsPage> {
     final run = session.runs[runIndex];
 
     if (run.isActive) {
-      _showMessage('Termine le roulage avant de le modifier.');
+      _showMessage(
+        _isBoatSession(session)
+            ? 'Termine la navigation avant de la modifier.'
+            : 'Termine le roulage avant de le modifier.',
+      );
       return;
     }
 
     final result = await showDialog<_EndRunResult>(
       context: context,
       builder: (context) => _EditRunDialog(
+        isBoat: _isBoatSession(session),
         durationMinutes: run.effectiveDurationMinutes,
         notes: run.notes,
       ),
@@ -1038,19 +1055,26 @@ class _SessionsPageState extends State<SessionsPage> {
     );
 
     if (saved) {
-      _showMessage('Roulage modifié.');
+      _showMessage(
+        _isBoatSession(session) ? 'Navigation modifiée.' : 'Roulage modifié.',
+      );
     }
   }
 
-  Future<RcRun?> _askMeasurementsAfterRun(RcRun run, int runNumber) async {
+  Future<RcRun?> _askMeasurementsAfterRun(
+    RcSession session,
+    RcRun run,
+    int runNumber,
+  ) async {
     final choice = await showDialog<_MeasurementChoice>(
       context: context,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.monitor_heart_outlined),
         title: const Text('Mesures des batteries'),
-        content: const Text(
-          'Souhaites-tu renseigner maintenant le relevé de fin de roulage '
-          'des batteries utilisées ?',
+        content: Text(
+          _isBoatSession(session)
+              ? 'Souhaites-tu renseigner maintenant le relevé de fin de navigation des batteries utilisées ?'
+              : 'Souhaites-tu renseigner maintenant le relevé de fin de roulage des batteries utilisées ?',
         ),
         actions: [
           TextButton(
@@ -1093,8 +1117,11 @@ class _SessionsPageState extends State<SessionsPage> {
       final reading = await showDialog<BatteryRunReading?>(
         context: context,
         barrierDismissible: false,
-        builder: (context) =>
-            _BatteryMeasurementDialog(battery: battery, runNumber: runNumber),
+        builder: (context) => _BatteryMeasurementDialog(
+          battery: battery,
+          runNumber: runNumber,
+          isBoat: _isBoatSession(session),
+        ),
       );
 
       if (reading == null) {
@@ -1127,7 +1154,10 @@ class _SessionsPageState extends State<SessionsPage> {
 
     final result = await showDialog<_EndRunResult>(
       context: context,
-      builder: (context) => _EndRunDialog(suggestedDuration: elapsedMinutes),
+      builder: (context) => _EndRunDialog(
+        suggestedDuration: elapsedMinutes,
+        isBoat: _isBoatSession(session),
+      ),
     );
 
     if (result == null) {
@@ -1152,6 +1182,7 @@ class _SessionsPageState extends State<SessionsPage> {
     );
 
     final completedRunWithMeasurements = await _askMeasurementsAfterRun(
+      session,
       completedRun,
       runIndex + 1,
     );
@@ -1171,7 +1202,11 @@ class _SessionsPageState extends State<SessionsPage> {
       return;
     }
 
-    _showMessage('Roulage enregistré.');
+    _showMessage(
+      _isBoatSession(session)
+          ? 'Navigation enregistrée.'
+          : 'Roulage enregistré.',
+    );
   }
 
   Future<RcSession?> _askForMeasurementsBeforeClosing(RcSession session) async {
@@ -1194,9 +1229,10 @@ class _SessionsPageState extends State<SessionsPage> {
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.monitor_heart_outlined),
         title: const Text('Mesures des batteries'),
-        content: const Text(
-          'Souhaites-tu renseigner maintenant les relevés de fin de roulage '
-          'manquants des batteries utilisées pendant cette session ?',
+        content: Text(
+          _isBoatSession(session)
+              ? 'Souhaites-tu renseigner maintenant les relevés de fin de navigation manquants des batteries utilisées pendant cette session ?'
+              : 'Souhaites-tu renseigner maintenant les relevés de fin de roulage manquants des batteries utilisées pendant cette session ?',
         ),
         actions: [
           TextButton(
@@ -1247,6 +1283,7 @@ class _SessionsPageState extends State<SessionsPage> {
           builder: (context) => _BatteryMeasurementDialog(
             battery: battery,
             runNumber: runIndex + 1,
+            isBoat: _isBoatSession(session),
           ),
         );
 
@@ -1281,17 +1318,25 @@ class _SessionsPageState extends State<SessionsPage> {
 
     final saved = await _replaceSession(
       session,
-      session.copyWith(model: result.model, location: result.location),
+      session.copyWith(
+        model: result.model,
+        location: result.location,
+        terrainType: result.terrainType,
+      ),
     );
 
     if (saved) {
-      _showMessage('Modèle et lieu modifiés.');
+      _showMessage('Modèle, lieu et type de terrain modifiés.');
     }
   }
 
   Future<void> _closeSession(RcSession session) async {
     if (session.hasActiveRun) {
-      _showMessage('Termine le roulage en cours avant de clôturer la session.');
+      _showMessage(
+        _isBoatSession(session)
+            ? 'Termine la navigation en cours avant de clôturer la session.'
+            : 'Termine le roulage en cours avant de clôturer la session.',
+      );
       return;
     }
 
@@ -1365,10 +1410,10 @@ class _SessionsPageState extends State<SessionsPage> {
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.warning_amber_rounded),
         title: const Text('Annuler la session en cours ?'),
-        content: const Text(
-          'Tous les roulages et toutes les mesures enregistrés dans cette '
-          'session seront supprimés définitivement.\n\n'
-          'Cette action est irréversible.',
+        content: Text(
+          _isBoatSession(session)
+              ? 'Toutes les navigations et toutes les mesures enregistrées dans cette session seront supprimées définitivement.\n\nCette action est irréversible.'
+              : 'Tous les roulages et toutes les mesures enregistrés dans cette session seront supprimés définitivement.\n\nCette action est irréversible.',
         ),
         actions: [
           TextButton(
@@ -1668,7 +1713,9 @@ class _SessionsPageState extends State<SessionsPage> {
                             children: [
                               Text(_formatDateTime(activeSession.startedAt)),
                               const Text('•'),
-                              Text('${activeSession.runs.length} roulage(s)'),
+                              Text(
+                                '${activeSession.runs.length} ${_isBoatSession(activeSession) ? 'navigation(s)' : 'roulage(s)'}',
+                              ),
                               const Text('•'),
                               Text(
                                 _durationLabel(
@@ -1752,7 +1799,9 @@ class _SessionsPageState extends State<SessionsPage> {
                             children: [
                               Text(_formatDateTime(session.startedAt)),
                               const Text('•'),
-                              Text('${session.runs.length} roulage(s)'),
+                              Text(
+                                '${session.runs.length} ${_isBoatSession(session) ? 'navigation(s)' : 'roulage(s)'}',
+                              ),
                               const Text('•'),
                               Text(
                                 _durationLabel(session.totalDurationMinutes),
@@ -1943,7 +1992,7 @@ class _SessionsPageState extends State<SessionsPage> {
                   Text('Lieu : ${session.location}'),
                 const SizedBox(height: 8),
                 Text(
-                  '${session.runs.length} roulage(s) • '
+                  '${session.runs.length} ${_isBoatSession(session) ? 'navigation(s)' : 'roulage(s)'} • '
                   '${_durationLabel(session.totalDurationMinutes)} enregistré',
                 ),
                 const SizedBox(height: 12),
@@ -1967,7 +2016,13 @@ class _SessionsPageState extends State<SessionsPage> {
           _buildActiveRunCard(session, activeRun)
         else ...[
           Text(
-            session.runs.isEmpty ? 'Premier roulage' : 'Nouveau roulage',
+            session.runs.isEmpty
+                ? (_isBoatSession(session)
+                      ? 'Première navigation'
+                      : 'Premier roulage')
+                : (_isBoatSession(session)
+                      ? 'Nouvelle navigation'
+                      : 'Nouveau roulage'),
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 12),
@@ -2013,12 +2068,14 @@ class _SessionsPageState extends State<SessionsPage> {
             const SizedBox(height: 14),
             _CompatibilityCard(result: compatibility),
           ] else
-            const Card(
+            Card(
               child: ListTile(
                 leading: Icon(Icons.local_gas_station),
                 title: Text('Modèle thermique'),
                 subtitle: Text(
-                  'Le roulage peut être démarré sans batterie de propulsion.',
+                  _isBoatSession(session)
+                      ? 'La navigation peut être démarrée sans batterie de propulsion.'
+                      : 'Le roulage peut être démarré sans batterie de propulsion.',
                 ),
               ),
             ),
@@ -2026,13 +2083,19 @@ class _SessionsPageState extends State<SessionsPage> {
           FilledButton.icon(
             onPressed: () => _startRun(session),
             icon: const Icon(Icons.timer),
-            label: const Text('Démarrer ce roulage'),
+            label: Text(
+              _isBoatSession(session)
+                  ? 'Démarrer cette navigation'
+                  : 'Démarrer ce roulage',
+            ),
           ),
         ],
         if (session.runs.isNotEmpty) ...[
           const SizedBox(height: 24),
           Text(
-            'Roulages de la session',
+            _isBoatSession(session)
+                ? 'Navigations de la session'
+                : 'Roulages de la session',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 10),
@@ -2042,6 +2105,7 @@ class _SessionsPageState extends State<SessionsPage> {
               run: session.runs[index],
               formatDateTime: _formatDateTime,
               durationLabel: _durationLabel,
+              isBoat: _isBoatSession(session),
               onEdit: session.runs[index].isActive
                   ? null
                   : () => _editRun(session, index),
@@ -2052,7 +2116,11 @@ class _SessionsPageState extends State<SessionsPage> {
           FilledButton.icon(
             onPressed: () => _endActiveRun(session),
             icon: const Icon(Icons.stop),
-            label: const Text('Terminer ce roulage'),
+            label: Text(
+              _isBoatSession(session)
+                  ? 'Terminer cette navigation'
+                  : 'Terminer ce roulage',
+            ),
           )
         else
           OutlinedButton.icon(
@@ -2075,7 +2143,9 @@ class _SessionsPageState extends State<SessionsPage> {
             const Icon(Icons.timer, size: 42),
             const SizedBox(height: 8),
             Text(
-              'Roulage en cours',
+              _isBoatSession(session)
+                  ? 'Navigation en cours'
+                  : 'Roulage en cours',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 6),
@@ -2384,6 +2454,7 @@ class _RunCard extends StatelessWidget {
     required this.run,
     required this.formatDateTime,
     required this.durationLabel,
+    required this.isBoat,
     this.onEdit,
   });
 
@@ -2391,6 +2462,7 @@ class _RunCard extends StatelessWidget {
   final RcRun run;
   final String Function(DateTime value) formatDateTime;
   final String Function(int minutes) durationLabel;
+  final bool isBoat;
   final VoidCallback? onEdit;
 
   @override
@@ -2400,7 +2472,7 @@ class _RunCard extends StatelessWidget {
         leading: CircleAvatar(child: Text('$number')),
         title: Text(
           run.isActive
-              ? 'Roulage en cours'
+              ? (isBoat ? 'Navigation en cours' : 'Roulage en cours')
               : durationLabel(run.effectiveDurationMinutes),
         ),
         subtitle: Text(
@@ -2418,7 +2490,9 @@ class _RunCard extends StatelessWidget {
         trailing: run.isActive
             ? const Icon(Icons.timer)
             : IconButton(
-                tooltip: 'Modifier ce roulage',
+                tooltip: isBoat
+                    ? 'Modifier cette navigation'
+                    : 'Modifier ce roulage',
                 onPressed: onEdit,
                 icon: const Icon(Icons.edit_outlined),
               ),
@@ -2463,11 +2537,13 @@ class _OpenSessionDialog extends StatefulWidget {
 class _OpenSessionDialogState extends State<_OpenSessionDialog> {
   RcModel? _selectedModel;
   final _locationController = TextEditingController();
+  final _terrainTypeController = TextEditingController();
   DateTime _startedAt = DateTime.now();
 
   @override
   void dispose() {
     _locationController.dispose();
+    _terrainTypeController.dispose();
     super.dispose();
   }
 
@@ -2666,12 +2742,10 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
   }
 
   Future<void> _selectTime() async {
-    final selected = await showTimePicker(
+    final selected = await showDialog<TimeOfDay>(
       context: context,
-      initialTime: TimeOfDay.fromDateTime(_startedAt),
-      helpText: 'Heure de début de la session',
-      cancelText: 'Annuler',
-      confirmText: 'Valider',
+      builder: (context) =>
+          _NumericTimeDialog(initialTime: TimeOfDay.fromDateTime(_startedAt)),
     );
 
     if (selected == null || !mounted) {
@@ -2852,13 +2926,14 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
               ),
               if (_isHistorical) ...[
                 const SizedBox(height: 12),
-                const Card(
+                Card(
                   child: ListTile(
-                    leading: Icon(Icons.history),
-                    title: Text('Session rétroactive'),
+                    leading: const Icon(Icons.history),
+                    title: const Text('Session rétroactive'),
                     subtitle: Text(
-                      'Les batteries et leurs relevés sont facultatifs. '
-                      'Les roulages seront enregistrés à cette date.',
+                      _selectedModel?.category.trim().toLowerCase() == 'bateau'
+                          ? 'Les batteries et leurs relevés sont facultatifs. Les navigations seront enregistrées à cette date.'
+                          : 'Les batteries et leurs relevés sont facultatifs. Les roulages seront enregistrés à cette date.',
                     ),
                   ),
                 ),
@@ -2868,6 +2943,14 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
                 controller: _locationController,
                 decoration: const InputDecoration(
                   labelText: 'Lieu (facultatif)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _terrainTypeController,
+                decoration: const InputDecoration(
+                  labelText: 'Type de terrain (facultatif)',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -2899,6 +2982,7 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
                     _OpenSessionResult(
                       model: _selectedModel!,
                       location: _locationController.text.trim(),
+                      terrainType: _terrainTypeController.text.trim(),
                       startedAt: _startedAt,
                       isHistorical: _isHistorical,
                     ),
@@ -2911,14 +2995,160 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
   }
 }
 
+class _NumericTimeDialog extends StatefulWidget {
+  const _NumericTimeDialog({required this.initialTime});
+
+  final TimeOfDay initialTime;
+
+  @override
+  State<_NumericTimeDialog> createState() => _NumericTimeDialogState();
+}
+
+class _NumericTimeDialogState extends State<_NumericTimeDialog> {
+  late final TextEditingController _hourController;
+  late final TextEditingController _minuteController;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _hourController = TextEditingController(
+      text: widget.initialTime.hour.toString().padLeft(2, '0'),
+    );
+    _minuteController = TextEditingController(
+      text: widget.initialTime.minute.toString().padLeft(2, '0'),
+    );
+  }
+
+  @override
+  void dispose() {
+    _hourController.dispose();
+    _minuteController.dispose();
+    super.dispose();
+  }
+
+  void _validate() {
+    final hour = int.tryParse(_hourController.text.trim());
+    final minute = int.tryParse(_minuteController.text.trim());
+
+    if (hour == null ||
+        minute == null ||
+        hour < 0 ||
+        hour > 23 ||
+        minute < 0 ||
+        minute > 59) {
+      setState(() {
+        _errorText = 'Indique une heure valide entre 00:00 et 23:59.';
+      });
+      return;
+    }
+
+    Navigator.of(context).pop(TimeOfDay(hour: hour, minute: minute));
+  }
+
+  Widget _numberField({
+    required TextEditingController controller,
+    required String label,
+    required int maxValue,
+  }) {
+    return Expanded(
+      child: TextField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.center,
+        maxLength: 2,
+        onSubmitted: (_) => _validate(),
+        decoration: InputDecoration(
+          labelText: label,
+          counterText: '',
+          border: const OutlineInputBorder(),
+        ),
+        onChanged: (value) {
+          final parsed = int.tryParse(value.trim());
+          if (parsed != null && parsed > maxValue) {
+            setState(() {
+              _errorText = label == 'Heures'
+                  ? 'Les heures vont de 00 à 23.'
+                  : 'Les minutes vont de 00 à 59.';
+            });
+          } else if (_errorText != null) {
+            setState(() {
+              _errorText = null;
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Heure de début de la session'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _numberField(
+                  controller: _hourController,
+                  label: 'Heures',
+                  maxValue: 23,
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  child: Text(
+                    ':',
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                _numberField(
+                  controller: _minuteController,
+                  label: 'Minutes',
+                  maxValue: 59,
+                ),
+              ],
+            ),
+            if (_errorText != null) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _errorText!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(onPressed: _validate, child: const Text('Valider')),
+      ],
+    );
+  }
+}
+
 class _EditSessionGeneralResult {
   const _EditSessionGeneralResult({
     required this.model,
     required this.location,
+    required this.terrainType,
   });
 
   final RcModel model;
   final String location;
+  final String terrainType;
 }
 
 class _EditSessionGeneralDialog extends StatefulWidget {
@@ -2938,6 +3168,7 @@ class _EditSessionGeneralDialog extends StatefulWidget {
 class _EditSessionGeneralDialogState extends State<_EditSessionGeneralDialog> {
   late RcModel _selectedModel;
   late final TextEditingController _locationController;
+  late final TextEditingController _terrainTypeController;
 
   @override
   void initState() {
@@ -2947,11 +3178,15 @@ class _EditSessionGeneralDialogState extends State<_EditSessionGeneralDialog> {
       orElse: () => widget.session.model,
     );
     _locationController = TextEditingController(text: widget.session.location);
+    _terrainTypeController = TextEditingController(
+      text: widget.session.terrainType,
+    );
   }
 
   @override
   void dispose() {
     _locationController.dispose();
+    _terrainTypeController.dispose();
     super.dispose();
   }
 
@@ -2999,6 +3234,14 @@ class _EditSessionGeneralDialogState extends State<_EditSessionGeneralDialog> {
                 border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _terrainTypeController,
+              decoration: const InputDecoration(
+                labelText: 'Type de terrain (facultatif)',
+                border: OutlineInputBorder(),
+              ),
+            ),
           ],
         ),
       ),
@@ -3013,6 +3256,7 @@ class _EditSessionGeneralDialogState extends State<_EditSessionGeneralDialog> {
               _EditSessionGeneralResult(
                 model: _selectedModel,
                 location: _locationController.text.trim(),
+                terrainType: _terrainTypeController.text.trim(),
               ),
             );
           },
@@ -3024,9 +3268,10 @@ class _EditSessionGeneralDialogState extends State<_EditSessionGeneralDialog> {
 }
 
 class _EndRunDialog extends StatefulWidget {
-  const _EndRunDialog({required this.suggestedDuration});
+  const _EndRunDialog({required this.suggestedDuration, required this.isBoat});
 
   final int suggestedDuration;
+  final bool isBoat;
 
   @override
   State<_EndRunDialog> createState() => _EndRunDialogState();
@@ -3071,7 +3316,9 @@ class _EndRunDialogState extends State<_EndRunDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Terminer le roulage'),
+      title: Text(
+        widget.isBoat ? 'Terminer la navigation' : 'Terminer le roulage',
+      ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       content: SizedBox(
         width: 480,
@@ -3083,7 +3330,9 @@ class _EndRunDialogState extends State<_EndRunDialog> {
                 controller: _durationController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'Temps de roulage (minutes)',
+                  labelText: widget.isBoat
+                      ? 'Temps de navigation (minutes)'
+                      : 'Temps de roulage (minutes)',
                   border: const OutlineInputBorder(),
                   errorText: _errorText,
                 ),
@@ -3100,8 +3349,10 @@ class _EndRunDialogState extends State<_EndRunDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Le relevé de fin de roulage pourra être complété depuis le détail de la session.',
+              Text(
+                widget.isBoat
+                    ? 'Le relevé de fin de navigation pourra être complété depuis le détail de la session.'
+                    : 'Le relevé de fin de roulage pourra être complété depuis le détail de la session.',
               ),
             ],
           ),
@@ -3119,10 +3370,15 @@ class _EndRunDialogState extends State<_EndRunDialog> {
 }
 
 class _EditRunDialog extends StatefulWidget {
-  const _EditRunDialog({required this.durationMinutes, required this.notes});
+  const _EditRunDialog({
+    required this.durationMinutes,
+    required this.notes,
+    required this.isBoat,
+  });
 
   final int durationMinutes;
   final String notes;
+  final bool isBoat;
 
   @override
   State<_EditRunDialog> createState() => _EditRunDialogState();
@@ -3170,7 +3426,9 @@ class _EditRunDialogState extends State<_EditRunDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Modifier le roulage'),
+      title: Text(
+        widget.isBoat ? 'Modifier la navigation' : 'Modifier le roulage',
+      ),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
@@ -3181,7 +3439,9 @@ class _EditRunDialogState extends State<_EditRunDialog> {
                 controller: _durationController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'Temps de roulage (minutes)',
+                  labelText: widget.isBoat
+                      ? 'Temps de navigation (minutes)'
+                      : 'Temps de roulage (minutes)',
                   border: const OutlineInputBorder(),
                   errorText: _errorText,
                 ),
@@ -3497,10 +3757,12 @@ class _BatteryMeasurementDialog extends StatefulWidget {
   const _BatteryMeasurementDialog({
     required this.battery,
     required this.runNumber,
+    required this.isBoat,
   });
 
   final Battery battery;
   final int runNumber;
+  final bool isBoat;
 
   @override
   State<_BatteryMeasurementDialog> createState() =>
@@ -3610,8 +3872,9 @@ class _BatteryMeasurementDialogState extends State<_BatteryMeasurementDialog> {
         TextSpan(
           children: [
             TextSpan(
-              text:
-                  'Relevé fin de roulage ${widget.runNumber} — ${widget.battery.id}',
+              text: widget.isBoat
+                  ? 'Relevé fin de navigation ${widget.runNumber} — ${widget.battery.id}'
+                  : 'Relevé fin de roulage ${widget.runNumber} — ${widget.battery.id}',
             ),
             if (widget.battery.isPaired)
               TextSpan(
@@ -3750,12 +4013,14 @@ class _OpenSessionResult {
   const _OpenSessionResult({
     required this.model,
     required this.location,
+    required this.terrainType,
     required this.startedAt,
     required this.isHistorical,
   });
 
   final RcModel model;
   final String location;
+  final String terrainType;
   final DateTime startedAt;
   final bool isHistorical;
 }
@@ -3832,10 +4097,14 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
     super.dispose();
   }
 
+  bool get _isBoat =>
+      widget.session.model.category.trim().toLowerCase() == 'bateau';
+
   Future<void> _addRun() async {
     final result = await showDialog<_HistoricalRunResult>(
       context: context,
-      builder: (context) => _HistoricalRunDialog(batteries: widget.batteries),
+      builder: (context) =>
+          _HistoricalRunDialog(batteries: widget.batteries, isBoat: _isBoat),
     );
 
     if (result == null || !mounted) {
@@ -3912,13 +4181,16 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Card(
+              Card(
                 child: ListTile(
-                  leading: Icon(Icons.history),
+                  leading: const Icon(Icons.history),
                   title: Text('Saisie rétroactive'),
                   subtitle: Text(
-                    'Ajoute les roulages déjà effectués. Les batteries et les '
-                    'relevés restent facultatifs pour l’historique initial.',
+                    _isBoat
+                        ? 'Ajoute les navigations déjà effectuées. Les batteries et les '
+                              'relevés restent facultatifs pour l’historique initial.'
+                        : 'Ajoute les roulages déjà effectués. Les batteries et les '
+                              'relevés restent facultatifs pour l’historique initial.',
                   ),
                 ),
               ),
@@ -3928,8 +4200,10 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
                   Expanded(
                     child: Text(
                       _runs.isEmpty
-                          ? 'Aucun roulage renseigné'
-                          : '${_runs.length} roulage(s) • '
+                          ? (_isBoat
+                                ? 'Aucune navigation renseignée'
+                                : 'Aucun roulage renseigné')
+                          : '${_runs.length} ${_isBoat ? 'navigation(s)' : 'roulage(s)'} • '
                                 '${_runs.fold<int>(0, (total, run) => total + run.durationMinutes)} min',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
@@ -3937,7 +4211,9 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
                   FilledButton.icon(
                     onPressed: _addRun,
                     icon: const Icon(Icons.add),
-                    label: const Text('Ajouter un roulage'),
+                    label: Text(
+                      _isBoat ? 'Ajouter une navigation' : 'Ajouter un roulage',
+                    ),
                   ),
                 ],
               ),
@@ -3958,7 +4234,9 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
                       ].join('\n'),
                     ),
                     trailing: IconButton(
-                      tooltip: 'Supprimer ce roulage',
+                      tooltip: _isBoat
+                          ? 'Supprimer cette navigation'
+                          : 'Supprimer ce roulage',
                       onPressed: () {
                         setState(() {
                           _runs.removeAt(index);
@@ -4043,9 +4321,10 @@ class _HistoricalSessionDialogState extends State<_HistoricalSessionDialog> {
 enum _HistoricalBatteryMode { none, existing, historical }
 
 class _HistoricalRunDialog extends StatefulWidget {
-  const _HistoricalRunDialog({required this.batteries});
+  const _HistoricalRunDialog({required this.batteries, required this.isBoat});
 
   final List<Battery> batteries;
+  final bool isBoat;
 
   @override
   State<_HistoricalRunDialog> createState() => _HistoricalRunDialogState();
@@ -4284,7 +4563,11 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Ajouter un roulage antérieur'),
+      title: Text(
+        widget.isBoat
+            ? 'Ajouter une navigation antérieure'
+            : 'Ajouter un roulage antérieur',
+      ),
       content: SizedBox(
         width: 680,
         child: SingleChildScrollView(
@@ -4295,7 +4578,9 @@ class _HistoricalRunDialogState extends State<_HistoricalRunDialog> {
                 controller: _durationController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'Temps de roulage (minutes)',
+                  labelText: widget.isBoat
+                      ? 'Temps de navigation (minutes)'
+                      : 'Temps de roulage (minutes)',
                   border: const OutlineInputBorder(),
                   errorText: _errorText,
                 ),

@@ -28,6 +28,7 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
   final RadioService _radioService = RadioService();
 
   final Map<String, TextEditingController> _controllers = {};
+  final Map<String, TextEditingController> _labelControllers = {};
 
   RcRadio? _selectedRadio;
   RadioControlLayout? _layout;
@@ -39,10 +40,34 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isEditing = false;
   String? _errorMessage;
 
   List<RadioControlDefinition> get _controls {
     return _layout?.controls ?? const [];
+  }
+
+  bool get _isGenericOriginalRadio {
+    final radio = _selectedRadio;
+    if (radio == null) {
+      return false;
+    }
+
+    return radio.brand.trim().toLowerCase() == 'générique' &&
+        radio.model.trim().toLowerCase() == 'radio d’origine';
+  }
+
+  String _labelKey(RadioControlDefinition control) {
+    return 'control_label_${control.key}';
+  }
+
+  String _displayLabel(RadioControlDefinition control) {
+    if (!_isGenericOriginalRadio) {
+      return control.label;
+    }
+
+    final custom = _labelControllers[_labelKey(control)]?.text.trim() ?? '';
+    return custom.isEmpty ? control.label : custom;
   }
 
   Set<String> get _controlKeys {
@@ -82,6 +107,9 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
     for (final controller in _controllers.values) {
       controller.dispose();
     }
+    for (final controller in _labelControllers.values) {
+      controller.dispose();
+    }
 
     super.dispose();
   }
@@ -110,6 +138,10 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
     final previousValues = <String, String>{
       for (final entry in _controllers.entries) entry.key: entry.value.text,
     };
+    final previousLabels = <String, String>{
+      for (final entry in _labelControllers.entries)
+        entry.key: entry.value.text,
+    };
 
     final currentKeys = <String>{};
     for (final control in layout?.controls ?? const []) {
@@ -123,6 +155,15 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
 
       if (!_isSaving && previousValues.containsKey(key)) {
         controller.text = previousValues[key] ?? '';
+      }
+
+      final labelKey = _labelKey(control);
+      final labelController = _labelControllers.putIfAbsent(
+        labelKey,
+        () => TextEditingController(text: control.label),
+      );
+      if (!_isSaving && previousLabels.containsKey(labelKey)) {
+        labelController.text = previousLabels[labelKey] ?? control.label;
       }
     }
 
@@ -156,6 +197,21 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
         controller.value = TextEditingValue(
           text: remoteValue,
           selection: TextSelection.collapsed(offset: remoteValue.length),
+        );
+      }
+
+      final labelKey = _labelKey(control);
+      final defaultLabel = control.label;
+      final remoteLabel = setup?.value(labelKey).trim() ?? '';
+      final effectiveLabel = remoteLabel.isEmpty ? defaultLabel : remoteLabel;
+      final labelController = _labelControllers.putIfAbsent(
+        labelKey,
+        () => TextEditingController(text: effectiveLabel),
+      );
+      if (labelController.text != effectiveLabel) {
+        labelController.value = TextEditingValue(
+          text: effectiveLabel,
+          selection: TextSelection.collapsed(offset: effectiveLabel.length),
         );
       }
     }
@@ -220,6 +276,14 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
           TextEditingController.new,
         );
         controller.text = value;
+
+        final labelKey = _labelKey(control);
+        final savedLabel = setup?.value(labelKey).trim() ?? '';
+        final labelController = _labelControllers.putIfAbsent(
+          labelKey,
+          () => TextEditingController(),
+        );
+        labelController.text = savedLabel.isEmpty ? control.label : savedLabel;
       }
 
       final controlKeys = {...(layout?.controls ?? const []).map(_fieldKey)};
@@ -274,7 +338,7 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
                           for (final control in _controls)
                             CheckboxListTile(
                               value: draft.contains(_fieldKey(control)),
-                              title: Text(control.label),
+                              title: Text(_displayLabel(control)),
                               subtitle: Text(_typeLabel(control.type)),
                               controlAffinity: ListTileControlAffinity.leading,
                               contentPadding: EdgeInsets.zero,
@@ -350,10 +414,20 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
       final mergedFields = <String>[...otherFields, ..._enabledFields];
 
       final mergedValues = <String, String>{
-        for (final key in otherFields) key: previousValues[key] ?? '',
+        ...previousValues,
         for (final key in _enabledFields)
           key: _controllers[key]?.text.trim() ?? '',
       };
+
+      if (_isGenericOriginalRadio) {
+        for (final control in _controls) {
+          final labelKey = _labelKey(control);
+          final customLabel = _labelControllers[labelKey]?.text.trim() ?? '';
+          mergedValues[labelKey] = customLabel.isEmpty
+              ? control.label
+              : customLabel;
+        }
+      }
 
       final saved = await _setupService.saveSetup(
         ModelRadioSetup(
@@ -371,6 +445,7 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
       setState(() {
         _loadedSetup = saved;
         _isSaving = false;
+        _isEditing = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -410,103 +485,202 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
       return const _ControlsNoRadioState();
     }
 
-    return Stack(
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        _ControlsRadioCard(radio: _selectedRadio),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
           children: [
-            _ControlsRadioCard(radio: _selectedRadio),
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.tonalIcon(
-                onPressed: _controls.isEmpty ? null : _openAddDialog,
-                icon: const Icon(Icons.add),
-                label: const Text('Ajouter'),
-              ),
+            FilledButton.tonalIcon(
+              onPressed: _controls.isEmpty ? null : _openAddDialog,
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter'),
             ),
-            const SizedBox(height: 18),
-            if (_controls.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text(
-                    'Aucune commande référencée '
-                    'pour cette radio.',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              )
-            else if (_enabledFields.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text(
-                    'Aucune commande ajoutée.',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              )
-            else
-              ..._buildControlFields(),
+            OutlinedButton.icon(
+              onPressed: _controls.isEmpty
+                  ? null
+                  : () {
+                      setState(() {
+                        _isEditing = !_isEditing;
+                      });
+                    },
+              icon: Icon(
+                _isEditing ? Icons.close_rounded : Icons.edit_outlined,
+              ),
+              label: Text(_isEditing ? 'Annuler' : 'Modifier'),
+            ),
+            if (_isEditing)
+              FilledButton.icon(
+                onPressed: _isSaving ? null : _save,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(_isSaving ? 'Enregistrement...' : 'Enregistrer'),
+              ),
           ],
         ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingActionButton.extended(
-            heroTag: 'save-model-radio-controls',
-            onPressed: _isSaving ? null : _save,
-            icon: _isSaving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.save_outlined),
-            label: Text(_isSaving ? 'Enregistrement...' : 'Enregistrer'),
-          ),
-        ),
+        const SizedBox(height: 18),
+        if (_controls.isEmpty)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                'Aucune commande référencée pour cette radio.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          )
+        else if (_enabledFields.isEmpty)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                'Aucune commande ajoutée.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          )
+        else
+          _buildResponsiveControlGrid(),
       ],
     );
   }
 
-  List<Widget> _buildControlFields() {
-    final widgets = <Widget>[];
+  Widget _buildResponsiveControlGrid() {
+    final visibleControls = _controls
+        .where((control) => _enabledFields.contains(_fieldKey(control)))
+        .toList(growable: false);
 
-    for (final control in _controls) {
-      final key = _fieldKey(control);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Deux colonnes dès que l'espace permet deux cartes lisibles.
+        // Téléphones étroits : une colonne. Tablettes, Mac/PC et grands
+        // téléphones en paysage : deux colonnes.
+        final twoColumns = constraints.maxWidth >= 760;
+        final spacing = 12.0;
+        final cardWidth = twoColumns
+            ? (constraints.maxWidth - spacing) / 2
+            : constraints.maxWidth;
 
-      if (!_enabledFields.contains(key)) {
-        continue;
-      }
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final control in visibleControls)
+              SizedBox(width: cardWidth, child: _buildControlCard(control)),
+          ],
+        );
+      },
+    );
+  }
 
-      widgets.add(
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: TextField(
-            controller: _controllers[key],
-            maxLength: 80,
-            decoration: InputDecoration(
-              labelText: control.label,
-              hintText: 'Fonction affectée à ${control.label}',
-              helperText: _typeLabel(control.type),
-              border: const OutlineInputBorder(),
-              counterText: '',
-              suffixIcon: IconButton(
-                tooltip: 'Retirer',
-                onPressed: () {
-                  _removeControl(key);
-                },
-                icon: const Icon(Icons.close),
+  Widget _buildControlCard(RadioControlDefinition control) {
+    final key = _fieldKey(control);
+    final savedPhysicalLabel = _loadedSetup?.value(_labelKey(control)).trim();
+    final physicalLabel =
+        _isGenericOriginalRadio &&
+            savedPhysicalLabel != null &&
+            savedPhysicalLabel.isNotEmpty
+        ? savedPhysicalLabel
+        : _displayLabel(control);
+
+    if (_isGenericOriginalRadio) {
+      if (!_isEditing) {
+        return Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              controller: _controllers[key],
+              readOnly: true,
+              maxLength: 80,
+              decoration: InputDecoration(
+                labelText: physicalLabel,
+                border: const OutlineInputBorder(),
+                counterText: '',
               ),
             ),
+          ),
+        );
+      }
+
+      return Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _labelControllers[_labelKey(control)],
+                maxLength: 40,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: 'Nom physique de la commande',
+                  hintText: control.label,
+                  helperText:
+                      '${_typeLabel(control.type)} • nom inscrit sur la radio',
+                  border: const OutlineInputBorder(),
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _controllers[key],
+                maxLength: 80,
+                decoration: InputDecoration(
+                  labelText: 'Fonction attribuée',
+                  hintText: 'Fonction affectée à ${_displayLabel(control)}',
+                  border: const OutlineInputBorder(),
+                  counterText: '',
+                  suffixIcon: IconButton(
+                    tooltip: 'Retirer',
+                    onPressed: () {
+                      _removeControl(key);
+                    },
+                    icon: const Icon(Icons.close),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       );
     }
 
-    return widgets;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: TextField(
+          controller: _controllers[key],
+          readOnly: !_isEditing,
+          maxLength: 80,
+          decoration: InputDecoration(
+            labelText: physicalLabel,
+            hintText: 'Fonction affectée à $physicalLabel',
+            border: const OutlineInputBorder(),
+            counterText: '',
+            suffixIcon: _isEditing
+                ? IconButton(
+                    tooltip: 'Retirer',
+                    onPressed: () {
+                      _removeControl(key);
+                    },
+                    icon: const Icon(Icons.close),
+                  )
+                : null,
+          ),
+        ),
+      ),
+    );
   }
 
   String _typeLabel(RadioControlType type) {

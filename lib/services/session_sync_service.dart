@@ -42,6 +42,7 @@ class SessionSyncService {
       'started_at': payload['started_at'],
       'ended_at': payload['ended_at'],
       'location': payload['location'],
+      'terrain_type': payload['terrain_type'],
       'driving_notes': payload['driving_notes'],
       'breakages': payload['breakages'],
       'parts_replaced_on_site': payload['parts_replaced_on_site'],
