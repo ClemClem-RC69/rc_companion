@@ -259,7 +259,6 @@ class _ModelDetailPageState extends State<ModelDetailPage>
       },
     );
 
-    controller.dispose();
     return result;
   }
 
