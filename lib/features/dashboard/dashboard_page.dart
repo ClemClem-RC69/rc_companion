@@ -260,7 +260,25 @@ class _DashboardPageState extends State<DashboardPage>
       return;
     }
 
-    final recent = rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+    Map<String, dynamic>? recent;
+    for (final row in rows) {
+      final endedAt = row['ended_at']?.toString().trim();
+      if (endedAt != null && endedAt.isNotEmpty) {
+        recent = Map<String, dynamic>.from(row);
+        break;
+      }
+    }
+
+    // S'il n'existe encore aucune session clôturée, on conserve le
+    // comportement précédent en affichant la session la plus récente.
+    recent ??= rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+
+    if (recent != null) {
+      recent['dashboard_duration_minutes'] = _sessionRunMinutes(recent);
+      recent['dashboard_run_count'] = _sessionRunCount(recent);
+      recent['dashboard_breakage_count'] = _breakageCount(recent);
+    }
+
     final recentModelId = recent?['model_id']?.toString().trim();
     final activeSessionExists = rows.any((row) {
       final endedAt = row['ended_at']?.toString().trim();
@@ -1524,11 +1542,10 @@ class _DashboardPageState extends State<DashboardPage>
     final place =
         _firstText(row, ['location', 'place', 'terrain']) ??
         'Lieu non renseigné';
-    final breakages = _firstText(row, ['breakages']);
-    final incidentText = breakages == null || breakages.trim().isEmpty
-        ? 'Aucune casse'
-        : breakages;
     final duration = _durationText(row);
+    final runCountText = _sessionRunCountText(row);
+    final sessionSummary = '$duration • $runCountText';
+    final breakageText = _breakageSummaryText(row);
 
     final mobilePlatform =
         defaultTargetPlatform == TargetPlatform.iOS ||
@@ -1546,18 +1563,19 @@ class _DashboardPageState extends State<DashboardPage>
 
           if (compactLandscape) {
             final short = constraints.maxHeight < 135;
-            final modelSize = short ? 11.0 : 14.0;
-            final detailSize = short ? 8.0 : 10.0;
-            final buttonHeight = short ? 23.0 : 30.0;
+            final modelSize = short ? 10.0 : 14.0;
+            final summarySize = short ? 7.5 : 10.5;
+            final detailSize = short ? 7.0 : 9.5;
+            final buttonHeight = short ? 22.0 : 30.0;
 
             return Row(
               children: [
                 Expanded(
-                  flex: 48,
+                  flex: 50,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (!short)
+                      if (!short) ...[
                         Text(
                           date,
                           maxLines: 1,
@@ -1566,60 +1584,25 @@ class _DashboardPageState extends State<DashboardPage>
                             fontSize: 9,
                           ),
                         ),
-                      if (!short) const SizedBox(height: 3),
-                      if (short)
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                model,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: modelSize,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              duration,
-                              maxLines: 1,
-                              style: const TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        )
-                      else ...[
-                        Text(
-                          model,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: modelSize,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
                         const SizedBox(height: 2),
-                        Text(
-                          duration,
-                          maxLines: 1,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
                       ],
-                      SizedBox(height: short ? 1 : 3),
                       Text(
-                        incidentText,
+                        model,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: const Color(0xFF7F8DA0),
-                          fontSize: detailSize,
+                          fontSize: modelSize,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(height: short ? 1 : 2),
+                      Text(
+                        sessionSummary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: summarySize,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       SizedBox(height: short ? 1 : 2),
@@ -1629,22 +1612,35 @@ class _DashboardPageState extends State<DashboardPage>
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: const Color(0xFF65758A),
-                          fontSize: detailSize - 1,
+                          fontSize: detailSize,
                         ),
                       ),
+                      if (breakageText != null) ...[
+                        SizedBox(height: short ? 1 : 2),
+                        Text(
+                          breakageText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: const Color(0xFFFF6B64),
+                            fontSize: detailSize,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                       const Spacer(),
                       SizedBox(
                         height: buttonHeight,
                         child: OutlinedButton(
                           onPressed: () => _open(const SessionsPage()),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 9),
                           ),
                           child: const FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
                               'Voir la session',
-                              style: TextStyle(fontSize: 9),
+                              style: TextStyle(fontSize: 8),
                             ),
                           ),
                         ),
@@ -1652,15 +1648,15 @@ class _DashboardPageState extends State<DashboardPage>
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 5),
                 Expanded(
-                  flex: 52,
+                  flex: 50,
                   child: Center(
                     child: FractionallySizedBox(
-                      widthFactor: short ? 0.80 : 1.0,
-                      heightFactor: short ? 0.78 : 1.0,
+                      widthFactor: short ? 0.78 : 1.0,
+                      heightFactor: short ? 0.76 : 1.0,
                       child: Transform.scale(
-                        scale: short ? 1.60 : 2.0,
+                        scale: short ? 1.55 : 1.95,
                         child: Image.asset(
                           _categoryAsset(lastModelCategory),
                           fit: BoxFit.contain,
@@ -1674,41 +1670,70 @@ class _DashboardPageState extends State<DashboardPage>
             );
           }
 
+          // Fenêtre Mac/Windows réduite : on garde toujours les informations
+          // utiles de la dernière session. Seule la date peut être masquée
+          // lorsque la hauteur devient vraiment très faible.
           if (!mobilePlatform) {
+            final modelSize = veryTight ? 10.0 : (tight ? 12.0 : 15.0);
+            final summarySize = veryTight ? 7.5 : (tight ? 9.0 : 12.0);
+            final detailSize = veryTight ? 7.0 : (tight ? 8.0 : 10.0);
+
             return Row(
               children: [
                 Expanded(
                   flex: 3,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (!veryTight)
+                      if (!veryTight) ...[
                         Text(
                           date,
                           maxLines: 1,
                           style: TextStyle(
                             color: Colors.white70,
-                            fontSize: isPhone ? 8 : 10,
+                            fontSize: tight ? 8 : 10,
                           ),
                         ),
-                      if (!veryTight) const SizedBox(height: 2),
+                        SizedBox(height: tight ? 1 : 2),
+                      ],
                       Text(
                         model,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: isPhone ? 12 : 15,
+                          fontSize: modelSize,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      if (!veryTight) ...[
-                        const SizedBox(height: 2),
+                      SizedBox(height: veryTight ? 1 : 2),
+                      Text(
+                        sessionSummary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: summarySize,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: veryTight ? 1 : 2),
+                      Text(
+                        place,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFF65758A),
+                          fontSize: detailSize,
+                        ),
+                      ),
+                      if (breakageText != null) ...[
+                        SizedBox(height: veryTight ? 1 : 2),
                         Text(
-                          duration,
+                          breakageText,
                           maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: isPhone ? 10 : 13,
+                            color: const Color(0xFFFF6B64),
+                            fontSize: detailSize,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -1716,15 +1741,15 @@ class _DashboardPageState extends State<DashboardPage>
                       const Spacer(),
                       SizedBox(
                         height: veryTight
-                            ? 22
+                            ? 20
                             : tight
-                            ? 25
+                            ? 24
                             : (isPhone ? 27 : 32),
                         child: OutlinedButton(
                           onPressed: () => _open(const SessionsPage()),
                           style: OutlinedButton.styleFrom(
                             padding: EdgeInsets.symmetric(
-                              horizontal: veryTight ? 5 : (isPhone ? 7 : 10),
+                              horizontal: veryTight ? 4 : (isPhone ? 7 : 10),
                             ),
                           ),
                           child: FittedBox(
@@ -1732,7 +1757,7 @@ class _DashboardPageState extends State<DashboardPage>
                             child: Text(
                               'Voir la session',
                               style: TextStyle(
-                                fontSize: veryTight ? 8 : (isPhone ? 9 : 11),
+                                fontSize: veryTight ? 7 : (isPhone ? 9 : 11),
                               ),
                             ),
                           ),
@@ -1761,10 +1786,10 @@ class _DashboardPageState extends State<DashboardPage>
                           scale: isPhone
                               ? 1.12
                               : veryTight
-                              ? 1.85
+                              ? 1.80
                               : tight
-                              ? 1.95
-                              : 2.05,
+                              ? 1.90
+                              : 2.00,
                           child: Image.asset(
                             _categoryAsset(lastModelCategory),
                             fit: BoxFit.contain,
@@ -1781,7 +1806,7 @@ class _DashboardPageState extends State<DashboardPage>
 
           final dateSize = isPhone ? 8.0 : (landscapeLike ? 13.0 : 12.0);
           final modelSize = isPhone ? 12.0 : (landscapeLike ? 18.0 : 17.0);
-          final durationSize = isPhone ? 10.0 : (landscapeLike ? 17.0 : 16.0);
+          final summarySize = isPhone ? 9.0 : (landscapeLike ? 15.0 : 14.0);
           final detailSize = isPhone ? 8.0 : (landscapeLike ? 13.0 : 12.0);
           final buttonHeight = veryTight
               ? 22.0
@@ -1796,7 +1821,6 @@ class _DashboardPageState extends State<DashboardPage>
                 flex: 44,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (!veryTight) ...[
                       Text(
@@ -1807,63 +1831,26 @@ class _DashboardPageState extends State<DashboardPage>
                           fontSize: dateSize,
                         ),
                       ),
-                      SizedBox(height: landscapeLike ? 8 : 2),
+                      SizedBox(height: landscapeLike ? 7 : 2),
                     ],
-                    if (isPhone && landscapeLike)
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              model,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: modelSize,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            duration,
-                            maxLines: 1,
-                            style: TextStyle(
-                              fontSize: durationSize,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      Text(
-                        model,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: modelSize,
-                          fontWeight: FontWeight.w900,
-                        ),
+                    Text(
+                      model,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: modelSize,
+                        fontWeight: FontWeight.w900,
                       ),
+                    ),
                     if (!veryTight) ...[
-                      if (!(isPhone && landscapeLike)) ...[
-                        SizedBox(height: landscapeLike ? 6 : 2),
-                        Text(
-                          duration,
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontSize: durationSize,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                      SizedBox(height: isPhone ? 3 : 6),
+                      SizedBox(height: landscapeLike ? 5 : 2),
                       Text(
-                        incidentText,
+                        sessionSummary,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: const Color(0xFF7F8DA0),
-                          fontSize: detailSize,
+                          fontSize: summarySize,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       SizedBox(height: isPhone ? 2 : 4),
@@ -1873,9 +1860,22 @@ class _DashboardPageState extends State<DashboardPage>
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: const Color(0xFF65758A),
-                          fontSize: detailSize - 1,
+                          fontSize: detailSize,
                         ),
                       ),
+                      if (breakageText != null) ...[
+                        SizedBox(height: isPhone ? 2 : 4),
+                        Text(
+                          breakageText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: const Color(0xFFFF6B64),
+                            fontSize: detailSize,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                     ],
                     const Spacer(),
                     SizedBox(
@@ -2459,11 +2459,10 @@ class _DashboardPageState extends State<DashboardPage>
     final place =
         _firstText(row, ['location', 'place', 'terrain']) ??
         'Lieu non renseigné';
-    final breakages = _firstText(row, ['breakages']);
-    final incidentText = breakages == null || breakages.trim().isEmpty
-        ? 'Aucune casse'
-        : breakages;
     final duration = _durationText(row);
+    final runCountText = _sessionRunCountText(row);
+    final sessionSummary = '$duration • $runCountText';
+    final breakageText = _breakageSummaryText(row);
 
     return _DashboardPanel(
       title: 'DERNIÈRE SESSION',
@@ -2484,27 +2483,37 @@ class _DashboardPageState extends State<DashboardPage>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  duration,
+                  sessionSummary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 17,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  incidentText,
-                  style: const TextStyle(color: Color(0xFF7F8DA0)),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 5),
                 Text(
                   place,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Color(0xFF65758A),
                     fontSize: 12,
                   ),
                 ),
+                if (breakageText != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    breakageText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFFF6B64),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 OutlinedButton(
                   onPressed: () => _open(const SessionsPage()),
@@ -2765,16 +2774,108 @@ class _DashboardPageState extends State<DashboardPage>
     return null;
   }
 
-  String _durationText(Map<String, dynamic>? row) {
-    if (row == null) return '0 min';
-    final value =
+  List<Map<String, dynamic>> _sessionRuns(Map<String, dynamic>? row) {
+    if (row == null) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final rawRuns = row['session_runs'];
+    if (rawRuns is! List) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final result = <Map<String, dynamic>>[];
+    for (final rawRun in rawRuns) {
+      if (rawRun is Map) {
+        result.add(Map<String, dynamic>.from(rawRun));
+      }
+    }
+    return result;
+  }
+
+  int _sessionRunMinutes(Map<String, dynamic>? row) {
+    var minutes = 0;
+    for (final run in _sessionRuns(row)) {
+      minutes += int.tryParse('${run['duration_minutes'] ?? 0}') ?? 0;
+    }
+
+    if (minutes > 0) {
+      return minutes;
+    }
+
+    if (row == null) {
+      return 0;
+    }
+
+    final fallback =
         row['dashboard_duration_minutes'] ??
         row['duration_minutes'] ??
         row['runtime_minutes'] ??
         row['total_minutes'];
-    final minutes = int.tryParse('$value') ?? 0;
+
+    return int.tryParse('$fallback') ?? 0;
+  }
+
+  int _sessionRunCount(Map<String, dynamic>? row) {
+    if (row == null) {
+      return 0;
+    }
+
+    final dashboardCount = int.tryParse('${row['dashboard_run_count'] ?? ''}');
+    if (dashboardCount != null) {
+      return dashboardCount;
+    }
+
+    return _sessionRuns(row).length;
+  }
+
+  int _breakageCount(Map<String, dynamic>? row) {
+    if (row == null) {
+      return 0;
+    }
+
+    final dashboardCount = int.tryParse(
+      '${row['dashboard_breakage_count'] ?? ''}',
+    );
+    if (dashboardCount != null) {
+      return dashboardCount;
+    }
+
+    final raw = row['breakages'];
+    if (raw == null) {
+      return 0;
+    }
+
+    if (raw is List) {
+      return raw.where((item) => '$item'.trim().isNotEmpty).length;
+    }
+
+    return '$raw'.trim().isEmpty ? 0 : 1;
+  }
+
+  String _durationText(Map<String, dynamic>? row) {
+    final minutes = _sessionRunMinutes(row);
     if (minutes < 60) return '$minutes min';
     return '${minutes ~/ 60}h ${(minutes % 60).toString().padLeft(2, '0')}m';
+  }
+
+  String _sessionRunCountText(Map<String, dynamic>? row) {
+    final count = _sessionRunCount(row);
+    final isBoat = lastModelCategory.toLowerCase().contains('bateau');
+
+    if (isBoat) {
+      return count == 1 ? '1 navigation' : '$count navigations';
+    }
+
+    return count == 1 ? '1 roulage' : '$count roulages';
+  }
+
+  String? _breakageSummaryText(Map<String, dynamic>? row) {
+    final count = _breakageCount(row);
+    if (count <= 0) {
+      return null;
+    }
+    return count == 1 ? '1 casse' : '$count casses';
   }
 
   Future<RcSession?> _currentOpenSession() async {
