@@ -36,6 +36,7 @@ class _ModelRadioSetupTabState extends State<ModelRadioSetupTab> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isEditing = false;
   String? _errorMessage;
 
   List<RadioFieldSection> get _sections {
@@ -305,6 +306,7 @@ class _ModelRadioSetupTabState extends State<ModelRadioSetupTab> {
       setState(() {
         _loadedSetup = saved;
         _isSaving = false;
+        _isEditing = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -344,117 +346,128 @@ class _ModelRadioSetupTabState extends State<ModelRadioSetupTab> {
       return const _NoRadioState();
     }
 
-    return Stack(
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+        _RadioCard(radio: _selectedRadio),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
           children: [
-            _RadioCard(radio: _selectedRadio),
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.tonalIcon(
-                onPressed: _openAddDialog,
-                icon: const Icon(Icons.add),
-                label: const Text('Ajouter'),
-              ),
+            FilledButton.tonalIcon(
+              onPressed: _openAddDialog,
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter'),
             ),
-            const SizedBox(height: 18),
-            if (_enabledFields.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text(
-                    'Aucun réglage ajouté.',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              )
-            else
-              ..._buildFields(),
+            OutlinedButton.icon(
+              onPressed: _enabledFields.isEmpty
+                  ? null
+                  : () {
+                      setState(() {
+                        _isEditing = !_isEditing;
+                      });
+                    },
+              icon: Icon(
+                _isEditing ? Icons.close_rounded : Icons.edit_outlined,
+              ),
+              label: Text(_isEditing ? 'Annuler' : 'Modifier'),
+            ),
+            if (_isEditing)
+              FilledButton.icon(
+                onPressed: _isSaving ? null : _save,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(_isSaving ? 'Enregistrement...' : 'Enregistrer'),
+              ),
           ],
         ),
-        Positioned(
-          right: 16,
-          bottom: 16,
-          child: FloatingActionButton.extended(
-            heroTag: 'save-model-radio-setup',
-            onPressed: _isSaving ? null : _save,
-            icon: _isSaving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.save_outlined),
-            label: Text(_isSaving ? 'Enregistrement...' : 'Enregistrer'),
-          ),
-        ),
+        const SizedBox(height: 18),
+        if (_enabledFields.isEmpty)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('Aucun réglage ajouté.', textAlign: TextAlign.center),
+            ),
+          )
+        else
+          _buildResponsiveFields(),
       ],
     );
   }
 
-  List<Widget> _buildFields() {
-    final widgets = <Widget>[];
+  Widget _buildResponsiveFields() {
+    final visible = <(RadioFieldSection, RadioFieldDefinition)>[];
 
     for (final section in _sections) {
-      final fields = section.fields
-          .where((field) => _enabledFields.contains(field.key))
-          .toList();
-
-      if (fields.isEmpty) {
-        continue;
-      }
-
-      widgets.add(
-        Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 10),
-          child: Row(
-            children: [
-              Icon(section.icon),
-              const SizedBox(width: 8),
-              Text(
-                section.title,
-                style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-      for (final field in fields) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: TextField(
-              controller: _controllers[field.key],
-              minLines: field.multiline ? 3 : 1,
-              maxLines: field.multiline ? 6 : 1,
-              maxLength: field.multiline ? 500 : 60,
-              decoration: InputDecoration(
-                labelText: field.label,
-                hintText: field.hint,
-                border: const OutlineInputBorder(),
-                alignLabelWithHint: field.multiline,
-                counterText: field.multiline ? null : '',
-                suffixIcon: IconButton(
-                  tooltip: 'Retirer',
-                  onPressed: () {
-                    _removeField(field.key);
-                  },
-                  icon: const Icon(Icons.close),
-                ),
-              ),
-            ),
-          ),
-        );
+      for (final field in section.fields) {
+        if (_enabledFields.contains(field.key)) {
+          visible.add((section, field));
+        }
       }
     }
 
-    return widgets;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final twoColumns = constraints.maxWidth >= 300;
+        final spacing = 10.0;
+        final itemWidth = twoColumns
+            ? (constraints.maxWidth - spacing) / 2
+            : constraints.maxWidth;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final entry in visible)
+              SizedBox(
+                width: itemWidth,
+                child: _buildFieldCard(entry.$1, entry.$2),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildFieldCard(
+    RadioFieldSection section,
+    RadioFieldDefinition field,
+  ) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: TextField(
+          controller: _controllers[field.key],
+          readOnly: !_isEditing,
+          minLines: field.multiline ? 3 : 1,
+          maxLines: field.multiline ? 6 : 1,
+          maxLength: field.multiline ? 500 : 60,
+          decoration: InputDecoration(
+            labelText: field.label,
+            hintText: field.hint,
+            border: const OutlineInputBorder(),
+            alignLabelWithHint: field.multiline,
+            counterText: field.multiline ? null : '',
+            suffixIcon: _isEditing
+                ? IconButton(
+                    tooltip: 'Retirer',
+                    onPressed: () {
+                      _removeField(field.key);
+                    },
+                    icon: const Icon(Icons.close),
+                  )
+                : null,
+          ),
+        ),
+      ),
+    );
   }
 }
 

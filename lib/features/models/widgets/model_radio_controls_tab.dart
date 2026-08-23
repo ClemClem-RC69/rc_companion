@@ -563,7 +563,7 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
         // Deux colonnes dès que l'espace permet deux cartes lisibles.
         // Téléphones étroits : une colonne. Tablettes, Mac/PC et grands
         // téléphones en paysage : deux colonnes.
-        final twoColumns = constraints.maxWidth >= 760;
+        final twoColumns = constraints.maxWidth >= 300;
         final spacing = 12.0;
         final cardWidth = twoColumns
             ? (constraints.maxWidth - spacing) / 2
