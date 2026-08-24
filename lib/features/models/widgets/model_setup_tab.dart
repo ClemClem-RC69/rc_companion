@@ -912,24 +912,26 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
         _buildColumnHeader(),
         const SizedBox(height: 10),
         for (final section in sections) _buildSection(section, currentSetup),
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: isSaving ? null : saveSetup,
-          icon: isSaving
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.save),
-          label: Text(
-            isSaving
-                ? 'Enregistrement...'
-                : isCreatingInitialSetup
-                ? 'Créer le setup'
-                : 'Enregistrer les modifications',
+        if (isCreatingInitialSetup || isEditingOriginal) ...[
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: isSaving ? null : saveSetup,
+            icon: isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save),
+            label: Text(
+              isSaving
+                  ? 'Enregistrement...'
+                  : isCreatingInitialSetup
+                  ? 'Créer le setup'
+                  : 'Enregistrer les modifications',
+            ),
           ),
-        ),
+        ],
       ],
     );
   }

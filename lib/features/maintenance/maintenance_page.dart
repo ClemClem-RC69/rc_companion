@@ -361,6 +361,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
         await _offerAnotherIntervention(
           draft.model,
           maintenanceGroupId: maintenanceGroupId,
+          maintenanceDate: draft.date,
         );
       }
     } catch (error) {
@@ -371,6 +372,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
   Future<void> _offerAnotherIntervention(
     RcModel model, {
     required String maintenanceGroupId,
+    required DateTime maintenanceDate,
   }) async {
     final addAnother = await showDialog<bool>(
       context: context,
@@ -381,7 +383,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
         content: Text(
           'L’intervention est enregistrée pour ${model.name}.\n\n'
           'Tu peux poursuivre cette maintenance avec une révision, une '
-          'réparation, un réglage ou une modification.',
+          'réparation, un réglage, une modification ou un nettoyage.',
         ),
         actions: [
           TextButton(
@@ -412,6 +414,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
       builder: (_) => _MaintenanceDialog(
         models: _models,
         initialModelId: modelId,
+        initialDate: maintenanceDate,
         openEventsByModel: _openEventsByModel,
       ),
     );
@@ -1188,12 +1191,14 @@ class _MaintenanceDialog extends StatefulWidget {
     required this.models,
     this.record,
     this.initialModelId,
+    this.initialDate,
     this.openEventsByModel = const <String, List<LocalModelOperationalEvent>>{},
   });
 
   final List<RcModel> models;
   final _MaintenanceRecord? record;
   final String? initialModelId;
+  final DateTime? initialDate;
   final Map<String, List<LocalModelOperationalEvent>> openEventsByModel;
 
   @override
@@ -1244,6 +1249,10 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
     final record = widget.record;
 
     if (record == null) {
+      if (widget.initialDate != null) {
+        _selectedDate = widget.initialDate!;
+      }
+
       final initialModelId = widget.initialModelId;
 
       if (initialModelId != null && initialModelId.isNotEmpty) {
@@ -1475,6 +1484,8 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
           if (setupChanges.isNotEmpty) 'setupChanges': setupChanges,
           if (_selectedType == _MaintenanceType.reglage)
             'interventionSubtype': 'REGLAGE',
+          if (_selectedType == _MaintenanceType.nettoyage)
+            'interventionSubtype': 'NETTOYAGE',
         },
         resolvedOperationalEventIds: Set<String>.unmodifiable(
           _resolvedOperationalEventIds,
@@ -1621,21 +1632,23 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
                   });
                 },
               ),
-              const SizedBox(height: 14),
-              InkWell(
-                onTap: _selectedModel == null ? null : _selectDate,
-                borderRadius: BorderRadius.circular(12),
-                child: InputDecorator(
-                  decoration: _decoration('Date'),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_month_outlined),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text(_formatDate(_selectedDate))),
-                    ],
+              if (widget.initialDate == null) ...[
+                const SizedBox(height: 14),
+                InkWell(
+                  onTap: _selectedModel == null ? null : _selectDate,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InputDecorator(
+                    decoration: _decoration('Date'),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_month_outlined),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(_formatDate(_selectedDate))),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
               const SizedBox(height: 14),
               if (_selectedType == _MaintenanceType.revision)
                 _buildRevisionFields()
@@ -1853,29 +1866,50 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
   Widget _buildSimpleFields() {
     final isRepair = _selectedType == _MaintenanceType.reparation;
     final isAdjustment = _selectedType == _MaintenanceType.reglage;
+    final isCleaning = _selectedType == _MaintenanceType.nettoyage;
 
     return Column(
       children: [
-        TextField(
-          controller: _titleController,
-          decoration: _decoration(
-            isRepair
-                ? 'Réparation effectuée'
-                : isAdjustment
-                ? 'Réglage effectué'
-                : 'Modification réalisée',
-            hint: isRepair
-                ? 'Ex. Remplacement du servo de direction'
-                : isAdjustment
-                ? 'Ex. Contrôle de la direction et réglage du trim'
-                : 'Ex. Montage d’un nouveau moteur',
+        if (isCleaning)
+          DropdownButtonFormField<String>(
+            initialValue:
+                _titleController.text == 'Partiel' ||
+                    _titleController.text == 'Complet'
+                ? _titleController.text
+                : null,
+            decoration: _decoration('Type de nettoyage'),
+            hint: const Text('Sélectionner le type de nettoyage'),
+            items: const [
+              DropdownMenuItem(value: 'Partiel', child: Text('Partiel')),
+              DropdownMenuItem(value: 'Complet', child: Text('Complet')),
+            ],
+            onChanged: (value) {
+              _titleController.text = value ?? '';
+            },
+          )
+        else
+          TextField(
+            controller: _titleController,
+            decoration: _decoration(
+              isRepair
+                  ? 'Réparation effectuée'
+                  : isAdjustment
+                  ? 'Réglage effectué'
+                  : 'Modification réalisée',
+              hint: isRepair
+                  ? 'Ex. Remplacement du servo de direction'
+                  : isAdjustment
+                  ? 'Ex. Contrôle de la direction et réglage du trim'
+                  : 'Ex. Montage d’un nouveau moteur',
+            ),
           ),
-        ),
         const SizedBox(height: 14),
         _expandableTextField(
           controller: _notesController,
           label: 'Description',
-          hint: isRepair
+          hint: isCleaning
+              ? 'Détails des nettoyages réalisés'
+              : isRepair
               ? 'Décris simplement la panne et ce qui a été fait.'
               : isAdjustment
               ? 'Décris simplement le contrôle et les réglages effectués.'
@@ -2121,7 +2155,8 @@ enum _MaintenanceType {
   revision,
   reparation,
   reglage,
-  modification;
+  modification,
+  nettoyage;
 
   String get label {
     switch (this) {
@@ -2133,6 +2168,8 @@ enum _MaintenanceType {
         return 'Réglage';
       case _MaintenanceType.modification:
         return 'Modification';
+      case _MaintenanceType.nettoyage:
+        return 'Nettoyage';
     }
   }
 
@@ -2145,6 +2182,8 @@ enum _MaintenanceType {
       case _MaintenanceType.reglage:
         return 'MODIFICATION';
       case _MaintenanceType.modification:
+        return 'MODIFICATION';
+      case _MaintenanceType.nettoyage:
         return 'MODIFICATION';
     }
   }
@@ -2159,6 +2198,8 @@ enum _MaintenanceType {
         return Icons.tune_outlined;
       case _MaintenanceType.modification:
         return Icons.construction_outlined;
+      case _MaintenanceType.nettoyage:
+        return Icons.cleaning_services_outlined;
     }
   }
 
@@ -2305,6 +2346,9 @@ class _MaintenanceRecord {
           row['record_type']?.toString() == 'MODIFICATION' &&
               data['interventionSubtype']?.toString() == 'REGLAGE'
           ? _MaintenanceType.reglage
+          : row['record_type']?.toString() == 'MODIFICATION' &&
+                data['interventionSubtype']?.toString() == 'NETTOYAGE'
+          ? _MaintenanceType.nettoyage
           : _MaintenanceType.fromDatabase(
               row['record_type'] as String? ?? 'REVISION',
             ),

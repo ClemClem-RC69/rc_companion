@@ -1558,9 +1558,17 @@ class _ModelMaintenanceRecord {
       recordType == 'MODIFICATION' &&
       data['interventionSubtype']?.toString() == 'REGLAGE';
 
+  bool get isCleaning =>
+      recordType == 'MODIFICATION' &&
+      data['interventionSubtype']?.toString() == 'NETTOYAGE';
+
   String get typeLabel {
     if (isAdjustment) {
       return 'Réglage';
+    }
+
+    if (isCleaning) {
+      return 'Nettoyage';
     }
 
     switch (recordType) {
@@ -1577,6 +1585,10 @@ class _ModelMaintenanceRecord {
   IconData get icon {
     if (isAdjustment) {
       return Icons.tune_outlined;
+    }
+
+    if (isCleaning) {
+      return Icons.cleaning_services_outlined;
     }
 
     switch (recordType) {
