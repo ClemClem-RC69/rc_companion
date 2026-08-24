@@ -1710,8 +1710,6 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
       ),
     );
 
-    editorController.dispose();
-
     if (result == null || !mounted) {
       return;
     }
