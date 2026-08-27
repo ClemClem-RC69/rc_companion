@@ -1787,20 +1787,18 @@ class _DashboardPageState extends State<DashboardPage>
                               : -26,
                           0,
                         ),
-                        child: ClipRect(
-                          child: Transform.scale(
-                            scale: isPhone
-                                ? 1.12
-                                : veryTight
-                                ? 1.05
-                                : tight
-                                ? 1.10
-                                : 1.15,
-                            child: Image.asset(
-                              _categoryAsset(lastModelCategory),
-                              fit: BoxFit.contain,
-                              filterQuality: FilterQuality.high,
-                            ),
+                        child: Transform.scale(
+                          scale: isPhone
+                              ? 1.12
+                              : veryTight
+                              ? 1.80
+                              : tight
+                              ? 1.90
+                              : 2.00,
+                          child: Image.asset(
+                            _categoryAsset(lastModelCategory),
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.high,
                           ),
                         ),
                       ),
