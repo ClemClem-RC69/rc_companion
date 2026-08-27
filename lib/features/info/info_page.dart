@@ -965,7 +965,7 @@ class InfoPage extends StatelessWidget {
                 final info = snapshot.data;
                 final value = info == null
                     ? 'Chargement…'
-                    : 'V${info.version} (build ${info.buildNumber})';
+                    : 'V${info.version.replaceFirst(RegExp(r'\.0$'), '')}';
 
                 return _VersionLine(
                   label: 'Version de l’application',
