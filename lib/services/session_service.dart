@@ -349,6 +349,10 @@ class SessionService {
         );
       }
 
+      final decodedGeneralNotes = _decodeGeneralNotesAndRadioChanges(
+        sessionRow['general_notes'] as String? ?? '',
+      );
+
       loaded.add(
         RcSession(
           id: sessionRow['id'].toString(),
@@ -368,7 +372,8 @@ class SessionService {
           partsToOrder: sessionRow['parts_to_order'] as String? ?? '',
           changesBeforeNextSession:
               sessionRow['changes_before_next_session'] as String? ?? '',
-          generalNotes: sessionRow['general_notes'] as String? ?? '',
+          generalNotes: decodedGeneralNotes.notes,
+          radioSetupChanges: decodedGeneralNotes.changes,
           isHistorical:
               sessionRow['is_historical'] == true ||
               sessionRow['_local_is_historical'] == true,
@@ -401,7 +406,12 @@ class SessionService {
       'changes_before_next_session': _nullableText(
         session.changesBeforeNextSession,
       ),
-      'general_notes': _nullableText(session.generalNotes),
+      'general_notes': _nullableText(
+        _encodeGeneralNotesAndRadioChanges(
+          session.generalNotes,
+          session.radioSetupChanges,
+        ),
+      ),
       'is_historical': session.isHistorical,
       '_local_is_historical': session.isHistorical,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
@@ -642,6 +652,65 @@ class SessionService {
         '|battery:$batteryCode';
   }
 
+  static const String _radioChangesMarker = '[[RC_RADIO_SETUP_CHANGES_V1:';
+
+  static String _encodeGeneralNotesAndRadioChanges(
+    String notes,
+    List<RadioSetupChange> changes,
+  ) {
+    final cleanNotes = notes.trim();
+    if (changes.isEmpty) {
+      return cleanNotes;
+    }
+
+    final json = jsonEncode(
+      changes.map((change) => change.toJson()).toList(growable: false),
+    );
+    final encoded = base64Url.encode(utf8.encode(json));
+    final marker = '$_radioChangesMarker$encoded]]';
+
+    return cleanNotes.isEmpty ? marker : '$cleanNotes\n$marker';
+  }
+
+  static _DecodedGeneralNotes _decodeGeneralNotesAndRadioChanges(String raw) {
+    final markerStart = raw.lastIndexOf(_radioChangesMarker);
+    if (markerStart < 0) {
+      return _DecodedGeneralNotes(notes: raw.trim(), changes: const []);
+    }
+
+    final markerEnd = raw.indexOf(']]', markerStart);
+    if (markerEnd < 0) {
+      return _DecodedGeneralNotes(notes: raw.trim(), changes: const []);
+    }
+
+    final encoded = raw
+        .substring(markerStart + _radioChangesMarker.length, markerEnd)
+        .trim();
+
+    List<RadioSetupChange> changes = const [];
+    try {
+      final jsonText = utf8.decode(base64Url.decode(encoded));
+      final decoded = jsonDecode(jsonText);
+      if (decoded is List) {
+        changes = decoded
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  RadioSetupChange.fromJson(Map<String, dynamic>.from(item)),
+            )
+            .where((change) => change.key.isNotEmpty)
+            .toList(growable: false);
+      }
+    } catch (_) {
+      changes = const [];
+    }
+
+    final notes = (raw.substring(0, markerStart) + raw.substring(markerEnd + 2))
+        .trim();
+
+    return _DecodedGeneralNotes(notes: notes, changes: changes);
+  }
+
   static String _newUuid() {
     final random = Random.secure();
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
@@ -677,4 +746,11 @@ class SessionService {
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
   }
+}
+
+class _DecodedGeneralNotes {
+  const _DecodedGeneralNotes({required this.notes, required this.changes});
+
+  final String notes;
+  final List<RadioSetupChange> changes;
 }

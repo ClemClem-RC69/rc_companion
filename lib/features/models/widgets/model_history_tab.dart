@@ -644,6 +644,43 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
               ],
             ),
           ),
+          if (session.radioSetupChanges.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(13),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.settings_remote_outlined, size: 22),
+                        SizedBox(width: 10),
+                        Text(
+                          'Réglages radio modifiés pendant la session',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    for (final change in session.radioSetupChanges)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '${change.label} : '
+                          '${change.oldValue.trim().isEmpty ? 'Par défaut / non renseigné' : change.oldValue} '
+                          '→ ${change.newValue}',
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           _optionalSection(
             title: 'Casses',
             value: session.breakages,
@@ -733,6 +770,17 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
                           label: change['field'] ?? 'Réglage',
                           value: change['newValue'] ?? '',
                           icon: Icons.tune,
+                        ),
+                    if (record.radioSetupChanges.isNotEmpty)
+                      for (final change in record.radioSetupChanges)
+                        _automaticLine(
+                          label:
+                              change['label'] ??
+                              change['key'] ??
+                              'Réglage radio',
+                          value:
+                              '${change['oldValue'] ?? 'Par défaut / non renseigné'} → ${change['newValue'] ?? ''}',
+                          icon: Icons.settings_remote_outlined,
                         ),
                     if (record.notes.trim().isNotEmpty)
                       _optionalSection(
@@ -1244,6 +1292,11 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
           'Caractéristiques : ${batteryDescriptions.join(' / ')}',
         if (session.drivingNotes.trim().isNotEmpty)
           'Comportement et réglages : ${session.drivingNotes.trim()}',
+        if (session.radioSetupChanges.isNotEmpty)
+          'Réglages radio : ${session.radioSetupChanges.map((change) {
+            final before = change.oldValue.trim().isEmpty ? 'Par défaut / non renseigné' : change.oldValue;
+            return '${change.label} : $before -> ${change.newValue}';
+          }).join(' / ')}',
         if (session.breakages.trim().isNotEmpty)
           'Casses : ${session.breakages.trim()}',
         if (session.partsReplacedOnSite.trim().isNotEmpty)
@@ -1290,6 +1343,15 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
                 .map(
                   (change) =>
                       '${change['field'] ?? 'Réglage'} : '
+                      '${change['newValue'] ?? ''}',
+                )
+                .join(' / '),
+          if (record.radioSetupChanges.isNotEmpty)
+            record.radioSetupChanges
+                .map(
+                  (change) =>
+                      '${change['label'] ?? change['key'] ?? 'Réglage radio'} : '
+                      '${change['oldValue'] ?? 'Par défaut / non renseigné'} -> '
                       '${change['newValue'] ?? ''}',
                 )
                 .join(' / '),
@@ -1610,6 +1672,23 @@ class _ModelMaintenanceRecord {
     }
 
     return raw.map((key, value) => MapEntry(key.toString(), value.toString()));
+  }
+
+  List<Map<String, String>> get radioSetupChanges {
+    final raw = data['radioSetupChanges'];
+
+    if (raw is! List) {
+      return const [];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          return item.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          );
+        })
+        .toList(growable: false);
   }
 
   List<Map<String, String>> get setupChanges {

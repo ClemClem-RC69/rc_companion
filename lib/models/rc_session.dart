@@ -204,6 +204,36 @@ class RcRun {
   }
 }
 
+class RadioSetupChange {
+  const RadioSetupChange({
+    required this.key,
+    required this.label,
+    required this.oldValue,
+    required this.newValue,
+  });
+
+  final String key;
+  final String label;
+  final String oldValue;
+  final String newValue;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'key': key,
+    'label': label,
+    'old_value': oldValue,
+    'new_value': newValue,
+  };
+
+  factory RadioSetupChange.fromJson(Map<String, dynamic> json) {
+    return RadioSetupChange(
+      key: json['key']?.toString() ?? '',
+      label: json['label']?.toString() ?? '',
+      oldValue: json['old_value']?.toString() ?? '',
+      newValue: json['new_value']?.toString() ?? '',
+    );
+  }
+}
+
 /// Session complète d'un modèle.
 ///
 /// Une session peut rester ouverte toute la journée et contenir plusieurs
@@ -221,6 +251,7 @@ class RcSession {
     this.partsToOrder = '',
     this.changesBeforeNextSession = '',
     String generalNotes = '',
+    this.radioSetupChanges = const [],
     this.location = '',
     this.terrainType = '',
     this.id,
@@ -256,6 +287,7 @@ class RcSession {
   final String partsToOrder;
   final String changesBeforeNextSession;
   final String generalNotes;
+  final List<RadioSetupChange> radioSetupChanges;
 
   /// V2 : session créée explicitement via le parcours « Session antérieure ».
   ///
@@ -314,6 +346,7 @@ class RcSession {
     String? partsToOrder,
     String? changesBeforeNextSession,
     String? generalNotes,
+    List<RadioSetupChange>? radioSetupChanges,
     bool? isHistorical,
     bool clearEndedAt = false,
   }) {
@@ -333,6 +366,7 @@ class RcSession {
       changesBeforeNextSession:
           changesBeforeNextSession ?? this.changesBeforeNextSession,
       generalNotes: generalNotes ?? this.generalNotes,
+      radioSetupChanges: radioSetupChanges ?? this.radioSetupChanges,
       isHistorical: isHistorical ?? this.isHistorical,
     );
   }

@@ -5,10 +5,13 @@ import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 
 import '../../database/app_database.dart';
+import '../../models/model_radio_setup.dart';
+import '../../models/radio_field_catalog.dart';
 import '../../models/rc_model.dart';
 import '../../services/maintenance_local_store.dart';
 import '../../services/maintenance_service.dart';
 import '../../services/model_operational_event_service.dart';
+import '../../services/model_radio_setup_service.dart';
 import '../../services/model_setup_service.dart';
 import '../../services/supabase_service.dart';
 
@@ -337,6 +340,11 @@ class _MaintenancePageState extends State<MaintenancePage> {
 
       final maintenanceId = createdRecord['id']?.toString() ?? '';
 
+      await _applyRadioSetupChanges(
+        model: draft.model,
+        changes: draft.radioSetupChanges,
+      );
+
       if (maintenanceId.isNotEmpty &&
           draft.resolvedOperationalEventIds.isNotEmpty) {
         await ModelOperationalEventService.resolveEvents(
@@ -465,6 +473,11 @@ class _MaintenancePageState extends State<MaintenancePage> {
         runtimeMinutesSinceLastRevision: record.runtimeMinutesSinceLastRevision,
       );
 
+      await _applyRadioSetupChanges(
+        model: draft.model,
+        changes: draft.radioSetupChanges,
+      );
+
       final affectedModelIds = <String>{};
 
       if (record.type == _MaintenanceType.revision) {
@@ -489,6 +502,49 @@ class _MaintenancePageState extends State<MaintenancePage> {
     } catch (error) {
       _showMessage('Modification impossible : $error');
     }
+  }
+
+  Future<void> _applyRadioSetupChanges({
+    required RcModel model,
+    required List<Map<String, String>> changes,
+  }) async {
+    if (changes.isEmpty) {
+      return;
+    }
+
+    final modelId = model.id?.trim() ?? '';
+    final radioId = model.radioId?.trim() ?? '';
+
+    if (modelId.isEmpty || radioId.isEmpty) {
+      return;
+    }
+
+    final service = ModelRadioSetupService();
+    final existing = await service.getSetup(modelId: modelId);
+
+    final enabledFields = <String>{...?existing?.enabledFields};
+    final values = <String, String>{...?existing?.values};
+
+    for (final change in changes) {
+      final key = change['key']?.trim() ?? '';
+      final newValue = change['newValue']?.trim() ?? '';
+
+      if (key.isEmpty || newValue.isEmpty) {
+        continue;
+      }
+
+      enabledFields.add(key);
+      values[key] = newValue;
+    }
+
+    await service.saveSetup(
+      ModelRadioSetup(
+        modelId: modelId,
+        radioId: radioId,
+        enabledFields: enabledFields.toList(growable: false),
+        values: values,
+      ),
+    );
   }
 
   Future<void> _rebuildCurrentSetupFromHistory(String modelId) async {
@@ -1222,6 +1278,9 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
   };
 
   final List<_SetupChangeEditor> _setupChanges = [];
+  final List<_RadioSetupChangeEditor> _radioSetupChanges = [];
+  ModelRadioSetup? _radioSetup;
+  bool _radioSetupLoading = false;
   final Set<String> _resolvedOperationalEventIds = <String>{};
 
   String? _errorMessage;
@@ -1264,6 +1323,9 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
         }
       }
 
+      if (_selectedModel != null) {
+        _loadRadioSetupForSelectedModel();
+      }
       return;
     }
 
@@ -1287,6 +1349,22 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
       editor.valueController.text = change['newValue'] ?? '';
       _setupChanges.add(editor);
     }
+
+    for (final change in record.radioSetupChanges) {
+      final editor = _RadioSetupChangeEditor(
+        key: change['key'] ?? '',
+        label: change['label'] ?? '',
+        oldValue: change['oldValue'] ?? 'Par défaut / non renseigné',
+      );
+      editor.valueController.text = change['newValue'] ?? '';
+      if (editor.key.isNotEmpty) {
+        _radioSetupChanges.add(editor);
+      } else {
+        editor.dispose();
+      }
+    }
+
+    _loadRadioSetupForSelectedModel();
   }
 
   static String? _setupKeyFromLegacyLabel(String? label) {
@@ -1313,6 +1391,10 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
     }
 
     for (final change in _setupChanges) {
+      change.dispose();
+    }
+
+    for (final change in _radioSetupChanges) {
       change.dispose();
     }
 
@@ -1419,6 +1501,87 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
     });
   }
 
+  Future<void> _loadRadioSetupForSelectedModel() async {
+    final model = _selectedModel;
+    final modelId = model?.id?.trim() ?? '';
+    final radioId = model?.radioId?.trim() ?? '';
+
+    if (modelId.isEmpty || radioId.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _radioSetup = null;
+        _radioSetupLoading = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _radioSetupLoading = true;
+    });
+
+    try {
+      final setup = await ModelRadioSetupService().getSetup(modelId: modelId);
+      if (!mounted || _selectedModel?.id?.trim() != modelId) return;
+
+      setState(() {
+        _radioSetup =
+            setup ?? ModelRadioSetup(modelId: modelId, radioId: radioId);
+        _radioSetupLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || _selectedModel?.id?.trim() != modelId) return;
+      setState(() {
+        _radioSetup = ModelRadioSetup(modelId: modelId, radioId: radioId);
+        _radioSetupLoading = false;
+      });
+    }
+  }
+
+  Future<void> _editRadioSetupChanges() async {
+    final setup = _radioSetup;
+    if (setup == null) {
+      return;
+    }
+
+    final result = await showDialog<List<_RadioSetupChangeDraft>>(
+      context: context,
+      builder: (_) => _MaintenanceRadioSetupDialog(
+        setup: setup,
+        initialChanges: _radioSetupChanges
+            .map(
+              (editor) => _RadioSetupChangeDraft(
+                key: editor.key,
+                label: editor.label,
+                oldValue: editor.oldValue,
+                newValue: editor.valueController.text.trim(),
+              ),
+            )
+            .toList(growable: false),
+      ),
+    );
+
+    if (result == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      for (final editor in _radioSetupChanges) {
+        editor.dispose();
+      }
+      _radioSetupChanges.clear();
+
+      for (final change in result) {
+        final editor = _RadioSetupChangeEditor(
+          key: change.key,
+          label: change.label,
+          oldValue: change.oldValue,
+        );
+        editor.valueController.text = change.newValue;
+        _radioSetupChanges.add(editor);
+      }
+    });
+  }
+
   void _save() {
     final model = _selectedModel;
 
@@ -1472,6 +1635,18 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
       });
     }
 
+    final radioSetupChanges = <Map<String, String>>[
+      for (final change in _radioSetupChanges)
+        if (change.key.trim().isNotEmpty &&
+            change.valueController.text.trim().isNotEmpty)
+          <String, String>{
+            'key': change.key,
+            'label': change.label,
+            'oldValue': change.oldValue,
+            'newValue': change.valueController.text.trim(),
+          },
+    ];
+
     Navigator.of(context).pop(
       _MaintenanceDraft(
         model: model,
@@ -1482,6 +1657,8 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
         data: <String, dynamic>{
           if (fluids.isNotEmpty) 'fluids': fluids,
           if (setupChanges.isNotEmpty) 'setupChanges': setupChanges,
+          if (radioSetupChanges.isNotEmpty)
+            'radioSetupChanges': radioSetupChanges,
           if (_selectedType == _MaintenanceType.reglage)
             'interventionSubtype': 'REGLAGE',
           if (_selectedType == _MaintenanceType.nettoyage)
@@ -1544,11 +1721,17 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
                   setState(() {
                     _selectedModel = value;
                     _resolvedOperationalEventIds.clear();
+                    _radioSetup = null;
+                    for (final editor in _radioSetupChanges) {
+                      editor.dispose();
+                    }
+                    _radioSetupChanges.clear();
 
                     if (_selectedDate.isBefore(_firstAllowedDate)) {
                       _selectedDate = _firstAllowedDate;
                     }
                   });
+                  _loadRadioSetupForSelectedModel();
                 },
               ),
               if (_selectedModelOpenEvents.isNotEmpty) ...[
@@ -1769,6 +1952,38 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
     );
   }
 
+  Widget _buildRadioSetupChangesCard() {
+    final modelHasRadio = (_selectedModel?.radioId?.trim() ?? '').isNotEmpty;
+
+    if (!modelHasRadio) {
+      return const SizedBox.shrink();
+    }
+
+    final count = _radioSetupChanges.length;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        leading: const Icon(Icons.settings_remote_outlined),
+        title: const Text(
+          'Réglages radio modifiés',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          _radioSetupLoading
+              ? 'Chargement des réglages radio…'
+              : count == 0
+              ? 'EPA, expo, gains, trims, Dual Rate… Tous les réglages radio peuvent être modifiés.'
+              : '$count réglage${count > 1 ? 's' : ''} radio modifié${count > 1 ? 's' : ''}.',
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _radioSetupLoading || _radioSetup == null
+            ? null
+            : _editRadioSetupChanges,
+      ),
+    );
+  }
+
   Widget _buildRevisionFields() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1854,6 +2069,8 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
           ],
         ],
         const SizedBox(height: 18),
+        _buildRadioSetupChangesCard(),
+        const SizedBox(height: 18),
         _expandableTextField(
           controller: _notesController,
           label: 'Texte libre',
@@ -1903,6 +2120,10 @@ class _MaintenanceDialogState extends State<_MaintenanceDialog> {
                   : 'Ex. Montage d’un nouveau moteur',
             ),
           ),
+        if (isAdjustment) ...[
+          const SizedBox(height: 14),
+          _buildRadioSetupChangesCard(),
+        ],
         const SizedBox(height: 14),
         _expandableTextField(
           controller: _notesController,
@@ -2023,6 +2244,7 @@ class _MaintenanceDetailsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final fluids = record.fluids;
     final setupChanges = record.setupChanges;
+    final radioSetupChanges = record.radioSetupChanges;
 
     return AlertDialog(
       title: Text('${record.type.label} — ${record.modelName}'),
@@ -2065,6 +2287,19 @@ class _MaintenanceDetailsDialog extends StatelessWidget {
                   _detailLine(
                     change['field'] ?? 'Réglage',
                     change['newValue'] ?? '',
+                  ),
+              ],
+              if (radioSetupChanges.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                Text(
+                  'Réglages radio modifiés',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                for (final change in radioSetupChanges)
+                  _detailLine(
+                    change['label'] ?? change['key'] ?? 'Réglage radio',
+                    '${change['oldValue'] ?? 'Par défaut / non renseigné'} → ${change['newValue'] ?? ''}',
                   ),
               ],
               if (record.notes.isNotEmpty) ...[
@@ -2245,6 +2480,23 @@ class _MaintenanceDraft {
     return raw.map((key, value) => MapEntry(key.toString(), value.toString()));
   }
 
+  List<Map<String, String>> get radioSetupChanges {
+    final raw = data['radioSetupChanges'];
+
+    if (raw is! List) {
+      return const [];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map(
+          (item) => item.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          ),
+        )
+        .toList(growable: false);
+  }
+
   List<Map<String, String>> get setupChanges {
     final raw = data['setupChanges'];
 
@@ -2305,6 +2557,23 @@ class _MaintenanceRecord {
     }
 
     return raw.map((key, value) => MapEntry(key.toString(), value.toString()));
+  }
+
+  List<Map<String, String>> get radioSetupChanges {
+    final raw = data['radioSetupChanges'];
+
+    if (raw is! List) {
+      return const [];
+    }
+
+    return raw
+        .whereType<Map>()
+        .map(
+          (item) => item.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          ),
+        )
+        .toList(growable: false);
   }
 
   List<Map<String, String>> get setupChanges {
@@ -2389,6 +2658,220 @@ class _SetupChangeEditor {
 
   void dispose() {
     valueController.dispose();
+  }
+}
+
+class _RadioSetupChangeDraft {
+  const _RadioSetupChangeDraft({
+    required this.key,
+    required this.label,
+    required this.oldValue,
+    required this.newValue,
+  });
+
+  final String key;
+  final String label;
+  final String oldValue;
+  final String newValue;
+}
+
+class _RadioSetupChangeEditor {
+  _RadioSetupChangeEditor({
+    required this.key,
+    required this.label,
+    required this.oldValue,
+  });
+
+  final String key;
+  final String label;
+  final String oldValue;
+  final TextEditingController valueController = TextEditingController();
+
+  void dispose() {
+    valueController.dispose();
+  }
+}
+
+class _MaintenanceRadioSetupDialog extends StatefulWidget {
+  const _MaintenanceRadioSetupDialog({
+    required this.setup,
+    required this.initialChanges,
+  });
+
+  final ModelRadioSetup setup;
+  final List<_RadioSetupChangeDraft> initialChanges;
+
+  @override
+  State<_MaintenanceRadioSetupDialog> createState() =>
+      _MaintenanceRadioSetupDialogState();
+}
+
+class _MaintenanceRadioSetupDialogState
+    extends State<_MaintenanceRadioSetupDialog> {
+  final Set<String> _selectedKeys = <String>{};
+  final Map<String, TextEditingController> _controllers =
+      <String, TextEditingController>{};
+
+  late final Map<String, _RadioSetupChangeDraft> _initialByKey;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _initialByKey = {
+      for (final change in widget.initialChanges) change.key: change,
+    };
+
+    for (final field in allRadioFields) {
+      final previous = _initialByKey[field.key];
+      if (previous != null) {
+        _selectedKeys.add(field.key);
+      }
+
+      _controllers[field.key] = TextEditingController(
+        text: previous?.newValue ?? widget.setup.value(field.key),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  String _currentValue(RadioFieldDefinition field) {
+    final previous = _initialByKey[field.key];
+    if (previous != null) {
+      return previous.oldValue;
+    }
+
+    final value = widget.setup.value(field.key).trim();
+    final enabled = widget.setup.enabledFields.contains(field.key);
+
+    if (!enabled || value.isEmpty) {
+      return 'Par défaut / non renseigné';
+    }
+
+    return value;
+  }
+
+  void _save() {
+    final result = <_RadioSetupChangeDraft>[];
+
+    for (final field in allRadioFields) {
+      if (!_selectedKeys.contains(field.key)) {
+        continue;
+      }
+
+      final newValue = _controllers[field.key]!.text.trim();
+
+      if (newValue.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Renseigne la nouvelle valeur pour « ${field.label} ».',
+            ),
+          ),
+        );
+        return;
+      }
+
+      result.add(
+        _RadioSetupChangeDraft(
+          key: field.key,
+          label: field.label,
+          oldValue: _currentValue(field),
+          newValue: newValue,
+        ),
+      );
+    }
+
+    Navigator.of(context).pop(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      title: const Text('Réglages radio modifiés pendant la maintenance'),
+      content: SizedBox(
+        width: 760,
+        height: 560,
+        child: ListView(
+          children: [
+            const Text(
+              'Tous les réglages radio sont disponibles, y compris ceux qui '
+              'étaient encore laissés par défaut sur la radio. La nouvelle '
+              'valeur sera enregistrée dans la fiche du modèle.',
+            ),
+            const SizedBox(height: 12),
+            for (final section in radioFieldCatalog) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(6, 12, 6, 6),
+                child: Row(
+                  children: [
+                    Icon(section.icon, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      section.title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              for (final field in section.fields)
+                CheckboxListTile(
+                  value: _selectedKeys.contains(field.key),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(
+                    field.label,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: _selectedKeys.contains(field.key)
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: TextField(
+                            controller: _controllers[field.key],
+                            decoration: InputDecoration(
+                              labelText: 'Nouvelle valeur',
+                              hintText: field.hint,
+                              border: const OutlineInputBorder(),
+                              helperText: 'Avant : ${_currentValue(field)}',
+                            ),
+                          ),
+                        )
+                      : Text('Actuel : ${_currentValue(field)}'),
+                  onChanged: (checked) {
+                    setState(() {
+                      if (checked == true) {
+                        _selectedKeys.add(field.key);
+                      } else {
+                        _selectedKeys.remove(field.key);
+                      }
+                    });
+                  },
+                ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Valider les réglages'),
+        ),
+      ],
+    );
   }
 }
 

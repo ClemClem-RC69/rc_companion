@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_state.dart';
 import '../../models/battery.dart';
+import '../../models/model_radio_setup.dart';
+import '../../models/radio_field_catalog.dart';
 import '../../models/rc_model.dart';
 import '../../models/rc_session.dart';
 import '../../services/battery_service.dart';
 import '../../services/model_local_store.dart';
 import '../../services/model_operational_event_service.dart';
+import '../../services/model_radio_setup_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/session_local_store.dart';
 import '../../services/session_service.dart';
@@ -1343,19 +1346,42 @@ class _SessionsPageState extends State<SessionsPage> {
     final sessionWithMeasurements = await _askForMeasurementsBeforeClosing(
       session,
     );
+    if (sessionWithMeasurements == null || !mounted) return;
 
-    if (sessionWithMeasurements == null || !mounted) {
-      return;
+    ModelRadioSetup? radioSetup;
+    final modelId = session.model.id?.trim() ?? '';
+    final radioId = session.model.radioId?.trim() ?? '';
+
+    if (modelId.isNotEmpty) {
+      try {
+        radioSetup = await ModelRadioSetupService().getSetup(modelId: modelId);
+      } catch (_) {
+        // La clôture reste possible hors ligne.
+      }
+
+      if (radioSetup == null && radioId.isNotEmpty) {
+        radioSetup = ModelRadioSetup(modelId: modelId, radioId: radioId);
+      }
     }
+
+    if (!mounted) return;
 
     final result = await showDialog<_CloseSessionResult>(
       context: context,
-      builder: (context) => const _CloseSessionDialog(),
+      builder: (context) => _CloseSessionDialog(radioSetup: radioSetup),
     );
+    if (result == null) return;
 
-    if (result == null) {
-      return;
-    }
+    final radioHistory = result.radioSetupChanges
+        .map(
+          (change) => RadioSetupChange(
+            key: change.key,
+            label: change.label,
+            oldValue: change.oldValue,
+            newValue: change.newValue,
+          ),
+        )
+        .toList(growable: false);
 
     final saved = await _replaceSession(
       session,
@@ -1380,12 +1406,40 @@ class _SessionsPageState extends State<SessionsPage> {
         partsToOrder: result.partsToOrder,
         changesBeforeNextSession: result.changesBeforeNextSession,
         generalNotes: result.generalNotes,
+        radioSetupChanges: radioHistory,
       ),
     );
 
-    if (!saved || !mounted) {
-      return;
+    if (!saved || !mounted) return;
+
+    if (radioSetup != null && result.radioSetupChanges.isNotEmpty) {
+      final updatedValues = Map<String, String>.from(radioSetup.values);
+      final updatedEnabledFields = List<String>.from(radioSetup.enabledFields);
+
+      for (final change in result.radioSetupChanges) {
+        updatedValues[change.key] = change.newValue;
+        if (!updatedEnabledFields.contains(change.key)) {
+          updatedEnabledFields.add(change.key);
+        }
+      }
+
+      try {
+        await ModelRadioSetupService().saveSetup(
+          radioSetup.copyWith(
+            values: updatedValues,
+            enabledFields: updatedEnabledFields,
+          ),
+        );
+      } catch (error) {
+        if (!mounted) return;
+        _showMessage(
+          'Session clôturée, mais les réglages radio n’ont pas pu être mis à jour : $error',
+        );
+        return;
+      }
     }
+
+    if (!mounted) return;
 
     setState(() {
       _clearBatteriesFor(session);
@@ -1394,7 +1448,11 @@ class _SessionsPageState extends State<SessionsPage> {
       }
     });
 
-    _showMessage('Session clôturée.');
+    _showMessage(
+      result.radioSetupChanges.isEmpty
+          ? 'Session clôturée.'
+          : 'Session clôturée et réglages radio mis à jour.',
+    );
   }
 
   Future<void> _cancelActiveSession(RcSession session) async {
@@ -3634,7 +3692,9 @@ class _SessionTextEditorPageState extends State<_SessionTextEditorPage> {
 }
 
 class _CloseSessionDialog extends StatefulWidget {
-  const _CloseSessionDialog();
+  const _CloseSessionDialog({required this.radioSetup});
+
+  final ModelRadioSetup? radioSetup;
 
   @override
   State<_CloseSessionDialog> createState() => _CloseSessionDialogState();
@@ -3645,6 +3705,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
   final _breakagesController = TextEditingController();
   final _partsReplacedController = TextEditingController();
   final _maintenanceController = TextEditingController();
+  List<_SessionRadioSetupChange> _radioSetupChanges = const [];
 
   @override
   void dispose() {
@@ -3653,14 +3714,6 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
     _partsReplacedController.dispose();
     _maintenanceController.dispose();
     super.dispose();
-  }
-
-  InputDecoration _decoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      border: const OutlineInputBorder(),
-      alignLabelWithHint: true,
-    );
   }
 
   Widget _compactField(TextEditingController controller, String label) {
@@ -3673,9 +3726,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
           title: label,
           initialText: controller.text,
         );
-        if (result == null || !mounted) {
-          return;
-        }
+        if (result == null || !mounted) return;
         setState(() {
           controller.text = result;
           controller.selection = TextSelection.collapsed(
@@ -3686,8 +3737,29 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
     );
   }
 
+  Future<void> _editRadioSetupChanges() async {
+    final setup = widget.radioSetup;
+    if (setup == null) return;
+
+    final result = await showDialog<List<_SessionRadioSetupChange>>(
+      context: context,
+      builder: (context) => _SessionRadioSetupChangesDialog(
+        setup: setup,
+        initialChanges: _radioSetupChanges,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _radioSetupChanges = List<_SessionRadioSetupChange>.unmodifiable(result);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final setupAvailable = widget.radioSetup != null;
+    final changeCount = _radioSetupChanges.length;
+
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       title: const Text('Clôturer la session'),
@@ -3720,6 +3792,18 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
                   _maintenanceController,
                   'Entretien / réglages / modifications avant prochaine session',
                 ),
+                SizedBox(
+                  width: fieldWidth,
+                  child: _SessionCompactTextField(
+                    label: 'Réglages radio modifiés',
+                    text: !setupAvailable
+                        ? 'Aucune radio affectée à ce modèle.'
+                        : changeCount == 0
+                        ? 'Toucher pour sélectionner…'
+                        : '$changeCount réglage${changeCount > 1 ? 's' : ''} modifié${changeCount > 1 ? 's' : ''}',
+                    onTap: setupAvailable ? _editRadioSetupChanges : () {},
+                  ),
+                ),
               ],
             );
           },
@@ -3741,6 +3825,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
                 partsToOrder: '',
                 changesBeforeNextSession: '',
                 generalNotes: '',
+                radioSetupChanges: _radioSetupChanges,
               ),
             );
           },
@@ -3749,6 +3834,222 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
       ],
     );
   }
+}
+
+class _SessionRadioSetupChangesDialog extends StatefulWidget {
+  const _SessionRadioSetupChangesDialog({
+    required this.setup,
+    required this.initialChanges,
+  });
+
+  final ModelRadioSetup setup;
+  final List<_SessionRadioSetupChange> initialChanges;
+
+  @override
+  State<_SessionRadioSetupChangesDialog> createState() =>
+      _SessionRadioSetupChangesDialogState();
+}
+
+class _SessionRadioSetupChangesDialogState
+    extends State<_SessionRadioSetupChangesDialog> {
+  final Set<String> _selectedKeys = <String>{};
+  final Map<String, TextEditingController> _controllers =
+      <String, TextEditingController>{};
+
+  late final Map<String, _SessionRadioSetupChange> _initialByKey;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _initialByKey = {
+      for (final change in widget.initialChanges) change.key: change,
+    };
+
+    for (final field in allRadioFields) {
+      final previous = _initialByKey[field.key];
+      if (previous != null) {
+        _selectedKeys.add(field.key);
+      }
+
+      _controllers[field.key] = TextEditingController(
+        text: previous?.newValue ?? widget.setup.value(field.key),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  String _currentValue(RadioFieldDefinition field) {
+    final value = widget.setup.value(field.key).trim();
+    final enabled = widget.setup.enabledFields.contains(field.key);
+    if (!enabled || value.isEmpty) {
+      return 'Par défaut / non renseigné';
+    }
+    return value;
+  }
+
+  void _save() {
+    final result = <_SessionRadioSetupChange>[];
+
+    for (final field in allRadioFields) {
+      if (!_selectedKeys.contains(field.key)) continue;
+
+      final value = _controllers[field.key]!.text.trim();
+      if (value.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Renseigne la nouvelle valeur pour « ${field.label} ».',
+            ),
+          ),
+        );
+        return;
+      }
+
+      result.add(
+        _SessionRadioSetupChange(
+          key: field.key,
+          label: field.label,
+          oldValue: _currentValue(field),
+          newValue: value,
+        ),
+      );
+    }
+
+    Navigator.of(context).pop(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      title: const Text('Réglages radio modifiés pendant la session'),
+      content: SizedBox(
+        width: 760,
+        height: 560,
+        child: ListView(
+          children: [
+            const Text(
+              'Tous les réglages radio sont disponibles. Un réglage encore '
+              'par défaut sera automatiquement ajouté à la fiche du modèle '
+              'si tu le modifies ici.',
+            ),
+            const SizedBox(height: 12),
+            for (final section in radioFieldCatalog) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(6, 12, 6, 6),
+                child: Row(
+                  children: [
+                    Icon(section.icon, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      section.title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              for (final field in section.fields)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: _selectedKeys.contains(field.key),
+                        onChanged: (value) {
+                          setState(() {
+                            if (value == true) {
+                              _selectedKeys.add(field.key);
+                            } else {
+                              _selectedKeys.remove(field.key);
+                              _controllers[field.key]!.text = widget.setup
+                                  .value(field.key);
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        flex: 3,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                field.label,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Avant : ${_currentValue(field)}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 4,
+                        child: TextField(
+                          controller: _controllers[field.key],
+                          enabled: _selectedKeys.contains(field.key),
+                          maxLines: field.multiline ? 3 : 1,
+                          decoration: InputDecoration(
+                            labelText: 'Nouvelle valeur',
+                            hintText: field.hint,
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Valider les réglages'),
+        ),
+      ],
+    );
+  }
+}
+
+class _SessionRadioSetupChange {
+  const _SessionRadioSetupChange({
+    required this.key,
+    required this.label,
+    required this.oldValue,
+    required this.newValue,
+  });
+
+  final String key;
+  final String label;
+  final String oldValue;
+  final String newValue;
 }
 
 enum _MeasurementChoice { now, later }
@@ -4696,6 +4997,7 @@ class _CloseSessionResult {
     required this.partsToOrder,
     required this.changesBeforeNextSession,
     required this.generalNotes,
+    required this.radioSetupChanges,
   });
 
   final String drivingNotes;
@@ -4705,6 +5007,7 @@ class _CloseSessionResult {
   final String partsToOrder;
   final String changesBeforeNextSession;
   final String generalNotes;
+  final List<_SessionRadioSetupChange> radioSetupChanges;
 }
 
 class _CompatibilityResult {
