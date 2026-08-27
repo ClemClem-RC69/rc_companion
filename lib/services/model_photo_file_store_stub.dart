@@ -5,8 +5,19 @@ Future<String?> savePhoto({
   required String modelId,
   required Uint8List bytes,
   required String originalFilename,
-}) async => null;
+}) async {
+  return null;
+}
 
-Future<Uint8List?> readBytes(String? path) async => null;
+Future<String?> findExistingPhotoPath({
+  required String userId,
+  required String modelId,
+}) async {
+  return null;
+}
+
+Future<Uint8List?> readBytes(String? path) async {
+  return null;
+}
 
 Future<void> deletePhoto(String? path) async {}

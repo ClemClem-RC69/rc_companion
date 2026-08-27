@@ -19,6 +19,11 @@ class ModelPhotoFileStore {
     originalFilename: originalFilename,
   );
 
+  static Future<String?> findExistingPhotoPath({
+    required String userId,
+    required String modelId,
+  }) => implementation.findExistingPhotoPath(userId: userId, modelId: modelId);
+
   static Future<Uint8List?> readBytes(String? path) =>
       implementation.readBytes(path);
 

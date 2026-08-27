@@ -104,19 +104,42 @@ class ModelService {
           modelId: modelId,
         );
 
+        final existingLocalPath = existing?.photoLocalPath?.trim() ?? '';
         String? localPath;
+
+        // 1. Le chemin connu par Drift reste prioritaire s'il pointe vers
+        //    un fichier réellement lisible et que la photo distante n'a
+        //    pas changé.
         final existingBytes = await ModelPhotoFileStore.readBytes(
-          existing?.photoLocalPath,
+          existingLocalPath,
         );
+
         if (existingBytes != null &&
             existingBytes.isNotEmpty &&
             existing?.photoUrl == photoUrl) {
-          localPath = existing!.photoLocalPath;
-        } else if (_isGoogleDrivePath(photoUrl)) {
+          localPath = existingLocalPath;
+        }
+
+        // 2. Si Drift a perdu photo_local_path, tente d'abord de rattacher
+        //    le fichier déjà présent dans le dossier local du modèle.
+        if ((localPath == null || localPath.isEmpty) &&
+            existingLocalPath.isEmpty &&
+            _isGoogleDrivePath(photoUrl)) {
+          localPath = await ModelPhotoFileStore.findExistingPhotoPath(
+            userId: user.id,
+            modelId: modelId,
+          );
+        }
+
+        // 3. Seulement si aucune copie locale exploitable n'a été retrouvée,
+        //    tente le téléchargement Drive.
+        if ((localPath == null || localPath.isEmpty) &&
+            _isGoogleDrivePath(photoUrl)) {
           try {
             final bytes = await StorageService.downloadModelPhotoBytes(
               photoUrl!,
             );
+
             if (bytes != null && bytes.isNotEmpty) {
               localPath = await ModelPhotoFileStore.savePhoto(
                 userId: user.id,
@@ -126,10 +149,23 @@ class ModelService {
               );
             }
           } catch (_) {
-            localPath = existing?.photoLocalPath;
+            // Un échec distant ne doit jamais effacer une référence locale
+            // encore potentiellement utile.
           }
-        } else {
+        }
+
+        // 4. Si le téléchargement n'a rien fourni, conserve toujours
+        //    l'ancien chemin au lieu d'écrire null dans Drift.
+        if ((localPath == null || localPath.isEmpty) &&
+            existingLocalPath.isNotEmpty) {
+          localPath = existingLocalPath;
+        }
+
+        // 5. Une absence réelle de photo distante reste une suppression
+        //    explicite de la copie locale.
+        if (!_isGoogleDrivePath(photoUrl)) {
           await ModelPhotoFileStore.deletePhoto(existing?.photoLocalPath);
+          localPath = null;
         }
 
         row['photo_local_path'] = localPath;
