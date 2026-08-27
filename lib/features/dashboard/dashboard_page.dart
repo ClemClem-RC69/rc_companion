@@ -29,6 +29,7 @@ import '../models/model_detail_page.dart';
 import '../sessions/sessions_page.dart';
 import '../sessions/session_detail_page.dart';
 import '../../services/model_local_store.dart';
+import '../../services/offline_auth_service.dart';
 import '../../services/model_setup_service.dart';
 import '../../services/model_radio_setup_service.dart';
 import '../../services/radio_service.dart';
@@ -48,7 +49,9 @@ class _BatteryChargeMetrics {
 }
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  const DashboardPage({super.key, required this.onLock});
+
+  final Future<void> Function() onLock;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -776,8 +779,9 @@ class _DashboardPageState extends State<DashboardPage>
                           SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'Après une déconnexion, une connexion Internet '
-                              'est nécessaire pour se reconnecter à RC Companion.',
+                              'Après une première connexion et autorisation '
+                              'en ligne sur cet appareil, RC Companion peut '
+                              'également se reconnecter hors ligne.',
                               style: TextStyle(
                                 color: Color(0xFFFFD98A),
                                 fontWeight: FontWeight.w600,
@@ -887,6 +891,7 @@ class _DashboardPageState extends State<DashboardPage>
 
             try {
               await AccountService.updatePassword(password);
+              await OfflineAuthService.updateCurrentPassword(password);
 
               if (!dialogContext.mounted) {
                 return;
@@ -1211,7 +1216,7 @@ class _DashboardPageState extends State<DashboardPage>
     );
 
     if (confirmed == true) {
-      await Supabase.instance.client.auth.signOut();
+      await widget.onLock();
     }
   }
 
@@ -1782,18 +1787,20 @@ class _DashboardPageState extends State<DashboardPage>
                               : -26,
                           0,
                         ),
-                        child: Transform.scale(
-                          scale: isPhone
-                              ? 1.12
-                              : veryTight
-                              ? 1.80
-                              : tight
-                              ? 1.90
-                              : 2.00,
-                          child: Image.asset(
-                            _categoryAsset(lastModelCategory),
-                            fit: BoxFit.contain,
-                            filterQuality: FilterQuality.high,
+                        child: ClipRect(
+                          child: Transform.scale(
+                            scale: isPhone
+                                ? 1.12
+                                : veryTight
+                                ? 1.05
+                                : tight
+                                ? 1.10
+                                : 1.15,
+                            child: Image.asset(
+                              _categoryAsset(lastModelCategory),
+                              fit: BoxFit.contain,
+                              filterQuality: FilterQuality.high,
+                            ),
                           ),
                         ),
                       ),
@@ -2087,18 +2094,20 @@ class _DashboardPageState extends State<DashboardPage>
                   child: Padding(
                     padding: EdgeInsets.all(veryTight ? 2 : 4),
                     child: Center(
-                      child: Transform.scale(
-                        scale: isPhone
-                            ? 1.00
-                            : veryTight
-                            ? 1.45
-                            : tight
-                            ? 1.55
-                            : 1.65,
-                        child: Image.asset(
-                          'assets/images/rc_battery_dashboard_hd.png',
-                          fit: BoxFit.contain,
-                          filterQuality: FilterQuality.high,
+                      child: ClipRect(
+                        child: Transform.scale(
+                          scale: isPhone
+                              ? 1.00
+                              : veryTight
+                              ? 0.92
+                              : tight
+                              ? 0.98
+                              : 1.04,
+                          child: Image.asset(
+                            'assets/images/rc_battery_dashboard_hd.png',
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.high,
+                          ),
                         ),
                       ),
                     ),

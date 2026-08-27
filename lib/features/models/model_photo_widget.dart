@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -29,6 +30,14 @@ class _ModelPhotoWidgetState extends State<ModelPhotoWidget> {
   Uint8List? _localBytes;
   String? _loadedLocalPath;
   bool _isLoadingLocalPhoto = false;
+  Timer? _retryTimer;
+  int _retryCount = 0;
+
+  static const List<Duration> _retryDelays = <Duration>[
+    Duration(milliseconds: 60),
+    Duration(milliseconds: 180),
+    Duration(milliseconds: 450),
+  ];
 
   @override
   void initState() {
@@ -44,27 +53,53 @@ class _ModelPhotoWidgetState extends State<ModelPhotoWidget> {
     final newPath = widget.model.photoLocalPath?.trim() ?? '';
 
     if (oldPath != newPath) {
-      _localBytes = null;
-      _loadedLocalPath = null;
+      _resetLocalPhotoState();
       _loadLocalPhoto();
-    }
-  }
-
-  Future<void> _loadLocalPhoto() async {
-    final path = widget.model.photoLocalPath?.trim() ?? '';
-
-    if (path.isEmpty) {
-      _localBytes = null;
-      _loadedLocalPath = null;
-      _isLoadingLocalPhoto = false;
       return;
     }
 
-    if (_loadedLocalPath == path &&
+    // Si une première lecture locale a échoué pendant une reconstruction
+    // ou une mise à jour Drift, on ne reste jamais bloqué sur le fallback.
+    if (newPath.isNotEmpty &&
+        _localBytes == null &&
+        !_isLoadingLocalPhoto &&
+        _retryTimer == null) {
+      _retryCount = 0;
+      _loadLocalPhoto(force: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    super.dispose();
+  }
+
+  void _resetLocalPhotoState() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _retryCount = 0;
+    _localBytes = null;
+    _loadedLocalPath = null;
+    _isLoadingLocalPhoto = false;
+  }
+
+  Future<void> _loadLocalPhoto({bool force = false}) async {
+    final path = widget.model.photoLocalPath?.trim() ?? '';
+
+    if (path.isEmpty) {
+      _resetLocalPhotoState();
+      return;
+    }
+
+    if (!force &&
+        _loadedLocalPath == path &&
         (_localBytes != null || _isLoadingLocalPhoto)) {
       return;
     }
 
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _loadedLocalPath = path;
     _isLoadingLocalPhoto = true;
 
@@ -79,9 +114,44 @@ class _ModelPhotoWidgetState extends State<ModelPhotoWidget> {
       return;
     }
 
+    if (bytes != null && bytes.isNotEmpty) {
+      setState(() {
+        _localBytes = bytes;
+        _isLoadingLocalPhoto = false;
+        _retryCount = 0;
+      });
+      return;
+    }
+
     setState(() {
-      _localBytes = bytes != null && bytes.isNotEmpty ? bytes : null;
+      _localBytes = null;
       _isLoadingLocalPhoto = false;
+    });
+
+    _scheduleRetry(path);
+  }
+
+  void _scheduleRetry(String path) {
+    if (!mounted || _retryCount >= _retryDelays.length) {
+      return;
+    }
+
+    final delay = _retryDelays[_retryCount];
+    _retryCount += 1;
+
+    _retryTimer = Timer(delay, () {
+      _retryTimer = null;
+
+      if (!mounted) {
+        return;
+      }
+
+      final currentPath = widget.model.photoLocalPath?.trim() ?? '';
+      if (currentPath != path || currentPath.isEmpty) {
+        return;
+      }
+
+      _loadLocalPhoto(force: true);
     });
   }
 

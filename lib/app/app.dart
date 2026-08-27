@@ -8,6 +8,7 @@ import '../features/auth/auth_page.dart';
 import '../features/admin/admin_page.dart';
 import '../features/dashboard/dashboard_page.dart';
 import '../services/battery_sync_service.dart';
+import '../services/offline_auth_service.dart';
 import '../services/supabase_service.dart';
 import '../services/user_access_service.dart';
 
@@ -321,6 +322,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     final isAdmin = await UserAccessService.isCurrentUserAdmin();
     if (!isAdmin || !mounted) return false;
 
+    OfflineAuthService.clearStagedCredentials();
     await _stopDeviceAccessRealtime();
     if (!mounted) return true;
 
@@ -350,6 +352,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       if (!mounted) return;
 
       if (result.allowed) {
+        await OfflineAuthService.markCurrentAuthorizationAllowed();
+
+        if (!mounted) return;
+
         setState(() {
           gateState = _AccessGateState.allowed;
           accessResult = result;
@@ -359,6 +365,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         unawaited(BatterySyncService.syncNow());
         return;
       }
+
+      await OfflineAuthService.revokeCurrentAuthorization();
+
+      if (!mounted) return;
 
       setState(() {
         gateState = _AccessGateState.blocked;
@@ -371,16 +381,29 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
       if (!mounted) return;
 
-      // Si la connexion au serveur est momentanément impossible, on ne détruit
-      // jamais la session ni les données locales. Le mode hors ligne reste
-      // utilisable ; la synchronisation sera protégée ensuite dans les services
-      // Realtime / Background.
+      final locallyAuthorized =
+          await OfflineAuthService.hasAuthorizedCurrentSession();
+
+      if (!mounted) return;
+
+      if (locallyAuthorized) {
+        setState(() {
+          gateState = _AccessGateState.allowed;
+          accessResult = null;
+          accessError =
+              'Vérification en ligne indisponible. RC Companion utilise '
+              'l’autorisation locale déjà validée sur cet appareil.';
+        });
+        return;
+      }
+
+      OfflineAuthService.clearStagedCredentials();
       setState(() {
-        gateState = _AccessGateState.allowed;
+        gateState = _AccessGateState.blocked;
         accessResult = null;
         accessError =
-            'Impossible de vérifier l’autorisation de cet appareil pour le '
-            'moment. RC Companion reste disponible hors ligne.';
+            'La première autorisation de cet appareil nécessite une '
+            'connexion Internet.';
       });
     }
   }
@@ -402,6 +425,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       if (!mounted) return;
 
       if (result.allowed) {
+        await OfflineAuthService.markCurrentAuthorizationAllowed();
+
+        if (!mounted) return;
+
         setState(() {
           gateState = _AccessGateState.allowed;
           accessResult = result;
@@ -411,6 +438,8 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         unawaited(BatterySyncService.syncNow());
         return;
       }
+
+      await OfflineAuthService.revokeCurrentAuthorization();
 
       if (await _handleRemovedDeviceIfNeeded(result)) {
         return;
@@ -427,14 +456,28 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
       if (!mounted) return;
 
-      // Une panne réseau ne doit jamais bloquer l’usage local d’un appareil
-      // qui possède déjà une session Supabase mémorisée.
+      final locallyAuthorized =
+          await OfflineAuthService.hasAuthorizedCurrentSession();
+
+      if (!mounted) return;
+
+      if (locallyAuthorized) {
+        setState(() {
+          gateState = _AccessGateState.allowed;
+          accessResult = null;
+          accessError =
+              'Vérification en ligne indisponible. Les données locales restent '
+              'accessibles et seront vérifiées au prochain retour réseau.';
+        });
+        return;
+      }
+
       setState(() {
-        gateState = _AccessGateState.allowed;
+        gateState = _AccessGateState.blocked;
         accessResult = null;
         accessError =
-            'Vérification en ligne indisponible. Les données locales restent '
-            'accessibles et seront vérifiées au prochain retour réseau.';
+            'Cet appareil ne possède pas encore d’autorisation hors ligne '
+            'validée.';
       });
     }
   }
@@ -445,6 +488,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     }
 
     await _stopDeviceAccessRealtime();
+    await OfflineAuthService.revokeCurrentAuthorization();
 
     try {
       await SupabaseService.client.auth.signOut();
@@ -474,6 +518,41 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     if (currentSession == null) return;
 
     await _activateAfterVoluntarySignIn(currentSession);
+  }
+
+  Future<void> _openOfflineSession() async {
+    final currentSession = SupabaseService.client.auth.currentSession;
+    if (currentSession == null) {
+      return;
+    }
+
+    final allowed = await OfflineAuthService.hasAuthorizedCurrentSession();
+    if (!allowed || !mounted) {
+      return;
+    }
+
+    await _stopDeviceAccessRealtime();
+    if (!mounted) return;
+
+    setState(() {
+      session = currentSession;
+      gateState = _AccessGateState.allowed;
+      accessResult = null;
+      accessError = null;
+    });
+  }
+
+  Future<void> _lockToLogin() async {
+    await _stopDeviceAccessRealtime();
+
+    if (!mounted) return;
+
+    setState(() {
+      session = null;
+      gateState = _AccessGateState.signedOut;
+      accessResult = null;
+      accessError = null;
+    });
   }
 
   Future<void> _finishPasswordRecovery() async {
@@ -633,6 +712,10 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       session = currentSession;
 
       if (result.allowed) {
+        await OfflineAuthService.markCurrentAuthorizationAllowed();
+
+        if (!mounted) return;
+
         if (gateState != _AccessGateState.allowed) {
           setState(() {
             gateState = _AccessGateState.allowed;
@@ -642,6 +725,8 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
         }
         return;
       }
+
+      await OfflineAuthService.revokeCurrentAuthorization();
 
       if (await _handleRemovedDeviceIfNeeded(result)) {
         return;
@@ -681,13 +766,16 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     switch (gateState) {
       case _AccessGateState.signedOut:
-        return const AuthPage();
+        return AuthPage(onOfflineLogin: _openOfflineSession);
 
       case _AccessGateState.checking:
         return const _DeviceAccessCheckingPage();
 
       case _AccessGateState.allowed:
-        return DashboardPage(key: ValueKey(session?.user.id ?? 'dashboard'));
+        return DashboardPage(
+          key: ValueKey(session?.user.id ?? 'dashboard'),
+          onLock: _lockToLogin,
+        );
 
       case _AccessGateState.admin:
         return const AdminPage();

@@ -1,9 +1,11 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../legal/rc_legal_documents.dart';
+import '../../services/offline_auth_service.dart';
 import '../../services/supabase_service.dart';
 
 class AuthPage extends StatefulWidget {
@@ -11,10 +13,12 @@ class AuthPage extends StatefulWidget {
     super.key,
     this.passwordRecoveryMode = false,
     this.onPasswordResetComplete,
+    this.onOfflineLogin,
   });
 
   final bool passwordRecoveryMode;
   final Future<void> Function()? onPasswordResetComplete;
+  final Future<void> Function()? onOfflineLogin;
 
   @override
   State<AuthPage> createState() => _AuthPageState();
@@ -147,13 +151,7 @@ class _AuthPageState extends State<AuthPage> {
         return;
       }
 
-      await _runAuthAction(() async {
-        await SupabaseService.client.auth.signInWithPassword(
-          email: identifier,
-          password: password,
-        );
-        await _rememberSuccessfulLogin(identifier);
-      });
+      await _submitLogin(identifier: identifier, password: password);
       return;
     }
 
@@ -200,6 +198,97 @@ class _AuthPageState extends State<AuthPage> {
         });
       }
     });
+  }
+
+  Future<void> _submitLogin({
+    required String identifier,
+    required String password,
+  }) async {
+    final normalizedEmail = identifier.trim().toLowerCase();
+
+    if (mounted) {
+      setState(() => isLoading = true);
+    }
+
+    try {
+      final connectivity = await Connectivity().checkConnectivity();
+      final isOffline =
+          connectivity.isEmpty ||
+          connectivity.every((result) => result == ConnectivityResult.none);
+
+      if (isOffline) {
+        final allowed = await OfflineAuthService.verifyOfflineCredentials(
+          email: normalizedEmail,
+          password: password,
+        );
+
+        if (!allowed) {
+          _showMessage(
+            'Connexion hors ligne impossible. Ce compte doit avoir été '
+            'connecté et autorisé en ligne au moins une fois sur cet appareil, '
+            'avec le même mot de passe.',
+          );
+          return;
+        }
+
+        await _rememberSuccessfulLogin(normalizedEmail);
+
+        final callback = widget.onOfflineLogin;
+        if (callback == null) {
+          _showMessage('Connexion hors ligne indisponible.');
+          return;
+        }
+
+        await callback();
+        return;
+      }
+
+      OfflineAuthService.stageCredentials(
+        email: normalizedEmail,
+        password: password,
+      );
+
+      try {
+        await SupabaseService.client.auth.signInWithPassword(
+          email: normalizedEmail,
+          password: password,
+        );
+        await _rememberSuccessfulLogin(normalizedEmail);
+
+        // Ne dépend pas du timing de l'événement AuthState : le droit hors
+        // ligne n'est enregistré qu'après confirmation serveur que cet appareil
+        // précis est déjà autorisé.
+        await OfflineAuthService.finalizeAfterOnlineLogin();
+      } on AuthException catch (error) {
+        OfflineAuthService.clearStagedCredentials();
+        _showMessage(error.message);
+      } catch (_) {
+        OfflineAuthService.clearStagedCredentials();
+
+        final allowed = await OfflineAuthService.verifyOfflineCredentials(
+          email: normalizedEmail,
+          password: password,
+        );
+
+        if (!allowed) {
+          _showMessage(
+            'Connexion au serveur impossible. La connexion hors ligne n’est '
+            'disponible que pour le compte déjà autorisé sur cet appareil.',
+          );
+          return;
+        }
+
+        await _rememberSuccessfulLogin(normalizedEmail);
+        final callback = widget.onOfflineLogin;
+        if (callback != null) {
+          await callback();
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
   }
 
   Future<void> _requestPasswordReset() async {
@@ -256,8 +345,6 @@ class _AuthPageState extends State<AuthPage> {
       },
     );
 
-    controller.dispose();
-
     if (email == null || !mounted) return;
 
     await _runAuthAction(() async {
@@ -293,6 +380,7 @@ class _AuthPageState extends State<AuthPage> {
       await SupabaseService.client.auth.updateUser(
         UserAttributes(password: password),
       );
+      await OfflineAuthService.updateCurrentPassword(password);
 
       passwordController.clear();
       confirmPasswordController.clear();
