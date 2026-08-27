@@ -313,8 +313,6 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       title: 'Transmission',
       icon: Icons.settings,
       fields: [
-        // Ces deux clés sont communes à la voiture pour conserver une
-        // représentation cohérente de la transmission dans les données.
         _SetupField(
           keyName: 'pinion',
           label: 'Pignon moteur',
@@ -327,9 +325,29 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
           hint: 'Ex. 15,5:1',
         ),
         _SetupField(
+          keyName: 'moto_clutch_drive',
+          label: 'Clutch drive',
+          hint: 'Référence / configuration',
+        ),
+        _SetupField(
+          keyName: 'moto_flywheel',
+          label: 'Flywheel',
+          hint: 'Référence / configuration',
+        ),
+        _SetupField(
+          keyName: 'moto_chain',
+          label: 'Chaîne',
+          hint: 'Référence / type',
+        ),
+        _SetupField(
           keyName: 'moto_chain_tension',
           label: 'Tension chaîne',
           hint: 'Ex. position 2 / jeu 3 mm',
+        ),
+        _SetupField(
+          keyName: 'moto_diff_oil',
+          label: 'Huile de diff',
+          hint: 'Ex. 50K / 100K',
         ),
       ],
     ),
@@ -355,6 +373,16 @@ class _ModelSetupTabState extends State<ModelSetupTab> {
       fields: [
         _SetupField(keyName: 'motor', label: 'Moteur', hint: 'Ex. 3800KV'),
         _SetupField(keyName: 'esc', label: 'ESC', hint: 'Référence / réglage'),
+        _SetupField(
+          keyName: 'moto_steering_servo',
+          label: 'Servo de direction',
+          hint: 'Référence / couple',
+        ),
+        _SetupField(
+          keyName: 'moto_brake_servo',
+          label: 'Servo de frein',
+          hint: 'Référence / couple',
+        ),
       ],
     ),
     _SetupSection(
