@@ -236,59 +236,65 @@ const List<RadioControlLayout> radioControlCatalog = [
     brand: 'Spektrum',
     model: 'DX3 Smart Promoto',
     controls: [
+      // Les labels ci-dessous désignent les COMMANDES PHYSIQUES de la radio.
+      // Les fonctions affectées au Promoto sont saisies séparément dans
+      // l'onglet « Commandes radio ».
+      //
+      // IMPORTANT : les key existantes sont volontairement conservées afin
+      // de préserver toutes les données déjà enregistrées.
       RadioControlDefinition(
         key: 'power_button',
-        label: 'Marche / Arrêt',
+        label: 'POWER',
         type: RadioControlType.button,
       ),
       RadioControlDefinition(
         key: 'ms6x_gain',
-        label: 'Gain MS6X',
+        label: 'ST RATE',
         type: RadioControlType.dial,
       ),
       RadioControlDefinition(
         key: 'throttle_limit',
-        label: 'Limiteur de gaz',
+        label: 'TH LIMIT',
         type: RadioControlType.switchControl,
       ),
       RadioControlDefinition(
         key: 'flywheel_switch',
-        label: 'Volant d’inertie',
-        type: RadioControlType.switchControl,
+        label: 'CH 3 (A/B)',
+        type: RadioControlType.button,
       ),
       RadioControlDefinition(
         key: 'steering_reverse',
-        label: 'Inversion de direction',
+        label: 'ST REV',
         type: RadioControlType.switchControl,
       ),
       RadioControlDefinition(
         key: 'front_brake_travel',
-        label: 'Course frein avant',
+        label: 'BRAKE RATE',
         type: RadioControlType.dial,
       ),
       RadioControlDefinition(
         key: 'steering_sub_trim',
-        label: 'Sub-trim direction',
+        label: 'ST TRIM',
         type: RadioControlType.trim,
       ),
       RadioControlDefinition(
         key: 'front_brake_trim',
-        label: 'Trim frein avant',
+        label: 'TH TRIM',
         type: RadioControlType.trim,
       ),
       RadioControlDefinition(
         key: 'bind_button',
-        label: 'Bind',
+        label: 'BIND',
         type: RadioControlType.button,
       ),
       RadioControlDefinition(
         key: 'ride_mode_up',
-        label: 'Mode de conduite +',
+        label: 'CH 3 (A)',
         type: RadioControlType.button,
       ),
       RadioControlDefinition(
         key: 'ride_mode_down',
-        label: 'Mode de conduite −',
+        label: 'CH 3 (B)',
         type: RadioControlType.button,
       ),
     ],
@@ -616,52 +622,52 @@ const List<RadioControlLayout> radioControlCatalog = [
     controls: [
       RadioControlDefinition(
         key: 'tr1',
-        label: 'TR1 Trim',
+        label: 'TR1',
         type: RadioControlType.trim,
       ),
       RadioControlDefinition(
         key: 'tr2',
-        label: 'TR2 Trim',
+        label: 'TR2',
         type: RadioControlType.trim,
       ),
       RadioControlDefinition(
         key: 'tr3',
-        label: 'TR3 Trim',
+        label: 'TR3',
         type: RadioControlType.trim,
       ),
       RadioControlDefinition(
         key: 'sw1',
-        label: 'SW1 Button',
+        label: 'SW1',
         type: RadioControlType.button,
       ),
       RadioControlDefinition(
         key: 'k1',
-        label: 'K1 Button',
+        label: 'K1',
         type: RadioControlType.button,
       ),
       RadioControlDefinition(
         key: 'k2',
-        label: 'K2 Button',
+        label: 'K2',
         type: RadioControlType.button,
       ),
       RadioControlDefinition(
         key: 'k3',
-        label: 'K3 Button',
+        label: 'K3',
         type: RadioControlType.button,
       ),
       RadioControlDefinition(
         key: 'k4',
-        label: 'K4 Button',
+        label: 'K4',
         type: RadioControlType.button,
       ),
       RadioControlDefinition(
         key: 'k5',
-        label: 'K5 Button',
+        label: 'K5',
         type: RadioControlType.button,
       ),
       RadioControlDefinition(
         key: 'vr1',
-        label: 'VR1 Knob',
+        label: 'VR1',
         type: RadioControlType.dial,
       ),
     ],

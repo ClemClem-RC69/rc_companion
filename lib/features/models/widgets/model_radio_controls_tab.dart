@@ -338,7 +338,7 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
                           for (final control in _controls)
                             CheckboxListTile(
                               value: draft.contains(_fieldKey(control)),
-                              title: Text(_displayLabel(control)),
+                              title: Text(control.label),
                               subtitle: Text(_typeLabel(control.type)),
                               controlAffinity: ListTileControlAffinity.leading,
                               contentPadding: EdgeInsets.zero,
@@ -383,6 +383,7 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
 
     setState(() {
       _enabledFields = result;
+      _isEditing = true;
     });
   }
 
@@ -589,7 +590,7 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
             savedPhysicalLabel != null &&
             savedPhysicalLabel.isNotEmpty
         ? savedPhysicalLabel
-        : _displayLabel(control);
+        : control.label;
 
     if (_isGenericOriginalRadio) {
       if (!_isEditing) {
@@ -603,6 +604,8 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
               maxLength: 80,
               decoration: InputDecoration(
                 labelText: physicalLabel,
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                hintText: 'Fonction non renseignée',
                 border: const OutlineInputBorder(),
                 counterText: '',
               ),
@@ -665,7 +668,10 @@ class _ModelRadioControlsTabState extends State<ModelRadioControlsTab> {
           maxLength: 80,
           decoration: InputDecoration(
             labelText: physicalLabel,
-            hintText: 'Fonction affectée à $physicalLabel',
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            hintText: _isEditing
+                ? 'Saisir la fonction attribuée'
+                : 'Fonction non renseignée',
             border: const OutlineInputBorder(),
             counterText: '',
             suffixIcon: _isEditing
