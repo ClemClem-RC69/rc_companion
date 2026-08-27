@@ -124,6 +124,7 @@ class ModelService {
         //    le fichier déjà présent dans le dossier local du modèle.
         if ((localPath == null || localPath.isEmpty) &&
             existingLocalPath.isEmpty &&
+            existing?.photoUrl == photoUrl &&
             _isGoogleDrivePath(photoUrl)) {
           localPath = await ModelPhotoFileStore.findExistingPhotoPath(
             userId: user.id,
