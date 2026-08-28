@@ -48,7 +48,9 @@ class DeviceAccessResult {
 class UserAccessService {
   UserAccessService._();
 
-  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+    mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+  );
 
   static const String _installationIdKey =
       'rc_companion_user_access_installation_id_v1';

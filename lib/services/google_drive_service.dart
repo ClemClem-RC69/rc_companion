@@ -45,7 +45,9 @@ class GoogleDriveService {
     'https://www.googleapis.com/auth/drive.file',
   ];
 
-  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+    mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+  );
   static const String _legacyRefreshTokenKey =
       'rc_companion_google_drive_refresh_token';
   static const String _refreshTokenKeyPrefix =

@@ -11,7 +11,9 @@ import 'user_access_service.dart';
 class OfflineAuthService {
   OfflineAuthService._();
 
-  static const FlutterSecureStorage _storage = FlutterSecureStorage();
+  static const FlutterSecureStorage _storage = FlutterSecureStorage(
+    mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+  );
 
   static const String _emailKey = 'rc_offline_auth_email_v1';
   static const String _userIdKey = 'rc_offline_auth_user_id_v1';

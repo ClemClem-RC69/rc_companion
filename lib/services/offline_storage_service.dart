@@ -75,7 +75,9 @@ class OfflineStorageService {
     'com.clementg.rccompanion/offline_storage',
   );
 
-  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+    mOptions: MacOsOptions(usesDataProtectionKeychain: false),
+  );
 
   static const String _targetKey = 'offline_storage_target_v1';
 
