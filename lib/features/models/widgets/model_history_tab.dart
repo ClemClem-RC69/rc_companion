@@ -846,14 +846,26 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
   }
 
   String _pdfSafeText(String value) {
-    return value
-        .replaceAll('•', ' - ')
-        .replaceAll('—', ' - ')
-        .replaceAll('–', ' - ')
-        .replaceAll('\u00A0', ' ');
+    var safe = value;
+
+    // Certaines anciennes données contiennent U+FFFD à la place
+    // d'une apostrophe. On restaure uniquement ce cas identifiable.
+    safe = safe.replaceAllMapped(
+      RegExp(r'([A-Za-zÀ-ÿ])\uFFFD([A-Za-zÀ-ÿ])'),
+      (match) => "${match.group(1)}'${match.group(2)}",
+    );
+
+    // Un U+FFFD restant correspond à une donnée déjà corrompue :
+    // aucune police ne peut retrouver le caractère d'origine.
+    safe = safe.replaceAll('\uFFFD', ' ');
+
+    return safe;
   }
 
   Future<Uint8List> _buildPdf(PdfPageFormat format) async {
+    final pdfFont = await PdfGoogleFonts.notoSansRegular();
+    final pdfFontBold = await PdfGoogleFonts.notoSansBold();
+
     pw.ImageProvider? modelImage;
 
     final localPhotoPath = _currentModel.photoLocalPath?.trim() ?? '';
@@ -889,6 +901,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     document.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
+        theme: pw.ThemeData.withFont(base: pdfFont, bold: pdfFontBold),
         margin: const pw.EdgeInsets.fromLTRB(20, 18, 20, 22),
         footer: (context) => pw.Container(
           margin: const pw.EdgeInsets.only(top: 5),
@@ -1315,7 +1328,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         children: [
           _pdfHistoryCell(_formatDate(session.startedAt)),
           _pdfHistoryCell('Session'),
-          _pdfHistoryCell(details),
+          _pdfHistoryCell(details, highlightLabels: true),
           _pdfHistoryCell(
             '${_durationLabel(session.totalDurationMinutes)}'
             ' - ${session.runs.length} pack(s)',
@@ -1368,7 +1381,7 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
         children: [
           _pdfHistoryCell(_formatDate(group.date)),
           _pdfHistoryCell('Maintenance'),
-          _pdfHistoryCell(details.join('\n')),
+          _pdfHistoryCell(details.join('\n'), highlightLabels: true),
           _pdfHistoryCell('${group.interventions.length} intervention(s)'),
         ],
       );
@@ -1397,16 +1410,103 @@ class _ModelHistoryTabState extends State<ModelHistoryTab> {
     );
   }
 
-  pw.Widget _pdfHistoryCell(String value, {bool header = false}) {
+  pw.Widget _pdfHistoryCell(
+    String value, {
+    bool header = false,
+    bool highlightLabels = false,
+  }) {
+    final safeValue = _pdfSafeText(value);
+
+    if (!highlightLabels || header) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+        child: pw.Text(
+          safeValue,
+          style: pw.TextStyle(
+            fontSize: header ? 8.2 : 7.7,
+            fontWeight: header ? pw.FontWeight.bold : pw.FontWeight.normal,
+          ),
+        ),
+      );
+    }
+
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 6),
-      child: pw.Text(
-        _pdfSafeText(value),
-        style: pw.TextStyle(
-          fontSize: header ? 8.2 : 7.7,
-          fontWeight: header ? pw.FontWeight.bold : pw.FontWeight.normal,
-        ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          for (final line in safeValue.split('\n')) _pdfHistoryDetailLine(line),
+        ],
       ),
+    );
+  }
+
+  pw.Widget _pdfHistoryDetailLine(String line) {
+    final spans = <pw.InlineSpan>[];
+    final pattern = RegExp(
+      r'(^| - | / )'
+      r'(Lieu|Type de terrain|Batteries utilisées|Caractéristiques|'
+      r'Comportement et réglages|Réglages radio|Casses|'
+      r'Pièces remplacées|Entretien|Pièces à commander|'
+      r'Modifications|Notes|Modification|Révision|Réparation|'
+      r'Amortisseurs arrière|Amortisseurs avant)'
+      r' : ',
+    );
+    var cursor = 0;
+
+    for (final match in pattern.allMatches(line)) {
+      if (match.start > cursor) {
+        spans.add(
+          pw.TextSpan(
+            text: line.substring(cursor, match.start),
+            style: const pw.TextStyle(fontSize: 7.7),
+          ),
+        );
+      }
+
+      final separator = match.group(1) ?? '';
+
+      if (separator.isNotEmpty) {
+        spans.add(
+          pw.TextSpan(
+            text: separator,
+            style: const pw.TextStyle(fontSize: 7.7),
+          ),
+        );
+      }
+
+      spans.add(
+        pw.TextSpan(
+          text: '${match.group(2)} : ',
+          style: pw.TextStyle(
+            fontSize: 7.7,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.blue,
+          ),
+        ),
+      );
+
+      cursor = match.end;
+    }
+
+    if (cursor < line.length) {
+      spans.add(
+        pw.TextSpan(
+          text: line.substring(cursor),
+          style: const pw.TextStyle(fontSize: 7.7),
+        ),
+      );
+    }
+
+    if (spans.isEmpty) {
+      spans.add(
+        pw.TextSpan(text: line, style: const pw.TextStyle(fontSize: 7.7)),
+      );
+    }
+
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 2),
+      child: pw.RichText(text: pw.TextSpan(children: spans)),
     );
   }
 

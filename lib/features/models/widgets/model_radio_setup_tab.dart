@@ -44,6 +44,30 @@ class _ModelRadioSetupTabState extends State<ModelRadioSetupTab> {
         .where(
           (section) => section.title != 'Boutons, molettes et interrupteurs',
         )
+        .map((section) {
+          if (section.title != 'Voies auxiliaires') {
+            return section;
+          }
+
+          final channelCount = _selectedRadio?.channels ?? 6;
+
+          return RadioFieldSection(
+            title: section.title,
+            icon: section.icon,
+            fields: [
+              for (var channel = 3; channel <= channelCount; channel++)
+                RadioFieldDefinition(
+                  key: 'channel_$channel',
+                  label: 'Voie $channel',
+                  hint: channel == 3
+                      ? 'Exemple : éclairage'
+                      : channel == 4
+                      ? 'Exemple : treuil'
+                      : 'Fonction affectée',
+                ),
+            ],
+          );
+        })
         .toList();
   }
 
@@ -53,6 +77,15 @@ class _ModelRadioSetupTabState extends State<ModelRadioSetupTab> {
 
   Set<String> get _availableKeys {
     return _allFields.map((field) => field.key).toSet();
+  }
+
+  void _ensureControllersForAvailableFields() {
+    for (final field in _allFields) {
+      _controllers.putIfAbsent(
+        field.key,
+        () => TextEditingController(text: _loadedSetup?.value(field.key) ?? ''),
+      );
+    }
   }
 
   @override
@@ -67,6 +100,9 @@ class _ModelRadioSetupTabState extends State<ModelRadioSetupTab> {
         .watchSetup(modelId: widget.modelId)
         .listen((setup) {
           if (!mounted || _isSaving) return;
+
+          _loadedSetup = setup;
+          _ensureControllersForAvailableFields();
 
           final enabled = {
             ...?setup?.enabledFields,
@@ -98,6 +134,18 @@ class _ModelRadioSetupTabState extends State<ModelRadioSetupTab> {
       }
       setState(() {
         _selectedRadio = selected;
+        _ensureControllersForAvailableFields();
+
+        final setup = _loadedSetup;
+        if (setup != null) {
+          _enabledFields = {
+            ...setup.enabledFields,
+          }.where(_availableKeys.contains).toSet();
+
+          for (final field in _allFields) {
+            _controllers[field.key]?.text = setup.value(field.key);
+          }
+        }
       });
     });
 
@@ -147,14 +195,6 @@ class _ModelRadioSetupTabState extends State<ModelRadioSetupTab> {
         }
       }
 
-      final enabled = {
-        ...?setup?.enabledFields,
-      }.where(_availableKeys.contains).toSet();
-
-      for (final field in _allFields) {
-        _controllers[field.key]?.text = setup?.value(field.key) ?? '';
-      }
-
       if (!mounted) {
         return;
       }
@@ -162,6 +202,16 @@ class _ModelRadioSetupTabState extends State<ModelRadioSetupTab> {
       setState(() {
         _selectedRadio = radio;
         _loadedSetup = setup;
+        _ensureControllersForAvailableFields();
+
+        final enabled = {
+          ...?setup?.enabledFields,
+        }.where(_availableKeys.contains).toSet();
+
+        for (final field in _allFields) {
+          _controllers[field.key]?.text = setup?.value(field.key) ?? '';
+        }
+
         _enabledFields = enabled;
         _isLoading = false;
       });
