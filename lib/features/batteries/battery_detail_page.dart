@@ -679,6 +679,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
             }
 
             return AlertDialog(
+              scrollable: true,
               title: Text(
                 initialMeasurement == null
                     ? measurementType

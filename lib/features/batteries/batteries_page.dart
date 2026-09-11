@@ -572,11 +572,67 @@ class _BatteriesPageState extends State<BatteriesPage> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final isPhonePortrait =
+              constraints.maxWidth < 600 &&
+              MediaQuery.orientationOf(context) == Orientation.portrait;
+
           final scannerButton = FilledButton.tonalIcon(
             onPressed: _isLoading ? null : _scanBattery,
             icon: const Icon(Icons.qr_code_scanner),
             label: const Text('Scanner'),
           );
+
+          if (isPhonePortrait) {
+            return Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _addBattery,
+                        icon: const Icon(Icons.add),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('Créer une batterie', maxLines: 1),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(child: scannerButton),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _createPair,
+                        icon: const Icon(Icons.link),
+                        label: const Text(
+                          'Créer une paire',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _batteries.isEmpty
+                            ? null
+                            : _openQrLabelSheet,
+                        icon: const Icon(Icons.print),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('Imprimer les QR Codes', maxLines: 1),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          }
 
           if (constraints.maxWidth < 720) {
             return Wrap(
@@ -730,6 +786,182 @@ class _BatteriesPageState extends State<BatteriesPage> {
   }
 
   Widget _buildBatteryTile(Battery battery, {bool insidePair = false}) {
+    final isPhonePortrait =
+        MediaQuery.sizeOf(context).width < 600 &&
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+
+    final health =
+        _healthByBatteryCode[battery.id] ??
+        const _BatteryHealthStatus(
+          label: 'Non évaluée',
+          level: _BatteryHealthLevel.notEvaluated,
+        );
+
+    if (isPhonePortrait) {
+      final compactChargeLabel =
+          battery.chargeState == BatteryChargeState.storage
+          ? 'Storage'
+          : battery.chargePercent == null
+          ? '—'
+          : '${battery.chargePercent}%';
+
+      return Card(
+        margin: EdgeInsets.only(bottom: insidePair ? 2 : 5),
+        elevation: insidePair ? 0 : null,
+        color: insidePair
+            ? Theme.of(context).colorScheme.surfaceContainerHighest
+            : null,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _openBattery(battery),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.battery_charging_full,
+                  size: 20,
+                  color: _technologyColor(battery.technology),
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            battery.id,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '${battery.technology} • ${battery.brand} • ${battery.cells}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        '${battery.capacity} mAh • ${battery.cRate}C',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontSize: 9.5,
+                          height: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _chargeStateColor(battery),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    compactChargeLabel,
+                    maxLines: 1,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 9,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 3),
+                Container(
+                  constraints: const BoxConstraints(maxWidth: 70),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _healthColor(context, health.level),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    health.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _healthForegroundColor(context, health.level),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 9,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 1),
+                PopupMenuButton<String>(
+                  padding: EdgeInsets.zero,
+                  iconSize: 18,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 28,
+                    height: 28,
+                  ),
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'reference':
+                        _editReferenceMeasurement(battery);
+                      case 'dissolve':
+                        _dissolvePair(battery);
+                      case 'delete':
+                        _deleteBattery(battery);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'reference',
+                      child: ListTile(
+                        leading: Icon(Icons.straighten_outlined),
+                        title: Text('Modifier la mesure de référence'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    if (battery.isPaired)
+                      const PopupMenuItem(
+                        value: 'dissolve',
+                        child: ListTile(
+                          leading: Icon(Icons.link_off),
+                          title: Text('Dissoudre la paire'),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: ListTile(
+                        leading: Icon(Icons.delete_forever),
+                        title: Text('Supprimer définitivement'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Card(
       margin: EdgeInsets.only(bottom: insidePair ? 6 : 10),
       elevation: insidePair ? 0 : null,
@@ -759,27 +991,16 @@ class _BatteriesPageState extends State<BatteriesPage> {
                 '${battery.cRate}C',
               ),
               _chargeStateChip(battery),
-              Builder(
-                builder: (context) {
-                  final health =
-                      _healthByBatteryCode[battery.id] ??
-                      const _BatteryHealthStatus(
-                        label: 'Non évaluée',
-                        level: _BatteryHealthLevel.notEvaluated,
-                      );
-
-                  return Chip(
-                    visualDensity: VisualDensity.compact,
-                    backgroundColor: _healthColor(context, health.level),
-                    label: Text(
-                      health.label,
-                      style: TextStyle(
-                        color: _healthForegroundColor(context, health.level),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  );
-                },
+              Chip(
+                visualDensity: VisualDensity.compact,
+                backgroundColor: _healthColor(context, health.level),
+                label: Text(
+                  health.label,
+                  style: TextStyle(
+                    color: _healthForegroundColor(context, health.level),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
@@ -830,23 +1051,37 @@ class _BatteriesPageState extends State<BatteriesPage> {
   }
 
   Widget _buildPairCard(String pairId, List<Battery> batteries) {
+    final isPhonePortrait =
+        MediaQuery.sizeOf(context).width < 600 &&
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: EdgeInsets.only(bottom: isPhonePortrait ? 6 : 14),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+        padding: isPhonePortrait
+            ? const EdgeInsets.fromLTRB(7, 6, 7, 2)
+            : const EdgeInsets.fromLTRB(12, 12, 12, 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Icon(Icons.link, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 8),
+                Icon(
+                  Icons.link,
+                  size: isPhonePortrait ? 20 : null,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                SizedBox(width: isPhonePortrait ? 6 : 8),
                 Expanded(
                   child: Text(
                     'Paire $pairId',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: isPhonePortrait
+                        ? Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          )
+                        : Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                   ),
                 ),
                 Text(
@@ -855,7 +1090,7 @@ class _BatteriesPageState extends State<BatteriesPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: isPhonePortrait ? 3 : 10),
             ...batteries.map(
               (battery) => _buildBatteryTile(battery, insidePair: true),
             ),
