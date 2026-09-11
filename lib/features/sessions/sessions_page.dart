@@ -474,6 +474,27 @@ class _SessionsPageState extends State<SessionsPage> {
     return '${hours}h ${remainingMinutes}min';
   }
 
+  Color _modelAccentColor(String modelName) {
+    const colors = <Color>[
+      Color(0xFF2F80ED),
+      Color(0xFF16C6D4),
+      Color(0xFFFF7A1A),
+      Color(0xFFFF4D5A),
+      Color(0xFFA855F7),
+      Color(0xFF34C98F),
+      Color(0xFFFFD84D),
+      Color(0xFF5B8CFF),
+    ];
+
+    final normalized = modelName.trim().toLowerCase();
+    var hash = 0;
+    for (final codeUnit in normalized.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x7fffffff;
+    }
+
+    return colors[hash % colors.length];
+  }
+
   String _batteryLabel(Battery battery) {
     return '${battery.brand} — ${battery.technology} — '
         '${battery.cells} — ${battery.capacity} mAh — ${battery.cRate}C — '
@@ -1670,6 +1691,9 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   Widget _buildSessionHistory() {
+    final isPhonePortrait =
+        MediaQuery.sizeOf(context).width < 600 &&
+        MediaQuery.orientationOf(context) == Orientation.portrait;
     final activeSessions = _activeSessions;
     final allClosedSessions =
         sessions.where((session) => session.isClosed).toList()
@@ -1725,79 +1749,142 @@ class _SessionsPageState extends State<SessionsPage> {
                 ).then((_) => _loadData());
               },
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.play_circle_fill_rounded,
-                      size: 32,
-                      color: Color(0xFF58A6FF),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                padding: isPhonePortrait
+                    ? const EdgeInsets.symmetric(horizontal: 8, vertical: 6)
+                    : const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                child: isPhonePortrait
+                    ? Row(
                         children: [
+                          const Icon(
+                            Icons.play_circle_fill_rounded,
+                            size: 22,
+                            color: Color(0xFF58A6FF),
+                          ),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: activeSession.model.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text:
+                                        ' • ${_formatDateTime(activeSession.startedAt)}'
+                                        ' • ${activeSession.runs.length} ${_isBoatSession(activeSession) ? 'nav.' : 'roul.'}'
+                                        ' • ${_durationLabel(activeSession.totalDurationMinutes)}'
+                                        '${activeSession.location.isNotEmpty ? ' • ${activeSession.location}' : ''}',
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 4,
+                              horizontal: 5,
+                              vertical: 2,
                             ),
                             decoration: BoxDecoration(
                               color: const Color(0xFF1565C0),
-                              borderRadius: BorderRadius.circular(999),
+                              borderRadius: BorderRadius.circular(6),
                             ),
                             child: const Text(
-                              'SESSION EN COURS',
+                              'EN COURS',
                               style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 11,
+                                fontSize: 8.5,
                                 fontWeight: FontWeight.w900,
-                                letterSpacing: .4,
                               ),
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            activeSession.model.name,
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w900),
+                          const SizedBox(width: 2),
+                          const Icon(Icons.chevron_right_rounded, size: 18),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          const Icon(
+                            Icons.play_circle_fill_rounded,
+                            size: 32,
+                            color: Color(0xFF58A6FF),
                           ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Text(_formatDateTime(activeSession.startedAt)),
-                              const Text('•'),
-                              Text(
-                                '${activeSession.runs.length} ${_isBoatSession(activeSession) ? 'navigation(s)' : 'roulage(s)'}',
-                              ),
-                              const Text('•'),
-                              Text(
-                                _durationLabel(
-                                  activeSession.totalDurationMinutes,
-                                ),
-                              ),
-                              if (activeSession.location.isNotEmpty) ...[
-                                const Text('•'),
-                                Text(
-                                  activeSession.location,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1565C0),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: const Text(
+                                    'SESSION EN COURS',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: .4,
+                                    ),
                                   ),
                                 ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  activeSession.model.name,
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w900),
+                                ),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(
+                                      _formatDateTime(activeSession.startedAt),
+                                    ),
+                                    const Text('•'),
+                                    Text(
+                                      '${activeSession.runs.length} ${_isBoatSession(activeSession) ? 'navigation(s)' : 'roulage(s)'}',
+                                    ),
+                                    const Text('•'),
+                                    Text(
+                                      _durationLabel(
+                                        activeSession.totalDurationMinutes,
+                                      ),
+                                    ),
+                                    if (activeSession.location.isNotEmpty) ...[
+                                      const Text('•'),
+                                      Text(
+                                        activeSession.location,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ],
-                            ],
+                            ),
                           ),
+                          const SizedBox(width: 12),
+                          const Icon(Icons.chevron_right_rounded),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Icon(Icons.chevron_right_rounded),
-                  ],
-                ),
               ),
             ),
           ),
@@ -1830,86 +1917,194 @@ class _SessionsPageState extends State<SessionsPage> {
           ),
         for (final session in closedSessions)
           Card(
-            margin: const EdgeInsets.only(bottom: 12),
+            margin: EdgeInsets.only(bottom: isPhonePortrait ? 5 : 12),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
               onTap: () => _openSessionDetail(session),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                child: Row(
-                  children: [
-                    const Icon(Icons.flag_outlined, size: 30),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                padding: isPhonePortrait
+                    ? const EdgeInsets.symmetric(horizontal: 7, vertical: 5)
+                    : const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                child: isPhonePortrait
+                    ? Row(
                         children: [
-                          Text(
-                            session.model.name,
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Text(_formatDateTime(session.startedAt)),
-                              const Text('•'),
-                              Text(
-                                '${session.runs.length} ${_isBoatSession(session) ? 'navigation(s)' : 'roulage(s)'}',
-                              ),
-                              const Text('•'),
-                              Text(
-                                _durationLabel(session.totalDurationMinutes),
-                              ),
-                              if (session.location.isNotEmpty) ...[
-                                const Text('•'),
+                          const Icon(Icons.flag_outlined, size: 20),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
                                 Text(
-                                  session.location,
-                                  style: const TextStyle(
+                                  session.model.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: _modelAccentColor(
+                                      session.model.name,
+                                    ),
                                     fontWeight: FontWeight.w800,
+                                    fontSize: 14,
                                   ),
                                 ),
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.calendar_today_outlined,
+                                      size: 12,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${session.startedAt.day.toString().padLeft(2, '0')}/${session.startedAt.month.toString().padLeft(2, '0')}/${session.startedAt.year}',
+                                      style: const TextStyle(fontSize: 10.5),
+                                    ),
+                                    if (session.location.isNotEmpty) ...[
+                                      const SizedBox(width: 10),
+                                      const Icon(
+                                        Icons.location_on_outlined,
+                                        size: 13,
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Flexible(
+                                        child: Text(
+                                          session.location,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 10.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(width: 10),
+                                    const Icon(Icons.schedule, size: 13),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      _durationLabel(
+                                        session.totalDurationMinutes,
+                                      ),
+                                      style: const TextStyle(fontSize: 10.5),
+                                    ),
+                                  ],
+                                ),
                               ],
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          PopupMenuButton<String>(
+                            padding: EdgeInsets.zero,
+                            iconSize: 18,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 28,
+                              height: 28,
+                            ),
+                            icon: const Icon(Icons.more_horiz),
+                            onSelected: (value) {
+                              switch (value) {
+                                case 'edit':
+                                  _editSessionGeneral(session);
+                                  break;
+                                case 'delete':
+                                  _deleteClosedSession(session);
+                                  break;
+                              }
+                            },
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: ListTile(
+                                  leading: Icon(Icons.edit_outlined),
+                                  title: Text('Modifier'),
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: ListTile(
+                                  leading: Icon(Icons.delete_outline),
+                                  title: Text('Supprimer'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          const Icon(Icons.flag_outlined, size: 30),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  session.model.name,
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(_formatDateTime(session.startedAt)),
+                                    const Text('•'),
+                                    Text(
+                                      '${session.runs.length} ${_isBoatSession(session) ? 'navigation(s)' : 'roulage(s)'}',
+                                    ),
+                                    const Text('•'),
+                                    Text(
+                                      _durationLabel(
+                                        session.totalDurationMinutes,
+                                      ),
+                                    ),
+                                    if (session.location.isNotEmpty) ...[
+                                      const Text('•'),
+                                      Text(
+                                        session.location,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_horiz),
+                            onSelected: (value) {
+                              switch (value) {
+                                case 'edit':
+                                  _editSessionGeneral(session);
+                                  break;
+                                case 'delete':
+                                  _deleteClosedSession(session);
+                                  break;
+                              }
+                            },
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: ListTile(
+                                  leading: Icon(Icons.edit_outlined),
+                                  title: Text('Modifier'),
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: ListTile(
+                                  leading: Icon(Icons.delete_outline),
+                                  title: Text('Supprimer'),
+                                ),
+                              ),
                             ],
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_horiz),
-                      onSelected: (value) {
-                        switch (value) {
-                          case 'edit':
-                            _editSessionGeneral(session);
-                            break;
-                          case 'delete':
-                            _deleteClosedSession(session);
-                            break;
-                        }
-                      },
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(
-                          value: 'edit',
-                          child: ListTile(
-                            leading: Icon(Icons.edit_outlined),
-                            title: Text('Modifier'),
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: ListTile(
-                            leading: Icon(Icons.delete_outline),
-                            title: Text('Supprimer'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
               ),
             ),
           ),
