@@ -251,6 +251,27 @@ class _RadiosPageState extends State<RadiosPage> {
     }
   }
 
+  Color _radioAccentColor(String radioName) {
+    const colors = <Color>[
+      Color(0xFF2F80ED),
+      Color(0xFF16C6D4),
+      Color(0xFFFF7A1A),
+      Color(0xFFFF4D5A),
+      Color(0xFFA855F7),
+      Color(0xFF34C98F),
+      Color(0xFFFFD84D),
+      Color(0xFF5B8CFF),
+    ];
+
+    final normalized = radioName.trim().toLowerCase();
+    var hash = 0;
+    for (final codeUnit in normalized.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x7fffffff;
+    }
+
+    return colors[hash % colors.length];
+  }
+
   Widget _buildBody() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -313,41 +334,73 @@ class _RadiosPageState extends State<RadiosPage> {
       );
     }
 
+    final isPhonePortrait =
+        MediaQuery.sizeOf(context).width < 600 &&
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+
     return RefreshIndicator(
       onRefresh: _loadRadios,
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        padding: EdgeInsets.fromLTRB(
+          isPhonePortrait ? 10 : 16,
+          isPhonePortrait ? 10 : 16,
+          isPhonePortrait ? 10 : 16,
+          96,
+        ),
         itemCount: _radios.length,
         separatorBuilder: (context, index) {
-          return const SizedBox(height: 8);
+          return SizedBox(height: isPhonePortrait ? 5 : 8);
         },
         itemBuilder: (context, index) {
           final radio = _radios[index];
 
           return Card(
             child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
+              dense: isPhonePortrait,
+              visualDensity: isPhonePortrait
+                  ? const VisualDensity(horizontal: -2, vertical: -3)
+                  : null,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: isPhonePortrait ? 8 : 16,
+                vertical: isPhonePortrait ? 2 : 8,
               ),
               leading: _RadioThumbnail(
                 brand: radio.brand,
                 model: radio.model,
                 type: radio.type,
+                compact: isPhonePortrait,
               ),
               title: Text(
                 radio.fullName,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isPhonePortrait
+                      ? _radioAccentColor(radio.fullName)
+                      : null,
+                  fontSize: isPhonePortrait ? 14 : null,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               subtitle: Padding(
-                padding: const EdgeInsets.only(top: 6),
+                padding: EdgeInsets.only(top: isPhonePortrait ? 2 : 6),
                 child: Text(
                   radio.protocols.isEmpty
                       ? 'Protocole non renseigné'
                       : 'Protocole : ${radio.protocols.join(' • ')}',
+                  maxLines: isPhonePortrait ? 1 : null,
+                  overflow: isPhonePortrait ? TextOverflow.ellipsis : null,
+                  style: TextStyle(fontSize: isPhonePortrait ? 10.5 : null),
                 ),
               ),
               trailing: PopupMenuButton<String>(
+                padding: isPhonePortrait
+                    ? EdgeInsets.zero
+                    : const EdgeInsets.all(8),
+                iconSize: isPhonePortrait ? 18 : 24,
+                constraints: isPhonePortrait
+                    ? const BoxConstraints.tightFor(width: 28, height: 28)
+                    : null,
                 onSelected: (value) => _handleRadioMenu(value, radio),
                 itemBuilder: (context) {
                   final items = <PopupMenuEntry<String>>[];
@@ -425,11 +478,13 @@ class _RadioThumbnail extends StatelessWidget {
     required this.brand,
     required this.model,
     required this.type,
+    this.compact = false,
   });
 
   final String brand;
   final String model;
   final String type;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -440,14 +495,14 @@ class _RadioThumbnail extends StatelessWidget {
         : Icons.settings_remote_outlined;
 
     return Container(
-      width: 52,
-      height: 52,
+      width: compact ? 38 : 52,
+      height: compact ? 38 : 52,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(compact ? 9 : 12),
       ),
       alignment: Alignment.center,
-      child: Icon(icon, size: 30),
+      child: Icon(icon, size: compact ? 22 : 30),
     );
   }
 }

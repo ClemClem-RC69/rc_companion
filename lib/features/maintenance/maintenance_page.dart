@@ -900,6 +900,27 @@ class _MaintenancePageState extends State<MaintenancePage> {
     return '${hours}h ${remaining}min';
   }
 
+  Color _modelAccentColor(String modelName) {
+    const colors = <Color>[
+      Color(0xFF2F80ED),
+      Color(0xFF16C6D4),
+      Color(0xFFFF7A1A),
+      Color(0xFFFF4D5A),
+      Color(0xFFA855F7),
+      Color(0xFF34C98F),
+      Color(0xFFFFD84D),
+      Color(0xFF5B8CFF),
+    ];
+
+    final normalized = modelName.trim().toLowerCase();
+    var hash = 0;
+    for (final codeUnit in normalized.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x7fffffff;
+    }
+
+    return colors[hash % colors.length];
+  }
+
   List<_MaintenanceGroup> _groupMaintenanceRecords(
     List<_MaintenanceRecord> records,
   ) {
@@ -991,6 +1012,9 @@ class _MaintenancePageState extends State<MaintenancePage> {
               onRefresh: _loadData,
               child: Builder(
                 builder: (context) {
+                  final isPhonePortrait =
+                      MediaQuery.sizeOf(context).width < 600 &&
+                      MediaQuery.orientationOf(context) == Orientation.portrait;
                   final query = _historySearch.trim().toLowerCase();
                   final filteredRecords = _records
                       .where((record) {
@@ -1048,45 +1072,121 @@ class _MaintenancePageState extends State<MaintenancePage> {
                         ),
                       for (final group in filteredGroups)
                         Card(
-                          margin: const EdgeInsets.only(bottom: 12),
+                          margin: EdgeInsets.only(
+                            bottom: isPhonePortrait ? 5 : 12,
+                          ),
                           child: ExpansionTile(
-                            leading: const CircleAvatar(
-                              child: Icon(Icons.build_circle_outlined),
-                            ),
+                            tilePadding: isPhonePortrait
+                                ? const EdgeInsets.symmetric(horizontal: 8)
+                                : null,
+                            minTileHeight: isPhonePortrait ? 48 : null,
+                            leading: isPhonePortrait
+                                ? const Icon(
+                                    Icons.build_circle_outlined,
+                                    size: 20,
+                                  )
+                                : const CircleAvatar(
+                                    child: Icon(Icons.build_circle_outlined),
+                                  ),
                             title: Text(
                               group.modelName,
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.w800),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: isPhonePortrait
+                                  ? TextStyle(
+                                      color: _modelAccentColor(group.modelName),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                    )
+                                  : Theme.of(context).textTheme.titleLarge
+                                        ?.copyWith(fontWeight: FontWeight.w800),
                             ),
-                            subtitle: Text(
-                              'Maintenance • ${_formatDate(group.date)} • '
-                              '${group.interventions.length} intervention(s)',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            childrenPadding: const EdgeInsets.fromLTRB(
-                              12,
-                              0,
-                              8,
-                              12,
-                            ),
-                            children: [
-                              for (final record in group.interventions)
-                                ListTile(
-                                  leading: Icon(record.type.icon),
-                                  title: Text(
-                                    record.title.isEmpty
-                                        ? record.type.label
-                                        : record.title,
+                            subtitle: isPhonePortrait
+                                ? Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.calendar_today_outlined,
+                                        size: 12,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        _formatDate(group.date),
+                                        style: const TextStyle(fontSize: 10.5),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      const Icon(
+                                        Icons.build_outlined,
+                                        size: 13,
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Expanded(
+                                        child: Text(
+                                          '${group.interventions.length} intervention${group.interventions.length > 1 ? 's' : ''}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 10.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Text(
+                                    'Maintenance • ${_formatDate(group.date)} • '
+                                    '${group.interventions.length} intervention(s)',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                  subtitle: Text(record.type.label),
+                            childrenPadding: isPhonePortrait
+                                ? const EdgeInsets.fromLTRB(8, 0, 4, 5)
+                                : const EdgeInsets.fromLTRB(12, 0, 8, 12),
+                            children: [
+                              for (final record in group.interventions)
+                                ListTile(
+                                  dense: isPhonePortrait,
+                                  visualDensity: isPhonePortrait
+                                      ? const VisualDensity(
+                                          horizontal: -3,
+                                          vertical: -3,
+                                        )
+                                      : null,
+                                  contentPadding: isPhonePortrait
+                                      ? const EdgeInsets.only(left: 4)
+                                      : null,
+                                  leading: Icon(
+                                    record.type.icon,
+                                    size: isPhonePortrait ? 19 : null,
+                                  ),
+                                  title: Text(
+                                    record.title.isEmpty
+                                        ? record.type.label
+                                        : record.title,
+                                    maxLines: isPhonePortrait ? 1 : null,
+                                    overflow: isPhonePortrait
+                                        ? TextOverflow.ellipsis
+                                        : null,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: isPhonePortrait ? 12 : null,
+                                    ),
+                                  ),
+                                  subtitle: isPhonePortrait
+                                      ? null
+                                      : Text(record.type.label),
                                   onTap: () => _showDetails(record),
                                   trailing: PopupMenuButton<String>(
                                     tooltip: 'Options de l’intervention',
+                                    padding: isPhonePortrait
+                                        ? EdgeInsets.zero
+                                        : const EdgeInsets.all(8),
+                                    iconSize: isPhonePortrait ? 18 : 24,
+                                    constraints: isPhonePortrait
+                                        ? const BoxConstraints.tightFor(
+                                            width: 28,
+                                            height: 28,
+                                          )
+                                        : null,
                                     onSelected: (value) {
                                       if (value == 'details') {
                                         _showDetails(record);
