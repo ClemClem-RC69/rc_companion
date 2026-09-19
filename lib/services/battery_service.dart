@@ -985,46 +985,8 @@ class BatteryService {
             (first, second) => first.measuredAt.compareTo(second.measuredAt),
           );
 
-    if (reference == null) {
-      return const BatteryHealthAnalysis.notEvaluated();
-    }
-
-    if (afterChargeMeasurements.isEmpty) {
-      final referenceHasSevereIssue =
-          reference.maximumVoltageDifference > 0.100 ||
-          reference.maximumInternalResistanceDifference > 10.0;
-
-      final referenceHasWarning =
-          reference.maximumVoltageDifference > 0.050 ||
-          reference.maximumInternalResistanceDifference > 5.0;
-
-      final reasons = <String>[
-        'Écart de tension de référence : '
-            '${reference.maximumVoltageDifference.toStringAsFixed(3)} V.',
-        'Écart de résistance interne de référence : '
-            '${reference.maximumInternalResistanceDifference.toStringAsFixed(2)} mΩ.',
-        'Santé initiale calculée à partir de la mesure de référence. '
-            'Les relevés après charge permettront ensuite de suivre son évolution.',
-      ];
-
-      return BatteryHealthAnalysis(
-        level: referenceHasSevereIssue
-            ? BatteryHealthLevel.hs
-            : referenceHasWarning
-            ? BatteryHealthLevel.warning
-            : BatteryHealthLevel.good,
-        label: referenceHasSevereIssue
-            ? 'HS*'
-            : referenceHasWarning
-            ? 'À surveiller*'
-            : 'Bonne*',
-        reference: reference,
-        latestAfterCharge: null,
-        afterChargeCount: 0,
-        resistanceEvolutionPercent: 0.0,
-        risingTrend: false,
-        reasons: reasons,
-      );
+    if (reference == null || afterChargeMeasurements.isEmpty) {
+      return BatteryHealthAnalysis.notEvaluated(reference: reference);
     }
 
     final latest = afterChargeMeasurements.last;
@@ -1035,23 +997,51 @@ class BatteryService {
         ? 0.0
         : ((latestAverage - referenceAverage) / referenceAverage) * 100;
 
-    bool isSevere(BatteryMeasurement measurement) {
+    List<double> cellEvolutions(BatteryMeasurement measurement) {
+      final count =
+          reference!.cellInternalResistances.length <
+              measurement.cellInternalResistances.length
+          ? reference.cellInternalResistances.length
+          : measurement.cellInternalResistances.length;
+
+      return List<double>.generate(count, (index) {
+        final referenceResistance = reference!.cellInternalResistances[index];
+        final currentResistance = measurement.cellInternalResistances[index];
+
+        if (referenceResistance <= 0) {
+          return 0.0;
+        }
+
+        return ((currentResistance - referenceResistance) /
+                referenceResistance) *
+            100;
+      }, growable: false);
+    }
+
+    double averageEvolution(BatteryMeasurement measurement) {
       final average = measurement.averageInternalResistance;
 
-      final evolution = referenceAverage <= 0
-          ? 0.0
-          : ((average - referenceAverage) / referenceAverage) * 100;
+      if (referenceAverage <= 0) {
+        return 0.0;
+      }
 
-      return measurement.maximumVoltageDifference > 0.100 ||
-          measurement.maximumInternalResistanceDifference > 10.0 ||
-          evolution > 100.0;
+      return ((average - referenceAverage) / referenceAverage) * 100;
+    }
+
+    bool hasSevereResistanceEvolution(BatteryMeasurement measurement) {
+      final evolutions = cellEvolutions(measurement);
+
+      return averageEvolution(measurement) >= 100.0 ||
+          evolutions.any((evolution) => evolution >= 100.0);
     }
 
     final recent = afterChargeMeasurements.length <= 3
         ? afterChargeMeasurements
         : afterChargeMeasurements.sublist(afterChargeMeasurements.length - 3);
 
-    final severeRecentCount = recent.where(isSevere).length;
+    final severeResistanceRecentCount = recent
+        .where(hasSevereResistanceEvolution)
+        .length;
 
     var risingTrend = false;
 
@@ -1070,59 +1060,112 @@ class BatteryService {
           increase > 15.0;
     }
 
-    final latestIsSevere = isSevere(latest);
+    final latestCellEvolutions = cellEvolutions(latest);
+    final latestHasCellWarning = latestCellEvolutions.any(
+      (evolution) => evolution >= 50.0,
+    );
+    final latestHasSevereResistance = hasSevereResistanceEvolution(latest);
+    final latestHasVoltageWarning = latest.maximumVoltageDifference > 0.050;
+    final latestHasSevereVoltage = latest.maximumVoltageDifference > 0.100;
+
+    final resistanceIssueConfirmed =
+        latestHasSevereResistance && severeResistanceRecentCount >= 2;
 
     final latestHasWarning =
-        latest.maximumVoltageDifference > 0.050 ||
-        latest.maximumInternalResistanceDifference > 5.0 ||
-        evolutionPercent > 25.0;
+        latestHasVoltageWarning ||
+        evolutionPercent >= 25.0 ||
+        latestHasCellWarning ||
+        risingTrend;
 
     final reasons = <String>[
       'Écart de tension actuel : '
           '${latest.maximumVoltageDifference.toStringAsFixed(3)} V.',
-      'Écart de résistance interne actuel : '
-          '${latest.maximumInternalResistanceDifference.toStringAsFixed(2)} mΩ.',
       'Évolution de la résistance interne moyenne depuis la référence : '
           '${evolutionPercent >= 0 ? '+' : ''}'
           '${evolutionPercent.toStringAsFixed(1)} %.',
-      risingTrend
-          ? 'Tendance : hausse régulière sur les trois derniers relevés après charge.'
-          : 'Tendance : aucune hausse régulière critique sur les trois derniers relevés après charge.',
     ];
 
-    if (latestIsSevere || severeRecentCount >= 2) {
-      return BatteryHealthAnalysis(
-        level: BatteryHealthLevel.hs,
-        label: 'HS*',
-        reference: reference,
-        latestAfterCharge: latest,
-        afterChargeCount: afterChargeMeasurements.length,
-        resistanceEvolutionPercent: evolutionPercent,
-        risingTrend: risingTrend,
-        reasons: reasons,
+    if (latestCellEvolutions.isNotEmpty) {
+      for (var index = 0; index < latestCellEvolutions.length; index++) {
+        final referenceResistance = reference.cellInternalResistances[index];
+        final currentResistance = latest.cellInternalResistances[index];
+        final evolution = latestCellEvolutions[index];
+
+        final suffix = evolution >= 100.0
+            ? ' — anomalie importante'
+            : evolution >= 50.0
+            ? ' — à surveiller'
+            : '';
+
+        reasons.add(
+          'Cellule ${index + 1} : '
+          '${referenceResistance.toStringAsFixed(2)} → '
+          '${currentResistance.toStringAsFixed(2)} mΩ '
+          '(${evolution >= 0 ? '+' : ''}${evolution.toStringAsFixed(1)} %)'
+          '$suffix.',
+        );
+      }
+    } else {
+      reasons.add(
+        'Comparaison cellule par cellule indisponible pour ce relevé.',
       );
     }
 
-    if (latestHasWarning || risingTrend) {
-      return BatteryHealthAnalysis(
-        level: BatteryHealthLevel.warning,
-        label: 'À surveiller*',
-        reference: reference,
-        latestAfterCharge: latest,
-        afterChargeCount: afterChargeMeasurements.length,
-        resistanceEvolutionPercent: evolutionPercent,
-        risingTrend: risingTrend,
-        reasons: reasons,
+    if (recent.length < 3) {
+      reasons.add(
+        'Tendance : trois relevés après charge sont nécessaires pour évaluer la tendance.',
+      );
+    } else {
+      reasons.add(
+        risingTrend
+            ? 'Tendance : hausse régulière de plus de 15 % sur les trois derniers relevés après charge.'
+            : 'Tendance : aucune hausse régulière supérieure à 15 % sur les trois derniers relevés après charge.',
       );
     }
+
+    if (latestHasSevereVoltage) {
+      reasons.add(
+        'Alerte critique : l’écart de tension actuel dépasse 0,100 V.',
+      );
+    }
+
+    if (latestHasSevereResistance && !resistanceIssueConfirmed) {
+      reasons.add(
+        'Une forte hausse de résistance interne est détectée sur ce relevé ; '
+        'un second relevé récent comparable est nécessaire avant un classement HS fondé sur la résistance interne.',
+      );
+    }
+
+    if (resistanceIssueConfirmed) {
+      reasons.add(
+        'Dégradation de résistance interne confirmée sur au moins deux des trois derniers relevés après charge.',
+      );
+    }
+
+    final level = latestHasSevereVoltage || resistanceIssueConfirmed
+        ? BatteryHealthLevel.hs
+        : latestHasWarning || latestHasSevereResistance
+        ? BatteryHealthLevel.warning
+        : BatteryHealthLevel.good;
 
     return BatteryHealthAnalysis(
-      level: BatteryHealthLevel.good,
-      label: 'Bonne*',
+      level: level,
+      label: switch (level) {
+        BatteryHealthLevel.good => 'Bonne*',
+        BatteryHealthLevel.warning => 'À surveiller*',
+        BatteryHealthLevel.hs => 'HS*',
+        BatteryHealthLevel.notEvaluated => 'Non évaluée',
+      },
       reference: reference,
       latestAfterCharge: latest,
       afterChargeCount: afterChargeMeasurements.length,
       resistanceEvolutionPercent: evolutionPercent,
+      maximumCellResistanceEvolutionPercent: latestCellEvolutions.isEmpty
+          ? null
+          : latestCellEvolutions.reduce(
+              (current, next) => current > next ? current : next,
+            ),
+      cellResistanceEvolutionPercents: latestCellEvolutions,
       risingTrend: risingTrend,
       reasons: reasons,
     );
@@ -1216,17 +1259,20 @@ class BatteryHealthAnalysis {
     required this.latestAfterCharge,
     required this.afterChargeCount,
     required this.resistanceEvolutionPercent,
+    required this.maximumCellResistanceEvolutionPercent,
+    required this.cellResistanceEvolutionPercents,
     required this.risingTrend,
     required this.reasons,
   });
 
-  const BatteryHealthAnalysis.notEvaluated()
+  const BatteryHealthAnalysis.notEvaluated({this.reference})
     : level = BatteryHealthLevel.notEvaluated,
       label = 'Non évaluée',
-      reference = null,
       latestAfterCharge = null,
       afterChargeCount = 0,
       resistanceEvolutionPercent = null,
+      maximumCellResistanceEvolutionPercent = null,
+      cellResistanceEvolutionPercents = const [],
       risingTrend = false,
       reasons = const [
         'Une mesure de référence et au moins un relevé après charge sont nécessaires.',
@@ -1238,6 +1284,8 @@ class BatteryHealthAnalysis {
   final BatteryMeasurement? latestAfterCharge;
   final int afterChargeCount;
   final double? resistanceEvolutionPercent;
+  final double? maximumCellResistanceEvolutionPercent;
+  final List<double> cellResistanceEvolutionPercents;
   final bool risingTrend;
   final List<String> reasons;
 

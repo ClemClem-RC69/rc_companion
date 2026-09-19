@@ -6,12 +6,12 @@ import '../../legal/rc_legal_documents.dart';
 class InfoPage extends StatelessWidget {
   const InfoPage({super.key});
 
-  static const String batteryHealthVersion = 'V1.2';
+  static const String batteryHealthVersion = 'V1.3';
   static const String batteryCompatibilityVersion = 'V1.0';
   static const String batteryChargeStateVersion = 'V1.1';
   static const String offlineArchitectureVersion = 'V1.2';
   static const String authenticationVersion = 'V1.1';
-  static const String lastUpdate = 'Août 2026';
+  static const String lastUpdate = 'Septembre 2026';
 
   @override
   Widget build(BuildContext context) {
@@ -550,9 +550,10 @@ class InfoPage extends StatelessWidget {
               ),
               SizedBox(height: 10),
               Text(
-                'La santé est une estimation de l’état général de la '
-                'batterie au fil du temps. Une batterie peut être '
-                'faiblement chargée mais en bonne santé, ou inversement.',
+                'La santé est une estimation de l’évolution de la batterie '
+                'au fil du temps à partir de ses propres mesures. Elle ne '
+                'repose pas sur une valeur universelle de résistance interne '
+                'applicable à toutes les batteries.',
               ),
               SizedBox(height: 12),
               Text(
@@ -561,11 +562,16 @@ class InfoPage extends StatelessWidget {
               ),
               SizedBox(height: 8),
               _InfoBullet(
-                'La mesure de référence sert de base de comparaison.',
+                'La mesure de référence constitue le point de départ propre '
+                'à la batterie et à chacune de ses cellules.',
               ),
               _InfoBullet(
-                'Seuls les relevés effectués après charge sont utilisés '
-                'dans l’historique de santé.',
+                'Au moins un relevé après charge exploitable est nécessaire '
+                'en plus de la référence pour attribuer un niveau de santé.',
+              ),
+              _InfoBullet(
+                'Seuls les relevés après charge sont utilisés pour suivre '
+                'l’évolution de la santé.',
               ),
               _InfoBullet(
                 'Les relevés de fin de roulage ne sont pas utilisés pour '
@@ -573,23 +579,35 @@ class InfoPage extends StatelessWidget {
               ),
               SizedBox(height: 12),
               Text(
-                'Critères analysés',
+                'Méthode de comparaison',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               SizedBox(height: 8),
               _InfoBullet(
-                'Évolution de la résistance interne moyenne par rapport '
-                'à la mesure de référence.',
+                'La résistance interne de chaque cellule est comparée à la '
+                'résistance de cette même cellule dans la mesure de référence.',
               ),
               _InfoBullet(
-                'Écart de tension entre la cellule la plus haute et la '
-                'cellule la plus basse.',
+                'L’évolution de chaque cellule est exprimée en pourcentage '
+                'par rapport à sa propre valeur de référence.',
               ),
-              _InfoBullet('Écart de résistance interne entre les cellules.'),
-              _InfoBullet('Évolution historique des relevés après charge.'),
               _InfoBullet(
-                'Tendance observée sur les trois derniers relevés après '
-                'charge lorsqu’ils sont disponibles.',
+                'L’évolution de la résistance interne moyenne du pack est '
+                'également suivie comme indicateur global de vieillissement.',
+              ),
+              _InfoBullet(
+                'Les seuils absolus de 5 mΩ et 10 mΩ entre cellules ne sont '
+                'plus utilisés pour classer la santé, car une même valeur '
+                'absolue n’a pas la même signification pour toutes les '
+                'batteries et toutes les conditions de mesure.',
+              ),
+              _InfoBullet(
+                'L’écart de tension entre la cellule la plus haute et la '
+                'cellule la plus basse reste analysé séparément.',
+              ),
+              _InfoBullet(
+                'Une tendance est recherchée sur les trois derniers relevés '
+                'après charge lorsqu’ils sont disponibles.',
               ),
               SizedBox(height: 12),
               Text(
@@ -598,28 +616,33 @@ class InfoPage extends StatelessWidget {
               ),
               SizedBox(height: 8),
               _InfoBullet(
+                'Hausse de la résistance interne moyenne d’au moins 25 % '
+                'par rapport à la référence : indicateur à surveiller.',
+              ),
+              _InfoBullet(
+                'Hausse d’au moins 50 % de la résistance interne d’une '
+                'cellule par rapport à sa propre référence : indicateur à '
+                'surveiller.',
+              ),
+              _InfoBullet(
+                'Hausse d’au moins 100 % de la résistance interne moyenne '
+                'ou d’une cellule : anomalie importante. Une mesure isolée '
+                'entraîne une surveillance, mais ne suffit pas à elle seule '
+                'à classer la batterie HS sur le critère de résistance.',
+              ),
+              _InfoBullet(
+                'Une anomalie de résistance d’au moins 100 % présente sur '
+                'au moins deux des trois derniers relevés après charge est '
+                'considérée comme une dégradation confirmée et conduit au '
+                'niveau HS.',
+              ),
+              _InfoBullet(
                 'Écart de tension supérieur à 0,050 V : indicateur à '
                 'surveiller.',
               ),
               _InfoBullet(
-                'Écart de tension supérieur à 0,100 V : indicateur '
-                'critique.',
-              ),
-              _InfoBullet(
-                'Écart de résistance interne supérieur à 5 mΩ : '
-                'indicateur à surveiller.',
-              ),
-              _InfoBullet(
-                'Écart de résistance interne supérieur à 10 mΩ : '
-                'indicateur critique.',
-              ),
-              _InfoBullet(
-                'Hausse de la résistance interne moyenne supérieure à '
-                '25 % par rapport à la référence : indicateur à surveiller.',
-              ),
-              _InfoBullet(
-                'Hausse supérieure à 100 % par rapport à la référence : '
-                'indicateur critique.',
+                'Écart de tension supérieur à 0,100 V : indicateur critique '
+                'pouvant conduire directement au niveau HS.',
               ),
               _InfoBullet(
                 'Une hausse régulière supérieure à 15 % entre le premier '
@@ -633,17 +656,19 @@ class InfoPage extends StatelessWidget {
               ),
               SizedBox(height: 8),
               _InfoBullet(
-                'Bonne : les valeurs restent cohérentes et aucune '
-                'dégradation significative n’est détectée.',
+                'Bonne : la référence et au moins un relevé après charge '
+                'sont disponibles et aucun indicateur de dégradation '
+                'significative n’est détecté.',
               ),
               _InfoBullet(
-                'À surveiller : au moins un indicateur de dégradation ou '
-                'une tendance défavorable est détecté.',
+                'À surveiller : au moins un indicateur de dégradation, une '
+                'forte hausse isolée de résistance interne ou une tendance '
+                'défavorable est détecté.',
               ),
               _InfoBullet(
-                'HS : un indicateur critique est présent sur le dernier '
-                'relevé ou une dégradation critique est confirmée sur '
-                'plusieurs relevés récents.',
+                'HS : un écart de tension critique est détecté ou une forte '
+                'dégradation de résistance interne est confirmée sur au '
+                'moins deux des trois derniers relevés après charge.',
               ),
               _InfoBullet(
                 'Non évaluée : aucune mesure de référence exploitable ou '
@@ -651,13 +676,26 @@ class InfoPage extends StatelessWidget {
               ),
               SizedBox(height: 12),
               Text(
-                'Limites du calcul',
+                'Conditions et limites de mesure',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               SizedBox(height: 8),
               _InfoBullet(
-                'La santé affichée dépend directement de la qualité, de '
-                'la précision et de la régularité des mesures saisies.',
+                'La résistance interne varie avec la température, le niveau '
+                'de charge, le temps de repos et la méthode ou l’appareil de '
+                'mesure. Les comparaisons sont donc plus pertinentes lorsque '
+                'les relevés sont réalisés dans des conditions aussi '
+                'semblables que possible.',
+              ),
+              _InfoBullet(
+                'La santé affichée dépend directement de la qualité, de la '
+                'précision et de la régularité des mesures saisies.',
+              ),
+              _InfoBullet(
+                'Les seuils en pourcentage utilisés par RC Companion sont '
+                'des règles de suivi de l’application. Ils ne constituent '
+                'pas des limites universelles définies par tous les '
+                'fabricants de batteries.',
               ),
               _InfoBullet(
                 'Le résultat constitue une aide au suivi et non une '
@@ -874,6 +912,13 @@ class InfoPage extends StatelessWidget {
               _InfoBullet('V1.0 : première documentation générale.'),
               _InfoBullet('V1.1 : documentation de l’état de charge.'),
               _InfoBullet('V1.2 : documentation de la santé batterie.'),
+              _InfoBullet(
+                'V1.3 : suivi de la résistance interne cellule par cellule '
+                'par rapport à la référence, confirmation des fortes '
+                'dégradations sur plusieurs relevés et suppression des '
+                'seuils absolus de résistance interne pour le classement '
+                'de santé.',
+              ),
               _InfoBullet(
                 'Juillet 2026 : ajout de l’authentification, du mode hors '
                 'ligne, de la synchronisation, de l’architecture et des '

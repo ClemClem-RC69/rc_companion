@@ -1119,11 +1119,7 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
     final health = BatteryService.calculateBatteryHealth(_measurements);
 
     final latest = health.latestAfterCharge ?? measurement;
-
     final voltageSpread = latest.maximumVoltageDifference;
-
-    final resistanceSpread = latest.maximumInternalResistanceDifference;
-
     final evolution = health.resistanceEvolutionPercent;
 
     final level = switch (health.level) {
@@ -1141,83 +1137,21 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
           : voltageSpread <= 0.100
           ? 'À surveiller'
           : 'Critique',
-      resistanceSpread: resistanceSpread,
-      resistanceLabel: resistanceSpread <= 5.0
-          ? 'Correct'
-          : resistanceSpread <= 10.0
-          ? 'À surveiller'
-          : 'Critique',
       resistanceEvolutionPercent: evolution,
       evolutionLabel: evolution == null
           ? 'Référence absente'
-          : evolution <= 25.0
+          : evolution < 25.0
           ? 'Normale'
-          : evolution <= 100.0
+          : evolution < 100.0
           ? 'À surveiller'
-          : 'Critique',
+          : 'Forte hausse',
       cellMessages: health.reasons,
       globalMessages: [
         'Calcul basé sur ${health.afterChargeCount} relevé(s) après charge.',
+        'La résistance interne est comparée à la référence de chaque cellule ; aucun seuil absolu universel en mΩ n’est utilisé pour classer la santé.',
         'Les relevés de fin de roulage ne sont pas utilisés pour déterminer la santé.',
       ],
     );
-  }
-
-  _ResistanceThresholds _internalResistanceThresholds() {
-    final capacityAh = battery.capacity / 1000;
-    final safeCapacityAh = capacityAh <= 0 ? 1.0 : capacityAh;
-
-    final technology = battery.technology
-        .toLowerCase()
-        .replaceAll('-', '')
-        .replaceAll(' ', '');
-
-    late final double warningFactor;
-    late final double criticalFactor;
-
-    switch (technology) {
-      case 'lipo':
-      case 'lihv':
-        warningFactor = 30;
-        criticalFactor = 50;
-      case 'liion':
-        warningFactor = 60;
-        criticalFactor = 100;
-      case 'life':
-        warningFactor = 40;
-        criticalFactor = 65;
-      case 'nimh':
-        warningFactor = 90;
-        criticalFactor = 150;
-      case 'nicd':
-        warningFactor = 80;
-        criticalFactor = 130;
-      default:
-        warningFactor = 50;
-        criticalFactor = 90;
-    }
-
-    return _ResistanceThresholds(
-      warning: warningFactor / safeCapacityAh,
-      critical: criticalFactor / safeCapacityAh,
-    );
-  }
-
-  _VoltageSpreadThresholds _voltageSpreadThresholds() {
-    final technology = battery.technology
-        .toLowerCase()
-        .replaceAll('-', '')
-        .replaceAll(' ', '');
-
-    switch (technology) {
-      case 'lipo':
-      case 'lihv':
-      case 'liion':
-      case 'life':
-        return const _VoltageSpreadThresholds(warning: 0.030, critical: 0.050);
-      default:
-        return const _VoltageSpreadThresholds(warning: 0.050, critical: 0.100);
-    }
   }
 
   Future<void> _deleteMeasurement(BatteryMeasurement measurement) async {
@@ -1633,19 +1567,11 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
       );
     }
 
-    final latest = _latestHealthMeasurement!;
-    final reference = _measurements.firstWhere(
-      (measurement) => measurement.isReference,
-      orElse: () => latest,
-    );
+    final health = BatteryService.calculateBatteryHealth(_measurements);
+    final latest = health.latestAfterCharge ?? _latestHealthMeasurement!;
+    final reference = health.reference ?? latest;
     final analysis = _analyzeMeasurement(latest);
-
-    final resistanceEvolution = reference.averageInternalResistance == 0
-        ? 0.0
-        : ((latest.averageInternalResistance -
-                      reference.averageInternalResistance) /
-                  reference.averageInternalResistance) *
-              100;
+    final resistanceEvolution = health.resistanceEvolutionPercent ?? 0.0;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -1747,6 +1673,12 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
           '${resistanceEvolution >= 0 ? '+' : ''}'
               '${resistanceEvolution.toStringAsFixed(1)} %',
         ),
+        if (health.maximumCellResistanceEvolutionPercent != null)
+          _info(
+            'Plus forte évolution RI d’une cellule',
+            '${health.maximumCellResistanceEvolutionPercent! >= 0 ? '+' : ''}'
+                '${health.maximumCellResistanceEvolutionPercent!.toStringAsFixed(1)} %',
+          ),
         _info(
           'Écart maximal de tension',
           '${_formatDecimal(latest.maximumVoltageDifference)} V',
@@ -2011,23 +1943,6 @@ class _BatteryDetailPageState extends State<BatteryDetailPage>
   }
 }
 
-class _ResistanceThresholds {
-  const _ResistanceThresholds({required this.warning, required this.critical});
-
-  final double warning;
-  final double critical;
-}
-
-class _VoltageSpreadThresholds {
-  const _VoltageSpreadThresholds({
-    required this.warning,
-    required this.critical,
-  });
-
-  final double warning;
-  final double critical;
-}
-
 enum _BatteryHealthLevel { notEvaluated, good, warning, hs }
 
 class _MeasurementAnalysis {
@@ -2035,8 +1950,6 @@ class _MeasurementAnalysis {
     required this.level,
     required this.voltageSpread,
     required this.voltageLabel,
-    required this.resistanceSpread,
-    required this.resistanceLabel,
     required this.resistanceEvolutionPercent,
     required this.evolutionLabel,
     required this.cellMessages,
@@ -2046,8 +1959,6 @@ class _MeasurementAnalysis {
   final _BatteryHealthLevel level;
   final double voltageSpread;
   final String voltageLabel;
-  final double resistanceSpread;
-  final String resistanceLabel;
   final double? resistanceEvolutionPercent;
   final String evolutionLabel;
   final List<String> cellMessages;
